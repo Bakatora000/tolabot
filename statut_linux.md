@@ -91,6 +91,7 @@ Decision encore ouverte pour la prod :
 
 - le contrat HTTP est maintenant valide en bout en bout aussi en backend `mem0`
 - Windows peut tester `memory-health` et `run-ollama` contre une API non theorique
+- le routage public attendu est `https://olala.expevay.net/api/memory/...`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON

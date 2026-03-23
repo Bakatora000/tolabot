@@ -7,11 +7,11 @@ Service HTTP JSON pour fournir une couche mémoire distante au bot Twitch Window
 Le service expose une API REST stable devant le backend mémoire.
 
 Contrat visé :
-- `GET /health`
-- `POST /search`
-- `POST /remember`
-- `POST /forget`
-- `POST /recent`
+- `GET /health` en interne, publie via `GET /api/memory/health`
+- `POST /search` en interne, publie via `POST /api/memory/search`
+- `POST /remember` en interne, publie via `POST /api/memory/remember`
+- `POST /forget` en interne, publie via `POST /api/memory/forget`
+- `POST /recent` en interne, publie via `POST /api/memory/recent`
 
 Le bot Windows parle uniquement à cette API. Il ne doit jamais parler directement à mem0.
 

@@ -100,7 +100,7 @@ sudo systemctl reload nginx
 ## 6. Validation publique
 
 ```bash
-curl https://olala.expevay.net/health
+curl https://olala.expevay.net/api/memory/health
 ```
 
 Puis depuis Windows :

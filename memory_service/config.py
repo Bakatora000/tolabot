@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 def _as_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
@@ -39,6 +41,7 @@ class Settings:
 
     @classmethod
     def load(cls) -> "Settings":
+        load_dotenv()
         data_dir = Path(os.getenv("DATA_DIR", "./data")).resolve()
         file_store_path = Path(os.getenv("FILE_STORE_PATH", str(data_dir / "memory_store.json"))).resolve()
         mem0_history_db_path = Path(os.getenv("MEM0_HISTORY_DB_PATH", str(data_dir / "history.db"))).resolve()
