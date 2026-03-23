@@ -69,7 +69,7 @@ Decision produit :
 
 | id | task | owner | status | depends_on | last_update | notes |
 |---|---|---|---|---|---|---|
-| L1 | Concevoir le service HTTP Linux conforme au contrat API | Codex Linux | REVIEW | none | 2026-03-23 | MVP FastAPI code en place avec `/health`, `/search`, `/remember`, `/forget`, `/recent`. A valider en execution HTTP reelle. |
+| L1 | Concevoir le service HTTP Linux conforme au contrat API | Codex Linux | DONE | none | 2026-03-23 | MVP FastAPI code en place et valide en execution locale sur backend `file` pour `/health`, `/search`, `/remember`, `/forget`, `/recent`. |
 | L2 | Choisir et configurer l'integration mem0 + Qdrant + SQLite history | Codex Linux | IN_PROGRESS | L1 | 2026-03-23 | Abstraction backend et configuration mem0 posees. Validation reelle mem0/Qdrant encore a faire sur environnement installe. |
 | L3 | Preparer l'exposition HTTPS sur `olala.expevay.net` | Codex Linux | REVIEW | L1 | 2026-03-23 | Gabarit Nginx fourni. Certificat TLS et mise en service restent a appliquer sur l'hote cible. |
 | L4 | Fournir procedure de deploiement Linux (`systemd`, config, reverse proxy) | Codex Linux | REVIEW | L1,L2,L3 | 2026-03-23 | `README.md`, `.env.example`, unite `systemd` et gabarit Nginx ajoutes. Validation runtime encore necessaire. |
@@ -160,6 +160,18 @@ Format obligatoire :
 - next_action:
   - Linux: continuer la validation runtime du service memoire
   - Windows: cloner ou synchroniser `tolabot`, puis faire les mises a jour de suivi directement dans le depot partage
+
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: validation runtime locale terminee en backend `file`; endpoints principaux conformes au contrat observes en HTTP reelle avec auth `X-API-Key` et idempotence `message_id`
+- files:
+  - `memory_service/app.py`
+  - `memory_service/backend.py`
+  - `pilotage_projet_mem0.md`
+- next_action:
+  - Linux: passer a la validation de l'integration reelle `mem0` + Qdrant
+  - Windows: peut commencer l'integration cliente contre le contrat deja valide en mode HTTP
 
 ---
 
