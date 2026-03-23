@@ -178,32 +178,51 @@ class Mem0MemoryBackend:
         self._memory = self._build_memory()
 
     def _build_memory(self):
+        vector_config: dict[str, Any] = {
+            "collection_name": self.settings.mem0_qdrant_collection,
+            "on_disk": self.settings.mem0_qdrant_on_disk,
+            "embedding_model_dims": self.settings.mem0_embedder_dims,
+        }
+        if self.settings.mem0_qdrant_url and self.settings.mem0_qdrant_api_key:
+            vector_config["url"] = self.settings.mem0_qdrant_url
+            vector_config["api_key"] = self.settings.mem0_qdrant_api_key
+        elif self.settings.mem0_qdrant_path:
+            vector_config["path"] = str(self.settings.mem0_qdrant_path)
+        elif self.settings.mem0_qdrant_host and self.settings.mem0_qdrant_port:
+            vector_config["host"] = self.settings.mem0_qdrant_host
+            vector_config["port"] = self.settings.mem0_qdrant_port
+
         config = {
             "vector_store": {
                 "provider": "qdrant",
-                "config": {
-                    "host": self.settings.mem0_qdrant_host,
-                    "port": self.settings.mem0_qdrant_port,
-                    "collection_name": self.settings.mem0_qdrant_collection,
-                    "on_disk": self.settings.mem0_qdrant_on_disk,
-                },
+                "config": vector_config,
             },
             "history_db_path": str(self.settings.mem0_history_db_path),
             "llm": {
                 "provider": self.settings.mem0_llm_provider,
-                "config": {
-                    "model": self.settings.mem0_llm_model,
-                    "temperature": 0.1,
-                },
+                "config": self._build_llm_config(),
             },
             "embedder": {
                 "provider": self.settings.mem0_embedder_provider,
-                "config": {
-                    "model": self.settings.mem0_embedder_model,
-                },
+                "config": self._build_embedder_config(),
             },
         }
         return self._memory_class.from_config(config)
+
+    def _build_llm_config(self) -> dict[str, Any]:
+        config: dict[str, Any] = {
+            "model": self.settings.mem0_llm_model,
+            "temperature": 0.1,
+        }
+        if self.settings.mem0_llm_provider == "lmstudio":
+            config["lmstudio_base_url"] = self.settings.mem0_lmstudio_base_url
+        return config
+
+    def _build_embedder_config(self) -> dict[str, Any]:
+        return {
+            "model": self.settings.mem0_embedder_model,
+            "embedding_dims": self.settings.mem0_embedder_dims,
+        }
 
     def healthcheck(self) -> None:
         if self._memory is None:
@@ -211,10 +230,11 @@ class Mem0MemoryBackend:
 
     def search(self, user_id: str, query: str, limit: int) -> list[MemoryRecord]:
         try:
-            results = self._memory.search(query=query, user_id=user_id, limit=limit)
+            payload = self._memory.search(query=query, user_id=user_id, limit=limit, rerank=False)
         except Exception as exc:
             raise MemoryBackendError(str(exc)) from exc
 
+        results = payload.get("results", payload) if isinstance(payload, dict) else payload
         normalized: list[MemoryRecord] = []
         for item in results or []:
             normalized.append(
@@ -236,6 +256,7 @@ class Mem0MemoryBackend:
                 messages=[{"role": "user", "content": normalize_spaces(text)}],
                 user_id=user_id,
                 metadata=metadata or {},
+                infer=False,
             )
         except Exception as exc:
             raise MemoryBackendError(str(exc)) from exc
@@ -261,10 +282,11 @@ class Mem0MemoryBackend:
 
     def recent(self, user_id: str, limit: int) -> list[MemoryRecord]:
         try:
-            records = self._memory.get_all(user_id=user_id) or []
+            payload = self._memory.get_all(user_id=user_id, limit=limit) or []
         except Exception as exc:
             raise MemoryBackendError(str(exc)) from exc
 
+        records = payload.get("results", payload) if isinstance(payload, dict) else payload
         normalized: list[MemoryRecord] = []
         for item in records:
             normalized.append(

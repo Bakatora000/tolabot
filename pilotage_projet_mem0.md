@@ -70,7 +70,7 @@ Decision produit :
 | id | task | owner | status | depends_on | last_update | notes |
 |---|---|---|---|---|---|---|
 | L1 | Concevoir le service HTTP Linux conforme au contrat API | Codex Linux | DONE | none | 2026-03-23 | MVP FastAPI code en place et valide en execution locale sur backend `file` pour `/health`, `/search`, `/remember`, `/forget`, `/recent`. |
-| L2 | Choisir et configurer l'integration mem0 + Qdrant + SQLite history | Codex Linux | IN_PROGRESS | L1 | 2026-03-23 | Abstraction backend et configuration mem0 posees. Validation reelle mem0/Qdrant encore a faire sur environnement installe. |
+| L2 | Choisir et configurer l'integration mem0 + Qdrant + SQLite history | Codex Linux | REVIEW | L1 | 2026-03-23 | Validation reelle faite en local avec `mem0ai` + Qdrant mode `path` + `fastembed` + SQLite history. A relire avant gel de la config de prod. |
 | L3 | Preparer l'exposition HTTPS sur `olala.expevay.net` | Codex Linux | REVIEW | L1 | 2026-03-23 | Gabarit Nginx fourni. Certificat TLS et mise en service restent a appliquer sur l'hote cible. |
 | L4 | Fournir procedure de deploiement Linux (`systemd`, config, reverse proxy) | Codex Linux | REVIEW | L1,L2,L3 | 2026-03-23 | `README.md`, `.env.example`, unite `systemd` et gabarit Nginx ajoutes. Validation runtime encore necessaire. |
 | W1 | Preparer le client HTTP mem0 cote Windows | Codex Windows | REVIEW | L1 | 2026-03-23 | `memory_client.py` cree dans le depot Windows courant, config mem0 ajoutee a `bot_config.py`, diagnostic `memory-health` ajoute a `manage_bot.py`, `.env.example` et `README.md` mis a jour. En attente d'integration runtime. |
@@ -199,6 +199,20 @@ Format obligatoire :
 - next_action:
   - Windows: tester `memory-health` puis un echange reel avec `MEM0_ENABLED=true`
   - Linux: valider le service en execution reelle, surtout `POST /search` et `POST /remember`
+
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: validation runtime reelle terminee aussi en backend `mem0`; API testee en HTTP sur `/health`, `/remember`, `/search`, `/recent`, `/forget` avec `mem0ai`, SQLite history, Qdrant local par `path` et `fastembed`
+- files:
+  - `memory_service/backend.py`
+  - `memory_service/config.py`
+  - `.env.example`
+  - `README.md`
+  - `pilotage_projet_mem0.md`
+- next_action:
+  - Linux: choisir si la prod reste sur Qdrant local par `path` ou passe sur un service Qdrant dedie
+  - Windows: peut continuer l'integration cliente sans attendre un backend theorique, le contrat HTTP et le backend mem0 etant maintenant verifies en bout en bout
 
 ---
 

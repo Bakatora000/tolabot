@@ -24,19 +24,25 @@ class Settings:
     file_store_path: Path = Path("./data/memory_store.json")
     mem0_qdrant_host: str = "127.0.0.1"
     mem0_qdrant_port: int = 6333
+    mem0_qdrant_path: Path = Path("./data/qdrant")
+    mem0_qdrant_url: str | None = None
+    mem0_qdrant_api_key: str | None = None
     mem0_qdrant_collection: str = "mem0"
     mem0_qdrant_on_disk: bool = True
     mem0_history_db_path: Path = Path("./data/history.db")
-    mem0_llm_provider: str = "openai"
-    mem0_llm_model: str = "gpt-4.1-mini"
-    mem0_embedder_provider: str = "openai"
-    mem0_embedder_model: str = "text-embedding-3-small"
+    mem0_llm_provider: str = "lmstudio"
+    mem0_llm_model: str = "dummy-local-model"
+    mem0_lmstudio_base_url: str = "http://127.0.0.1:1234/v1"
+    mem0_embedder_provider: str = "fastembed"
+    mem0_embedder_model: str = "BAAI/bge-small-en-v1.5"
+    mem0_embedder_dims: int = 384
 
     @classmethod
     def load(cls) -> "Settings":
         data_dir = Path(os.getenv("DATA_DIR", "./data")).resolve()
         file_store_path = Path(os.getenv("FILE_STORE_PATH", str(data_dir / "memory_store.json"))).resolve()
         mem0_history_db_path = Path(os.getenv("MEM0_HISTORY_DB_PATH", str(data_dir / "history.db"))).resolve()
+        mem0_qdrant_path = Path(os.getenv("MEM0_QDRANT_PATH", str(data_dir / "qdrant"))).resolve()
 
         return cls(
             api_key=os.getenv("MEM0_API_KEY", "").strip(),
@@ -50,16 +56,22 @@ class Settings:
             file_store_path=file_store_path,
             mem0_qdrant_host=os.getenv("MEM0_QDRANT_HOST", "127.0.0.1").strip(),
             mem0_qdrant_port=max(1, int(os.getenv("MEM0_QDRANT_PORT", "6333").strip() or "6333")),
+            mem0_qdrant_path=mem0_qdrant_path,
+            mem0_qdrant_url=(os.getenv("MEM0_QDRANT_URL", "").strip() or None),
+            mem0_qdrant_api_key=(os.getenv("MEM0_QDRANT_API_KEY", "").strip() or None),
             mem0_qdrant_collection=os.getenv("MEM0_QDRANT_COLLECTION", "mem0").strip(),
             mem0_qdrant_on_disk=_as_bool(os.getenv("MEM0_QDRANT_ON_DISK"), True),
             mem0_history_db_path=mem0_history_db_path,
-            mem0_llm_provider=os.getenv("MEM0_LLM_PROVIDER", "openai").strip(),
-            mem0_llm_model=os.getenv("MEM0_LLM_MODEL", "gpt-4.1-mini").strip(),
-            mem0_embedder_provider=os.getenv("MEM0_EMBEDDER_PROVIDER", "openai").strip(),
-            mem0_embedder_model=os.getenv("MEM0_EMBEDDER_MODEL", "text-embedding-3-small").strip(),
+            mem0_llm_provider=os.getenv("MEM0_LLM_PROVIDER", "lmstudio").strip(),
+            mem0_llm_model=os.getenv("MEM0_LLM_MODEL", "dummy-local-model").strip(),
+            mem0_lmstudio_base_url=os.getenv("MEM0_LMSTUDIO_BASE_URL", "http://127.0.0.1:1234/v1").strip(),
+            mem0_embedder_provider=os.getenv("MEM0_EMBEDDER_PROVIDER", "fastembed").strip(),
+            mem0_embedder_model=os.getenv("MEM0_EMBEDDER_MODEL", "BAAI/bge-small-en-v1.5").strip(),
+            mem0_embedder_dims=max(1, int(os.getenv("MEM0_EMBEDDER_DIMS", "384").strip() or "384")),
         )
 
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.file_store_path.parent.mkdir(parents=True, exist_ok=True)
         self.mem0_history_db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.mem0_qdrant_path.parent.mkdir(parents=True, exist_ok=True)
