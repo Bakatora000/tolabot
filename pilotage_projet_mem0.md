@@ -1,0 +1,178 @@
+# Pilotage Projet — Bot Windows ↔ mem0 Linux
+
+## Mode d'emploi
+
+Ce fichier sert de tableau de pilotage entre :
+- Codex Windows
+- Codex Linux
+- l'utilisateur
+
+Chaque intervenant doit :
+- lire ce fichier au debut de sa session
+- mettre a jour uniquement les sections utiles
+- laisser des statuts explicites
+- ne pas supposer qu'une demande orale a ete vue par l'autre instance
+
+Statuts autorises :
+- `TODO`
+- `IN_PROGRESS`
+- `BLOCKED`
+- `REVIEW`
+- `DONE`
+
+Colonnes a maintenir :
+- `owner`
+- `status`
+- `depends_on`
+- `last_update`
+
+Regle de base :
+- si une tache depend d'un autre chantier, elle passe en `BLOCKED`
+- si une tache est terminee mais attend validation ou integration, elle passe en `REVIEW`
+- quand une tache est terminee et ne demande plus rien, elle passe en `DONE`
+
+---
+
+## Source De Verite
+
+Documents de reference :
+- contrat API : `contrat_api_bot_mem0.md`
+- contexte Linux : `context_codex_linux_mem0.md`
+- contexte Windows : `context_codex_windows.md`
+
+Convention d'identite figée :
+- `user_id = twitch:<channel_login>:viewer:<viewer_login>`
+
+Infra cible figée :
+- domaine : `olala.expevay.net`
+- backend memoire : `Mem0 OSS + Qdrant + SQLite history`
+- bot principal : Windows
+- Ollama : Windows local
+- service memoire : Linux
+
+---
+
+## Etat Global
+
+Objectif courant :
+- mettre en place un backend memoire mem0 sur Linux
+- brancher ensuite le bot Windows sur cette API
+
+Decision produit :
+- quand mem0 est active et stable, elle devient la memoire principale
+- la memoire locale JSON reste seulement un fallback de secours
+
+---
+
+## Taches
+
+| id | task | owner | status | depends_on | last_update | notes |
+|---|---|---|---|---|---|---|
+| L1 | Concevoir le service HTTP Linux conforme au contrat API | Codex Linux | REVIEW | none | 2026-03-23 | MVP FastAPI code en place avec `/health`, `/search`, `/remember`, `/forget`, `/recent`. A valider en execution HTTP reelle. |
+| L2 | Choisir et configurer l'integration mem0 + Qdrant + SQLite history | Codex Linux | IN_PROGRESS | L1 | 2026-03-23 | Abstraction backend et configuration mem0 posees. Validation reelle mem0/Qdrant encore a faire sur environnement installe. |
+| L3 | Preparer l'exposition HTTPS sur `olala.expevay.net` | Codex Linux | REVIEW | L1 | 2026-03-23 | Gabarit Nginx fourni. Certificat TLS et mise en service restent a appliquer sur l'hote cible. |
+| L4 | Fournir procedure de deploiement Linux (`systemd`, config, reverse proxy) | Codex Linux | REVIEW | L1,L2,L3 | 2026-03-23 | `README.md`, `.env.example`, unite `systemd` et gabarit Nginx ajoutes. Validation runtime encore necessaire. |
+| W1 | Preparer le client HTTP mem0 cote Windows | Codex Windows | BLOCKED | L1 | 2026-03-23 | Attente du MVP Linux materialise ou du schema final confirme |
+| W2 | Integrer la lecture memoire distante avant Ollama | Codex Windows | BLOCKED | W1,L1 | 2026-03-23 | Fallback local si mem0 indisponible |
+| W3 | Integrer l'ecriture memoire distante apres generation | Codex Windows | BLOCKED | W1,L1 | 2026-03-23 | Robuste, non bloquant si possible |
+| W4 | Mettre a jour `.env.example`, `README.md`, tests | Codex Windows | BLOCKED | W1,W2,W3 | 2026-03-23 | Documentation et couverture minimale |
+
+---
+
+## Blocages
+
+Utiliser cette section seulement pour des blocages reels.
+
+Format :
+- `date` - `owner` - `blocker` - `action attendue`
+
+Aucun pour l'instant.
+
+---
+
+## Handoffs
+
+Format obligatoire :
+- `date`
+- `from`
+- `to`
+- `summary`
+- `files`
+- `next_action`
+
+### 2026-03-23
+- from: utilisateur
+- to: Codex Linux
+- summary: lecture du contexte Linux et du contrat API revise
+- files:
+  - `contrat_api_bot_mem0.md`
+  - `context_codex_linux_mem0.md`
+- next_action:
+  - analyser et proposer l'implementation du service Linux
+
+### 2026-03-23
+- from: Codex Windows
+- to: Codex Linux
+- summary: contrat API et contexte Linux maintenant alignes; `user_id` par viewer et domaine `olala.expevay.net` figes
+- files:
+  - `contrat_api_bot_mem0.md`
+  - `context_codex_linux_mem0.md`
+- next_action:
+  - demarrer l'implementation du service memoire Linux
+
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: lecture du contexte validee; comprehension correcte de la separation Windows/Linux et des points d'integration cote bot Windows
+- files:
+  - `contrat_api_bot_mem0.md`
+  - `context_codex_linux_mem0.md`
+  - archive du bot Windows
+- next_action:
+  - Linux: construire le MVP du service HTTP conforme au contrat avec `GET /health`, `POST /search`, `POST /remember`
+  - Windows: attendre la materialisation du service ou la confirmation du schema final implemente
+
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: MVP Linux cree dans ce workspace avec API FastAPI conforme au contrat, auth `X-API-Key`, backend fichier fonctionnel pour dev local, et squelette backend mem0 configurable
+- files:
+  - `main.py`
+  - `memory_service/app.py`
+  - `memory_service/backend.py`
+  - `memory_service/config.py`
+  - `memory_service/models.py`
+  - `.env.example`
+  - `README.md`
+  - `deploy/systemd/mem0-api.service`
+  - `deploy/nginx/olala.expevay.net.conf`
+- next_action:
+  - Linux: valider en execution reelle les endpoints HTTP puis brancher/ajuster mem0 + Qdrant sur environnement installe
+  - Windows: peut commencer a cibler le contrat stabilise des endpoints et la config `MEM0_API_BASE_URL` / `MEM0_API_KEY`
+
+---
+
+## Regles De Mise A Jour
+
+Quand Codex Linux termine une etape :
+- mettre la tache en `REVIEW` ou `DONE`
+- ajouter un handoff
+- citer les fichiers crees/modifies
+
+Quand Codex Windows termine une etape :
+- meme regle
+
+Quand l'utilisateur tranche une decision :
+- l'ajouter dans `Source De Verite` si elle est structurelle
+
+---
+
+## File De Validation
+
+Utiliser cette section pour les points qui doivent etre relus avant integration.
+
+- API Linux conforme au contrat
+- convention `user_id` par viewer respectee partout
+- auth `X-API-Key` coherente
+- timeout et fallback propres cote Windows
+- HTTPS valide sur `olala.expevay.net`
