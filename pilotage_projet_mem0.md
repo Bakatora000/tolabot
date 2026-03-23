@@ -39,6 +39,7 @@ Documents de reference :
 - contrat API : `contrat_api_bot_mem0.md`
 - contexte Linux : `context_codex_linux_mem0.md`
 - contexte Windows : `context_codex_windows.md`
+- depot Git partage : `git@github.com:Bakatora000/tolabot.git`
 
 Convention d'identite figée :
 - `user_id = twitch:<channel_login>:viewer:<viewer_login>`
@@ -149,6 +150,16 @@ Format obligatoire :
 - next_action:
   - Linux: valider en execution reelle les endpoints HTTP puis brancher/ajuster mem0 + Qdrant sur environnement installe
   - Windows: peut commencer a cibler le contrat stabilise des endpoints et la config `MEM0_API_BASE_URL` / `MEM0_API_KEY`
+
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: depot GitHub partage initialise et pousse sur `main`; le fichier de pilotage peut maintenant servir de support commun entre les deux environnements
+- files:
+  - `pilotage_projet_mem0.md`
+- next_action:
+  - Linux: continuer la validation runtime du service memoire
+  - Windows: cloner ou synchroniser `tolabot`, puis faire les mises a jour de suivi directement dans le depot partage
 
 ---
 
