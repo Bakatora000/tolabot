@@ -73,10 +73,10 @@ Decision produit :
 | L2 | Choisir et configurer l'integration mem0 + Qdrant + SQLite history | Codex Linux | IN_PROGRESS | L1 | 2026-03-23 | Abstraction backend et configuration mem0 posees. Validation reelle mem0/Qdrant encore a faire sur environnement installe. |
 | L3 | Preparer l'exposition HTTPS sur `olala.expevay.net` | Codex Linux | REVIEW | L1 | 2026-03-23 | Gabarit Nginx fourni. Certificat TLS et mise en service restent a appliquer sur l'hote cible. |
 | L4 | Fournir procedure de deploiement Linux (`systemd`, config, reverse proxy) | Codex Linux | REVIEW | L1,L2,L3 | 2026-03-23 | `README.md`, `.env.example`, unite `systemd` et gabarit Nginx ajoutes. Validation runtime encore necessaire. |
-| W1 | Preparer le client HTTP mem0 cote Windows | Codex Windows | BLOCKED | L1 | 2026-03-23 | Attente du MVP Linux materialise ou du schema final confirme |
-| W2 | Integrer la lecture memoire distante avant Ollama | Codex Windows | BLOCKED | W1,L1 | 2026-03-23 | Fallback local si mem0 indisponible |
-| W3 | Integrer l'ecriture memoire distante apres generation | Codex Windows | BLOCKED | W1,L1 | 2026-03-23 | Robuste, non bloquant si possible |
-| W4 | Mettre a jour `.env.example`, `README.md`, tests | Codex Windows | BLOCKED | W1,W2,W3 | 2026-03-23 | Documentation et couverture minimale |
+| W1 | Preparer le client HTTP mem0 cote Windows | Codex Windows | REVIEW | L1 | 2026-03-23 | `memory_client.py` cree dans le depot Windows courant, config mem0 ajoutee a `bot_config.py`, diagnostic `memory-health` ajoute a `manage_bot.py`, `.env.example` et `README.md` mis a jour. En attente d'integration runtime. |
+| W2 | Integrer la lecture memoire distante avant Ollama | Codex Windows | REVIEW | W1,L1 | 2026-03-23 | Lecture mem0 branchee avant `ask_ollama(...)` avec fallback local si mem0 indisponible ou desactive |
+| W3 | Integrer l'ecriture memoire distante apres generation | Codex Windows | REVIEW | W1,L1 | 2026-03-23 | Ecriture mem0 branchee pour tours utiles et indices partiels, sans bloquer la reponse Twitch si l'API echoue |
+| W4 | Mettre a jour `.env.example`, `README.md`, tests | Codex Windows | REVIEW | W1,W2,W3 | 2026-03-23 | `.env.example`, `README.md`, `test_memory_client.py` et `test_bot_runtime.py` mis a jour; validation reelle encore attendue |
 
 ---
 
@@ -172,6 +172,33 @@ Format obligatoire :
 - next_action:
   - Linux: passer a la validation de l'integration reelle `mem0` + Qdrant
   - Windows: peut commencer l'integration cliente contre le contrat deja valide en mode HTTP
+
+### 2026-03-23
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: W1 cote Windows est implemente dans le depot du bot existant; client HTTP mem0, config `.env`, diagnostic `memory-health` et test unitaire dedie sont prets. L'integration dans le runtime Twitch/Ollama n'est pas encore branchee.
+- files:
+  - `C:\Users\xuanp\BotTwitch\memory_client.py`
+  - `C:\Users\xuanp\BotTwitch\bot_config.py`
+  - `C:\Users\xuanp\BotTwitch\manage_bot.py`
+  - `C:\Users\xuanp\BotTwitch\.env.example`
+  - `C:\Users\xuanp\BotTwitch\README.md`
+  - `C:\Users\xuanp\BotTwitch\test_memory_client.py`
+- next_action:
+  - Windows: brancher la lecture memoire distante avant l'appel Ollama
+  - Windows: brancher l'ecriture memoire distante apres la reponse
+  - Linux: poursuivre la validation runtime reelle du service et de l'integration mem0/Qdrant
+
+### 2026-03-23
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: lecture et ecriture mem0 sont maintenant branchees dans le runtime du bot Windows. Le fallback local reste actif pour ne pas casser les fils de charade et la tolerance aux pannes. Validation reelle contre l'API Linux encore necessaire.
+- files:
+  - `C:\Users\xuanp\BotTwitch\bot_ollama.py`
+  - `C:\Users\xuanp\BotTwitch\test_bot_runtime.py`
+- next_action:
+  - Windows: tester `memory-health` puis un echange reel avec `MEM0_ENABLED=true`
+  - Linux: valider le service en execution reelle, surtout `POST /search` et `POST /remember`
 
 ---
 
