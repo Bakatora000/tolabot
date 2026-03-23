@@ -9,27 +9,10 @@ Ce fichier sert de tableau de pilotage entre :
 
 Chaque intervenant doit :
 - lire ce fichier au debut de sa session
-- mettre a jour uniquement les sections utiles
-- laisser des statuts explicites
+- utiliser `statut_linux.md` pour le suivi operationnel Linux
+- utiliser `statut_windows.md` pour le suivi operationnel Windows
+- ne mettre ici que les decisions structurantes, l'etat global et les handoffs utiles
 - ne pas supposer qu'une demande orale a ete vue par l'autre instance
-
-Statuts autorises :
-- `TODO`
-- `IN_PROGRESS`
-- `BLOCKED`
-- `REVIEW`
-- `DONE`
-
-Colonnes a maintenir :
-- `owner`
-- `status`
-- `depends_on`
-- `last_update`
-
-Regle de base :
-- si une tache depend d'un autre chantier, elle passe en `BLOCKED`
-- si une tache est terminee mais attend validation ou integration, elle passe en `REVIEW`
-- quand une tache est terminee et ne demande plus rien, elle passe en `DONE`
 
 ---
 
@@ -40,6 +23,8 @@ Documents de reference :
 - contexte Linux : `context_codex_linux_mem0.md`
 - contexte Windows : `context_codex_windows.md`
 - depot Git partage : `git@github.com:Bakatora000/tolabot.git`
+- suivi Linux : `statut_linux.md`
+- suivi Windows : `statut_windows.md`
 
 Convention d'identite figée :
 - `user_id = twitch:<channel_login>:viewer:<viewer_login>`
@@ -63,31 +48,17 @@ Decision produit :
 - quand mem0 est active et stable, elle devient la memoire principale
 - la memoire locale JSON reste seulement un fallback de secours
 
----
-
-## Taches
-
-| id | task | owner | status | depends_on | last_update | notes |
-|---|---|---|---|---|---|---|
-| L1 | Concevoir le service HTTP Linux conforme au contrat API | Codex Linux | DONE | none | 2026-03-23 | MVP FastAPI code en place et valide en execution locale sur backend `file` pour `/health`, `/search`, `/remember`, `/forget`, `/recent`. |
-| L2 | Choisir et configurer l'integration mem0 + Qdrant + SQLite history | Codex Linux | REVIEW | L1 | 2026-03-23 | Validation reelle faite en local avec `mem0ai` + Qdrant mode `path` + `fastembed` + SQLite history. A relire avant gel de la config de prod. |
-| L3 | Preparer l'exposition HTTPS sur `olala.expevay.net` | Codex Linux | REVIEW | L1 | 2026-03-23 | Gabarit Nginx fourni. Certificat TLS et mise en service restent a appliquer sur l'hote cible. |
-| L4 | Fournir procedure de deploiement Linux (`systemd`, config, reverse proxy) | Codex Linux | REVIEW | L1,L2,L3 | 2026-03-23 | `README.md`, `.env.example`, unite `systemd` et gabarit Nginx ajoutes. Validation runtime encore necessaire. |
-| W1 | Preparer le client HTTP mem0 cote Windows | Codex Windows | REVIEW | L1 | 2026-03-23 | `memory_client.py` cree dans le depot Windows courant, config mem0 ajoutee a `bot_config.py`, diagnostic `memory-health` ajoute a `manage_bot.py`, `.env.example` et `README.md` mis a jour. En attente d'integration runtime. |
-| W2 | Integrer la lecture memoire distante avant Ollama | Codex Windows | REVIEW | W1,L1 | 2026-03-23 | Lecture mem0 branchee avant `ask_ollama(...)` avec fallback local si mem0 indisponible ou desactive |
-| W3 | Integrer l'ecriture memoire distante apres generation | Codex Windows | REVIEW | W1,L1 | 2026-03-23 | Ecriture mem0 branchee pour tours utiles et indices partiels, sans bloquer la reponse Twitch si l'API echoue |
-| W4 | Mettre a jour `.env.example`, `README.md`, tests | Codex Windows | REVIEW | W1,W2,W3 | 2026-03-23 | `.env.example`, `README.md`, `test_memory_client.py` et `test_bot_runtime.py` mis a jour; validation reelle encore attendue |
+Etat courant synthetique :
+- Linux : API HTTP validee en backend `file` et `mem0`
+- Windows : client mem0 et branchements runtime en place, validation reelle encore a faire contre l'API Linux
 
 ---
 
-## Blocages
+## Suivi Operationnel
 
-Utiliser cette section seulement pour des blocages reels.
-
-Format :
-- `date` - `owner` - `blocker` - `action attendue`
-
-Aucun pour l'instant.
+Le detail des taches et validations a ete deplace vers :
+- `statut_linux.md`
+- `statut_windows.md`
 
 ---
 
@@ -214,29 +185,16 @@ Format obligatoire :
   - Linux: choisir si la prod reste sur Qdrant local par `path` ou passe sur un service Qdrant dedie
   - Windows: peut continuer l'integration cliente sans attendre un backend theorique, le contrat HTTP et le backend mem0 etant maintenant verifies en bout en bout
 
----
-
-## Regles De Mise A Jour
-
-Quand Codex Linux termine une etape :
-- mettre la tache en `REVIEW` ou `DONE`
-- ajouter un handoff
-- citer les fichiers crees/modifies
-
-Quand Codex Windows termine une etape :
-- meme regle
-
-Quand l'utilisateur tranche une decision :
-- l'ajouter dans `Source De Verite` si elle est structurelle
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: reorganisation du suivi pour limiter les conflits Git; le pilotage central reste leger et le suivi operationnel est separe entre `statut_linux.md` et `statut_windows.md`
+- files:
+  - `pilotage_projet_mem0.md`
+  - `statut_linux.md`
+  - `statut_windows.md`
+- next_action:
+  - Linux: ecrire principalement dans `statut_linux.md`
+  - Windows: ecrire principalement dans `statut_windows.md`
 
 ---
-
-## File De Validation
-
-Utiliser cette section pour les points qui doivent etre relus avant integration.
-
-- API Linux conforme au contrat
-- convention `user_id` par viewer respectee partout
-- auth `X-API-Key` coherente
-- timeout et fallback propres cote Windows
-- HTTPS valide sur `olala.expevay.net`
