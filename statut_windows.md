@@ -20,9 +20,9 @@ Derniere synthese connue depuis le depot partage :
 - client mem0 branche
 - fallback local actif
 - tests cibles Windows OK
-- validation reelle Windows demarree contre l'API Linux
+- validation reelle Windows reussie contre l'API Linux
 - configuration `.env` mem0 cote Windows OK
-- `memory-health` echoue actuellement sur l'URL publique `https://olala.expevay.net/api/memory/health`
+- `memory-health` OK sur l'URL publique `https://olala.expevay.net/api/memory/health`
 
 Taches Windows connues :
 
@@ -32,7 +32,7 @@ Taches Windows connues :
 | W2 | REVIEW | lecture memoire distante branchee avant Ollama avec fallback local |
 | W3 | REVIEW | ecriture memoire distante branchee apres generation, non bloquante |
 | W4 | REVIEW | `.env.example`, `README.md`, `test_memory_client.py` et `test_bot_runtime.py` mis a jour |
-| W5 | BLOCKED | test reel `memory-health` bloque par l'exposition publique Linux |
+| W5 | DONE | test reel mem0 valide en bout en bout contre l'API publique Linux |
 
 ---
 
@@ -55,7 +55,7 @@ Infos utiles a remonter a Linux si erreur :
 
 ---
 
-## Validation Reelle En Cours
+## Validation Reelle
 
 Test execute cote Windows :
 
@@ -64,32 +64,24 @@ py .\manage_bot.py status
 py .\manage_bot.py memory-health
 ```
 
-Constats :
+Constats finaux :
 - config mem0 chargee correctement dans le bot Windows
 - `MEM0_ENABLED`, `MEM0_API_BASE_URL`, `MEM0_API_KEY` : OK
-- avec `MEM0_VERIFY_SSL=true`, erreur TLS :
-  - `SSLCertVerificationError`
-  - `certificate verify failed: Hostname mismatch, certificate is not valid for 'olala.expevay.net'`
-- avec `MEM0_VERIFY_SSL=false`, l'appel ne retourne pas du JSON API
+- `MEM0_VERIFY_SSL=true` fonctionne maintenant
+- `py .\manage_bot.py memory-health` : OK
+- execution reelle du bot validee avec API publique Linux
 
-Test brut execute :
+Validation croisee Linux observee pendant le test Windows :
+- `GET /health` -> `200`
+- `POST /search` -> `200` pour `user_id=twitch:expevay:viewer:expevay`
+- `POST /remember` -> `200` pour `user_id=twitch:expevay:viewer:expevay`
+- insertion Qdrant observee cote Linux
 
-```powershell
-py -c "import requests; r=requests.get('https://olala.expevay.net/api/memory/health', headers={'X-API-Key':'...'}, verify=False, timeout=10); print(r.status_code); print(r.text)"
-```
+Conclusion cote Windows :
+- la memoire distante est reellement utilisee par le bot
+- le routage public `/api/memory` est bon
+- le TLS public est maintenant correct
 
-Resultat observe :
-- HTTP `200`
-- body commencant par `<!DOCTYPE html>`
-
-Interpretation cote Windows :
-- l'URL publique `/api/memory/health` renvoie actuellement une page HTML, pas le service FastAPI mem0
-- il y a aussi un probleme TLS distinct sur le certificat servi pour `olala.expevay.net`
-
-Blocage courant :
-- reverse proxy / routage public `/api/memory/*`
-- certificat TLS invalide pour le hostname `olala.expevay.net`
-
-Attendu cote Linux avant reprise des tests Windows :
-- `GET https://olala.expevay.net/api/memory/health` doit renvoyer du JSON API
-- certificat valide pour `olala.expevay.net`
+Point de fonctionnement actuel :
+- fallback local toujours actif par choix de prudence
+- mem0 utilisee en priorite quand disponible
