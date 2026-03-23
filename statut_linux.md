@@ -31,8 +31,8 @@ Taches Linux :
 |---|---|---|
 | L1 | DONE | API FastAPI conforme au contrat pour `/health`, `/search`, `/remember`, `/forget`, `/recent` |
 | L2 | REVIEW | `mem0ai` + SQLite history + Qdrant local par `path` + `fastembed` valides localement |
-| L3 | REVIEW | gabarit Nginx pret, HTTPS non applique sur l'hote cible |
-| L4 | REVIEW | docs, `.env.example`, `systemd` et notes de deploiement ajoutes |
+| L3 | REVIEW | gabarit Nginx TLS pret, HTTPS non applique sur l'hote cible |
+| L4 | REVIEW | docs, `.env.example`, `systemd` et notes de deploiement ajoutes puis raffines pour la prod |
 
 ---
 
@@ -81,9 +81,9 @@ Decision encore ouverte pour la prod :
 
 ## Prochaines Actions Linux
 
-- verifier si le choix Qdrant local par `path` est acceptable pour la prod
-- preparer la mise en service reelle derriere `olala.expevay.net`
+- appliquer la mise en service reelle derriere `olala.expevay.net`
 - valider reverse proxy + TLS + service durable
+- confirmer si Qdrant local par `path` est conserve pour la prod initiale
 
 ---
 

@@ -144,5 +144,11 @@ Le point pratique important observé ici :
 Des gabarits sont fournis dans :
 - `deploy/systemd/mem0-api.service`
 - `deploy/nginx/olala.expevay.net.conf`
+- `deploy/DEPLOYMENT.md`
 
-Ils sont volontairement simples pour un premier déploiement.
+Recommendation pragmatique actuelle :
+- demarrer en prod avec `MEMORY_BACKEND=mem0`
+- utiliser Qdrant local par `MEM0_QDRANT_PATH`
+- garder Nginx devant l'API avec TLS
+
+La procedure detaillee est dans `deploy/DEPLOYMENT.md`.
