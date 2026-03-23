@@ -84,4 +84,5 @@ Conclusion cote Windows :
 
 Point de fonctionnement actuel :
 - fallback local toujours actif par choix de prudence
-- mem0 utilisee en priorite quand disponible
+- mem0 utilisee en priorite pour la memoire generale durable
+- memoire locale conservee pour les fils courts specialises, notamment charades/devinettes
