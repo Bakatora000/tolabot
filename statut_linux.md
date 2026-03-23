@@ -24,15 +24,17 @@ Etat global Linux :
 - backend `file` valide en HTTP reelle
 - backend `mem0` valide en HTTP reelle
 - depot Git partage en place
+- service `systemd` actif sur l'hote
+- domaine public `https://olala.expevay.net/api/memory/health` operationnel
 
 Taches Linux :
 
 | id | status | notes |
 |---|---|---|
 | L1 | DONE | API FastAPI conforme au contrat pour `/health`, `/search`, `/remember`, `/forget`, `/recent` |
-| L2 | REVIEW | `mem0ai` + SQLite history + Qdrant local par `path` + `fastembed` valides localement |
-| L3 | REVIEW | gabarit Nginx TLS pret, HTTPS non applique sur l'hote cible |
-| L4 | REVIEW | docs, `.env.example`, `systemd` et notes de deploiement ajoutes puis raffines pour la prod |
+| L2 | DONE | `mem0ai` + SQLite history + Qdrant local par `path` + `fastembed` valides localement puis en usage reel |
+| L3 | DONE | `olala.expevay.net` sert maintenant le bon certificat TLS et route `/api/memory/` vers l'API |
+| L4 | DONE | `systemd`, Nginx et notes de deploiement appliques; service durable actif |
 
 ---
 
@@ -53,6 +55,8 @@ Backend `mem0` valide :
 - SQLite history valide via `MEM0_HISTORY_DB_PATH`
 - embeddings locaux valides via `fastembed`
 - API HTTP validee sur `/health`, `/remember`, `/search`, `/recent`, `/forget`
+- domaine public valide sur `https://olala.expevay.net/api/memory/health`
+- service durable valide via `mem0-api.service`
 
 Point pratique observe :
 - `mem0` initialise aussi le provider LLM au demarrage
@@ -81,9 +85,9 @@ Decision encore ouverte pour la prod :
 
 ## Prochaines Actions Linux
 
-- appliquer la mise en service reelle derriere `olala.expevay.net`
-- valider reverse proxy + TLS + service durable
-- confirmer si Qdrant local par `path` est conserve pour la prod initiale
+- surveiller les premiers tests reels cote Windows
+- confirmer si Qdrant local par `path` est conserve tel quel pour la prod initiale
+- eventuellement reduire les logs de telechargement/modeles apres stabilisation
 
 ---
 

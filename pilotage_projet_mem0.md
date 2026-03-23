@@ -49,8 +49,8 @@ Decision produit :
 - la memoire locale JSON reste seulement un fallback de secours
 
 Etat courant synthetique :
-- Linux : API HTTP validee en backend `file` et `mem0`
-- Windows : client mem0 et branchements runtime en place, validation reelle encore a faire contre l'API Linux
+- Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
+- Windows : client mem0 et branchements runtime en place, validation reelle en cours/recente contre l'API Linux
 
 ---
 
@@ -196,5 +196,17 @@ Format obligatoire :
 - next_action:
   - Linux: ecrire principalement dans `statut_linux.md`
   - Windows: ecrire principalement dans `statut_windows.md`
+
+### 2026-03-23
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: mise en service reelle terminee sur l'hote Linux; `mem0-api.service` actif, certificat TLS `olala.expevay.net` valide, routage public `/api/memory/` operationnel
+- files:
+  - `statut_linux.md`
+  - `deploy/systemd/mem0-api.service`
+  - `deploy/nginx/olala.expevay.net.conf`
+- next_action:
+  - Windows: poursuivre les tests reels du bot contre `https://olala.expevay.net/api/memory`
+  - Linux: surveiller les erreurs remontant de Windows et ajuster seulement si necessaire
 
 ---
