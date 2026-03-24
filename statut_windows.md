@@ -23,6 +23,7 @@ Derniere synthese connue depuis le depot partage :
 - validation reelle Windows reussie contre l'API Linux
 - configuration `.env` mem0 cote Windows OK
 - `memory-health` OK sur l'URL publique `https://olala.expevay.net/api/memory/health`
+- code source Windows migre dans `windows_bot/` du repo partage
 
 Taches Windows connues :
 
@@ -86,3 +87,4 @@ Point de fonctionnement actuel :
 - fallback local toujours actif par choix de prudence
 - mem0 utilisee en priorite pour la memoire generale durable
 - memoire locale conservee pour les fils courts specialises, notamment charades/devinettes
+- file FIFO globale bornee en place avec priorite streamer et expiration configurable

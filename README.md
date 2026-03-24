@@ -2,6 +2,12 @@
 
 Service HTTP JSON pour fournir une couche mémoire distante au bot Twitch Windows.
 
+## Structure du repo
+
+- `memory_service/` : service mem0 HTTP cote Linux
+- `deploy/` : deploiement systemd / Nginx
+- `windows_bot/` : code du bot Twitch Windows partage
+
 ## Objectif
 
 Le service expose une API REST stable devant le backend mémoire.

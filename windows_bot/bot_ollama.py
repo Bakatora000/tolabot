@@ -1,0 +1,715 @@
+import argparse
+import asyncio
+from collections import deque
+from dataclasses import dataclass
+from pathlib import Path
+
+import requests
+import twitchio
+from twitchio import eventsub
+from twitchio.ext import commands
+
+from bot_config import load_config
+from bot_logic import (
+    BOT_TRIGGER,
+    BOT_USERNAME,
+    MAX_OUTPUT_CHARS,
+    MAX_VIEWER_CHAT_TURNS,
+    append_channel_update,
+    append_chat_turn,
+    asks_about_channel_content,
+    build_chat_context,
+    build_no_reply_fallback,
+    closes_riddle_thread,
+    increment_chat_memory_counter,
+    is_final_riddle_message,
+    is_partial_riddle_message,
+    is_riddle_refusal_reply,
+    likely_needs_memory_context,
+    looks_like_riddle_message,
+    prune_chat_memory,
+    starts_new_riddle_thread,
+    end_stream_session,
+    extract_active_viewer_thread,
+    extract_channel_profile,
+    format_chat_turns,
+    is_no_reply_signal,
+    load_chat_memory,
+    load_history,
+    looks_like_prompt_injection,
+    looks_like_memory_instruction,
+    normalize_spaces,
+    now_ts,
+    output_is_suspicious,
+    sanitize_user_text,
+    smart_truncate,
+    start_stream_session,
+    strip_trigger,
+)
+from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, store_memory_turn
+from ollama_client import ask_ollama, choose_model, summarize_channel_profile
+from twitch_auth import run_oauth_flow
+
+CONFIG = load_config()
+OLLAMA_MODEL = None
+
+
+@dataclass
+class QueuedMessage:
+    payload: twitchio.ChatMessage
+    text: str
+    clean_viewer_message: str
+    author: str
+    msg_id: str | None
+    received_at: float
+
+
+class Bot(commands.Bot):
+    def __init__(self):
+        super().__init__(
+            client_id=CONFIG.client_id,
+            client_secret=CONFIG.client_secret,
+            bot_id=CONFIG.bot_id,
+            owner_id=CONFIG.owner_id,
+            prefix="!",
+        )
+
+        self.last_global_reply_at = 0.0
+        self.last_user_reply_at: dict[str, float] = {}
+        self.generation_lock = asyncio.Lock()
+        self.recent_ids = deque(maxlen=200)
+        self.message_queue: asyncio.Queue[QueuedMessage] = asyncio.Queue(maxsize=CONFIG.message_queue_max_size)
+        self.queue_worker_task: asyncio.Task | None = None
+        self.history = load_history()
+        self.chat_memory = prune_chat_memory(
+            load_chat_memory(),
+            ttl_hours=CONFIG.chat_memory_ttl_hours,
+        )
+
+    def should_use_remote_memory(self) -> bool:
+        return is_mem0_enabled(CONFIG)
+
+    def should_use_remote_memory_for_message(self, riddle_related: bool) -> bool:
+        return self.should_use_remote_memory() and not riddle_related
+
+    def get_specialized_local_context(
+        self,
+        channel_name: str,
+        author: str,
+        use_active_thread: bool,
+    ) -> dict:
+        normalized_channel = normalize_spaces(channel_name).lower()
+        normalized_author = normalize_spaces(author).lower()
+        channel_data = self.chat_memory.get("channels", {}).get(normalized_channel, {})
+        viewer_turns = list(channel_data.get("viewer_turns", {}).get(normalized_author, []))[-MAX_VIEWER_CHAT_TURNS:]
+        if use_active_thread:
+            active_turns = extract_active_viewer_thread(viewer_turns)
+            viewer_turns = active_turns or viewer_turns
+
+        return {
+            "viewer_context": format_chat_turns(viewer_turns),
+            "global_context": "aucun",
+            "items": [],
+        }
+
+    def get_context_with_fallback(
+        self,
+        text: str,
+        channel_name: str,
+        author: str,
+        prefer_active_thread: bool,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+        use_remote_memory: bool,
+    ) -> tuple[dict, str]:
+        if use_remote_memory:
+            try:
+                remote_context = get_memory_context(
+                    CONFIG,
+                    channel=CONFIG.channel_name,
+                    viewer=author,
+                    message=text,
+                )
+                return remote_context, "mem0"
+            except MemoryApiError as exc:
+                print(f"⚠️ Mémoire distante indisponible, fallback local : {exc}", flush=True)
+                if not CONFIG.mem0_fallback_local:
+                    return {"viewer_context": "aucun", "global_context": "aucun", "items": []}, "mem0-error"
+
+        local_context = build_chat_context(
+            self.chat_memory,
+            CONFIG.channel_name,
+            author,
+            prefer_active_thread=prefer_active_thread and not riddle_thread_reset and not riddle_thread_close,
+        )
+        if (
+            local_context["viewer_context"] == "aucun"
+            and prefer_active_thread
+            and not riddle_thread_reset
+        ):
+            local_context = build_chat_context(
+                self.chat_memory,
+                CONFIG.channel_name,
+                author,
+                prefer_active_thread=False,
+            )
+        return local_context, "local"
+
+    def remember_remote_turn(
+        self,
+        author: str,
+        user_message: str,
+        bot_reply: str = "",
+        message_id: str | None = None,
+        allow_remote: bool = True,
+        author_is_owner: bool = False,
+    ) -> bool:
+        if not allow_remote or not self.should_use_remote_memory():
+            return False
+
+        metadata = {
+            "source": "twitch_chat",
+            "channel": CONFIG.channel_name,
+            "viewer": author,
+        }
+        if message_id:
+            metadata["message_id"] = str(message_id)
+
+        try:
+            store_memory_turn(
+                CONFIG,
+                channel=CONFIG.channel_name,
+                viewer=author,
+                user_message=user_message,
+                bot_reply=bot_reply,
+                metadata=metadata,
+                author_is_owner=author_is_owner,
+            )
+            return True
+        except MemoryApiError as exc:
+            print(f"⚠️ Échec écriture mémoire distante : {exc}", flush=True)
+            return False
+
+    async def setup_hook(self) -> None:
+        print("🔧 setup_hook démarré", flush=True)
+        print("⏳ Création des souscriptions EventSub...", flush=True)
+
+        subs = [
+            eventsub.ChatMessageSubscription(
+                broadcaster_user_id=self.owner_id,
+                user_id=self.bot_id,
+            ),
+            eventsub.ChannelUpdateSubscription(
+                broadcaster_user_id=self.owner_id,
+            ),
+            eventsub.StreamOnlineSubscription(
+                broadcaster_user_id=self.owner_id,
+            ),
+            eventsub.StreamOfflineSubscription(
+                broadcaster_user_id=self.owner_id,
+            ),
+        ]
+
+        for sub in subs:
+            await self.subscribe_websocket(payload=sub)
+
+        if self.queue_worker_task is None:
+            self.queue_worker_task = asyncio.create_task(self.message_queue_worker())
+
+        print("✅ Souscriptions chat + historique chaîne OK", flush=True)
+
+    async def event_ready(self):
+        print("==================================================", flush=True)
+        print("✅ BOT PRÊT", flush=True)
+        print(f"Compte connecté : {self.user.name}", flush=True)
+        print(f"Bot ID          : {self.bot_id}", flush=True)
+        print(f"Owner ID        : {self.owner_id}", flush=True)
+        print(f"Chaîne cible    : #{CONFIG.channel_name}", flush=True)
+        print("🟢 En écoute du chat...", flush=True)
+        print("==================================================", flush=True)
+
+    async def event_stream_online(self, payload):
+        print("🔴 Stream online détecté", flush=True)
+        start_stream_session(self.history)
+
+    async def event_stream_offline(self, payload):
+        print("⚫ Stream offline détecté", flush=True)
+        end_stream_session(self.history)
+
+    async def event_channel_update(self, payload):
+        title = getattr(payload, "title", "") or ""
+        category_name = getattr(payload, "category_name", "") or ""
+
+        print("📝 Channel update détecté", flush=True)
+        print(f"   Titre     : {title}", flush=True)
+        print(f"   Catégorie : {category_name}", flush=True)
+
+        append_channel_update(self.history, title, category_name)
+
+    def user_in_cooldown(self, author: str) -> bool:
+        last = self.last_user_reply_at.get(author, 0.0)
+        return (now_ts() - last) < CONFIG.user_cooldown_seconds
+
+    def global_in_cooldown(self) -> bool:
+        return (now_ts() - self.last_global_reply_at) < CONFIG.global_cooldown_seconds
+
+    def seconds_until_ready(self, author: str) -> float:
+        global_wait = max(0.0, CONFIG.global_cooldown_seconds - (now_ts() - self.last_global_reply_at))
+        user_wait = max(0.0, CONFIG.user_cooldown_seconds - (now_ts() - self.last_user_reply_at.get(author, 0.0)))
+        return max(global_wait, user_wait)
+
+    def mark_replied(self, author: str) -> None:
+        ts = now_ts()
+        self.last_global_reply_at = ts
+        self.last_user_reply_at[author] = ts
+
+    def format_chat_reply(self, author: str, message: str) -> str:
+        prefix = f"@{normalize_spaces(author).lstrip('@')} "
+        available_chars = max(1, MAX_OUTPUT_CHARS - len(prefix))
+        return f"{prefix}{smart_truncate(message, available_chars)}"
+
+    def is_owner_author(self, author: str) -> bool:
+        return normalize_spaces(author).lower() == normalize_spaces(CONFIG.channel_name).lower()
+
+    async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
+        is_owner_message = self.is_owner_author(queued_message.author)
+
+        if self.message_queue.full():
+            try:
+                dropped = self.message_queue.get_nowait()
+                print(f"↪️ File pleine, ancien message supprimé : {dropped.author}", flush=True)
+            except asyncio.QueueEmpty:
+                pass
+
+        try:
+            self.message_queue.put_nowait(queued_message)
+            if is_owner_message and self.message_queue.qsize() > 1:
+                self.message_queue._queue.rotate(1)
+            print(
+                f"🧾 Message mis en file ({self.message_queue.qsize()}/{CONFIG.message_queue_max_size})"
+                + (" [priorité streamer]" if is_owner_message else ""),
+                flush=True,
+            )
+            return True
+        except asyncio.QueueFull:
+            print("↪️ File pleine, message ignoré", flush=True)
+            return False
+
+    async def message_queue_worker(self) -> None:
+        while True:
+            queued_message = await self.message_queue.get()
+            try:
+                age_seconds = now_ts() - queued_message.received_at
+                if age_seconds > CONFIG.message_queue_max_age_seconds:
+                    print(f"↪️ Message expiré dans la file ({int(age_seconds)}s), ignoré", flush=True)
+                    continue
+
+                wait_seconds = self.seconds_until_ready(queued_message.author)
+                if wait_seconds > 0:
+                    print(f"⏳ Attente file avant traitement : {wait_seconds:.1f}s", flush=True)
+                    await asyncio.sleep(wait_seconds)
+
+                await self.process_queued_message(queued_message)
+            finally:
+                self.message_queue.task_done()
+
+    async def process_queued_message(self, queued_message: QueuedMessage) -> None:
+        payload = queued_message.payload
+        text = queued_message.text
+        clean_viewer_message = queued_message.clean_viewer_message
+        author = queued_message.author
+        msg_id = queued_message.msg_id
+        author_is_owner = author == normalize_spaces(CONFIG.channel_name).lower()
+
+        riddle_related = looks_like_riddle_message(text)
+        riddle_thread_reset = starts_new_riddle_thread(text)
+        riddle_thread_close = closes_riddle_thread(text)
+        specialized_local_thread = riddle_related or riddle_thread_reset or riddle_thread_close
+        if specialized_local_thread:
+            print("🧩 Charade/devinette détectée", flush=True)
+            increment_chat_memory_counter(
+                self.chat_memory,
+                "riddle_messages_seen",
+            )
+            if riddle_thread_reset:
+                print("🧹 Nouveau fil de charade détecté", flush=True)
+            elif riddle_thread_close:
+                print("✅ Clôture de charade détectée", flush=True)
+
+        async with self.generation_lock:
+            if asks_about_channel_content(text):
+                await self.reply_about_channel_content(payload, author)
+                return
+
+            if looks_like_memory_instruction(text) and not author_is_owner:
+                refusal_reply = "Je ne prends ce type de note mémoire que d'Expevay."
+                outgoing_refusal_reply = self.format_chat_reply(author, refusal_reply)
+                print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
+                print(f"📤 Envoi dans le chat : {outgoing_refusal_reply}", flush=True)
+                await payload.broadcaster.send_message(
+                    outgoing_refusal_reply,
+                    sender=self.bot_id,
+                    token_for=self.bot_id,
+                )
+                append_chat_turn(
+                    self.chat_memory,
+                    CONFIG.channel_name,
+                    author,
+                    clean_viewer_message,
+                    refusal_reply,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
+                self.mark_replied(author)
+                return
+
+            if riddle_related and is_partial_riddle_message(text):
+                self.remember_remote_turn(
+                    author,
+                    clean_viewer_message,
+                    message_id=msg_id,
+                    allow_remote=False,
+                    author_is_owner=author_is_owner,
+                )
+                append_chat_turn(
+                    self.chat_memory,
+                    CONFIG.channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                )
+                print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
+                return
+
+            print("🤖 Mention détectée, appel à Ollama...", flush=True)
+            prefer_active_thread = specialized_local_thread or likely_needs_memory_context(text)
+            conversation_mode = "riddle_final" if riddle_related and is_final_riddle_message(text) else ""
+            if specialized_local_thread:
+                chat_context = self.get_specialized_local_context(
+                    payload.broadcaster.name,
+                    author,
+                    use_active_thread=not riddle_thread_close,
+                )
+                if chat_context["viewer_context"] == "aucun" and not riddle_thread_close:
+                    chat_context = self.get_specialized_local_context(
+                        payload.broadcaster.name,
+                        author,
+                        use_active_thread=False,
+                    )
+                context_source = "local-specialized"
+            else:
+                use_remote_memory = self.should_use_remote_memory_for_message(False)
+                chat_context, context_source = self.get_context_with_fallback(
+                    text=text,
+                    channel_name=payload.broadcaster.name,
+                    author=author,
+                    prefer_active_thread=prefer_active_thread,
+                    riddle_thread_reset=riddle_thread_reset,
+                    riddle_thread_close=riddle_thread_close,
+                    use_remote_memory=use_remote_memory,
+                )
+            if CONFIG.debug_chat_memory and (
+                chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun"
+            ):
+                print("🧠 Contexte mémoire injecté", flush=True)
+                if context_source == "local" and prefer_active_thread and not riddle_thread_reset:
+                    print("   Mode   : fil actif", flush=True)
+                print(f"   Source : {context_source}", flush=True)
+                if chat_context["viewer_context"] != "aucun":
+                    print(f"   Viewer : {chat_context['viewer_context']}", flush=True)
+                if chat_context["global_context"] != "aucun":
+                    print(f"   Global : {chat_context['global_context']}", flush=True)
+            reply = await asyncio.to_thread(
+                ask_ollama,
+                payload.chatter.name,
+                text,
+                CONFIG.ollama_url,
+                OLLAMA_MODEL,
+                CONFIG.request_timeout_seconds,
+                chat_context["viewer_context"],
+                chat_context["global_context"],
+                conversation_mode,
+            )
+
+            print(f"🧠 Réponse Ollama : {reply}", flush=True)
+
+            if not reply or is_no_reply_signal(reply):
+                fallback_reply = build_no_reply_fallback(text, riddle_related=riddle_related)
+                if not fallback_reply:
+                    self.remember_remote_turn(
+                        author,
+                        clean_viewer_message,
+                        message_id=msg_id,
+                        allow_remote=not specialized_local_thread,
+                        author_is_owner=author_is_owner,
+                    )
+                    append_chat_turn(
+                        self.chat_memory,
+                        CONFIG.channel_name,
+                        author,
+                        clean_viewer_message,
+                        ttl_hours=CONFIG.chat_memory_ttl_hours,
+                        thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                    )
+                    print("↪️ Pas de réponse envoyée", flush=True)
+                    return
+
+                outgoing_fallback = self.format_chat_reply(author, fallback_reply)
+                print(f"📤 Fallback NO_REPLY : {outgoing_fallback}", flush=True)
+                await payload.broadcaster.send_message(
+                    outgoing_fallback,
+                    sender=self.bot_id,
+                    token_for=self.bot_id,
+                )
+                append_chat_turn(
+                    self.chat_memory,
+                    CONFIG.channel_name,
+                    author,
+                    clean_viewer_message,
+                    fallback_reply,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                )
+                self.mark_replied(author)
+                return
+
+            if riddle_related and (
+                is_partial_riddle_message(text) or is_riddle_refusal_reply(reply)
+            ):
+                self.remember_remote_turn(
+                    author,
+                    clean_viewer_message,
+                    message_id=msg_id,
+                    allow_remote=False,
+                    author_is_owner=author_is_owner,
+                )
+                append_chat_turn(
+                    self.chat_memory,
+                    CONFIG.channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                )
+                print("↪️ Réponse de refus/indice partiel supprimée pour la charade", flush=True)
+                return
+
+            final_reply = smart_truncate(reply.replace("\n", " "), MAX_OUTPUT_CHARS)
+
+            if not final_reply:
+                print("↪️ Réponse vide après nettoyage", flush=True)
+                return
+
+            if output_is_suspicious(final_reply):
+                print("↪️ Réponse suspecte bloquée", flush=True)
+                return
+
+            outgoing_reply = self.format_chat_reply(author, final_reply)
+            print(f"📤 Envoi dans le chat : {outgoing_reply}", flush=True)
+            await payload.broadcaster.send_message(
+                outgoing_reply,
+                sender=self.bot_id,
+                token_for=self.bot_id,
+            )
+
+            append_chat_turn(
+                self.chat_memory,
+                CONFIG.channel_name,
+                author,
+                clean_viewer_message,
+                final_reply,
+                ttl_hours=CONFIG.chat_memory_ttl_hours,
+                thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+            )
+            self.remember_remote_turn(
+                author,
+                clean_viewer_message,
+                final_reply,
+                message_id=msg_id,
+                allow_remote=not specialized_local_thread,
+                author_is_owner=author_is_owner,
+            )
+            if chat_context["viewer_context"] != "aucun" and likely_needs_memory_context(text):
+                increment_chat_memory_counter(
+                    self.chat_memory,
+                    "memory_helpful_replies",
+                )
+                if CONFIG.debug_chat_memory:
+                    print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
+            self.mark_replied(author)
+
+    async def reply_about_channel_content(self, payload: twitchio.ChatMessage, author: str) -> None:
+        print("📺 Question sur le contenu de la chaîne", flush=True)
+
+        profile = extract_channel_profile(self.history)
+        summary = await asyncio.to_thread(
+            summarize_channel_profile,
+            profile,
+            CONFIG.ollama_url,
+            OLLAMA_MODEL,
+            CONFIG.request_timeout_seconds,
+        )
+
+        summary = smart_truncate(summary, MAX_OUTPUT_CHARS)
+        if not summary or is_no_reply_signal(summary):
+            print("↪️ Pas de résumé envoyé", flush=True)
+            return
+
+        if output_is_suspicious(summary):
+            print("↪️ Résumé suspect bloqué", flush=True)
+            return
+
+        outgoing_summary = self.format_chat_reply(author, summary)
+        print(f"📤 Envoi résumé chaîne : {outgoing_summary}", flush=True)
+        await payload.broadcaster.send_message(
+            outgoing_summary,
+            sender=self.bot_id,
+            token_for=self.bot_id,
+        )
+        self.mark_replied(author)
+
+    async def event_message(self, payload: twitchio.ChatMessage) -> None:
+        try:
+            raw_text = payload.text or ""
+            text = sanitize_user_text(raw_text)
+            clean_viewer_message = sanitize_user_text(strip_trigger(text))
+            author = (payload.chatter.name or "").lower()
+            msg_id = getattr(payload, "id", None)
+
+            print("--------------------------------------------------", flush=True)
+            print("💬 MESSAGE REÇU", flush=True)
+            print(f"Chaîne : {payload.broadcaster.name}", flush=True)
+            print(f"Auteur : {payload.chatter.name}", flush=True)
+            print(f"Texte brut : {raw_text}", flush=True)
+            print(f"Texte  : {text}", flush=True)
+
+            if msg_id and msg_id in self.recent_ids:
+                print("↪️ Message déjà traité, ignoré", flush=True)
+                return
+
+            if msg_id:
+                self.recent_ids.append(msg_id)
+
+            if not author:
+                print("↪️ Auteur vide, ignoré", flush=True)
+                return
+
+            if author == BOT_USERNAME:
+                print("↪️ Message ignoré : envoyé par le bot", flush=True)
+                return
+
+            if BOT_TRIGGER not in text.lower():
+                print("↪️ Pas de mention du bot, ignoré", flush=True)
+                return
+
+            if looks_like_prompt_injection(text):
+                print("↪️ Tentative probable de prompt injection, ignorée", flush=True)
+                return
+            queued_message = QueuedMessage(
+                payload=payload,
+                text=text,
+                clean_viewer_message=clean_viewer_message,
+                author=author,
+                msg_id=msg_id,
+                received_at=now_ts(),
+            )
+            if self.queue_worker_task is None:
+                await self.process_queued_message(queued_message)
+            else:
+                await self.enqueue_message(queued_message)
+
+        except requests.HTTPError as exc:
+            print(f"❌ Erreur HTTP : {type(exc).__name__}: {exc}", flush=True)
+        except requests.RequestException as exc:
+            print(f"❌ Erreur réseau : {type(exc).__name__}: {exc}", flush=True)
+        except Exception as exc:
+            print(f"❌ Erreur dans event_message : {type(exc).__name__}: {exc}", flush=True)
+
+    async def event_error(self, payload):
+        print(f"❌ event_error : {payload}", flush=True)
+
+    async def close(self):
+        if self.queue_worker_task is not None:
+            self.queue_worker_task.cancel()
+            try:
+                await self.queue_worker_task
+            except asyncio.CancelledError:
+                pass
+            self.queue_worker_task = None
+        await super().close()
+
+
+async def main():
+    global OLLAMA_MODEL
+
+    OLLAMA_MODEL = choose_model(CONFIG.default_ollama_model)
+    await run_with_model(OLLAMA_MODEL)
+
+
+async def run_with_model(model_name: str):
+    global OLLAMA_MODEL
+
+    OLLAMA_MODEL = model_name
+
+    print("==================================================", flush=True)
+    print("🚀 DÉMARRAGE BOT TWITCH + OLLAMA", flush=True)
+    print("==================================================", flush=True)
+    print(f"CLIENT_ID OK      : {bool(CONFIG.client_id)}", flush=True)
+    print(f"CLIENT_SECRET OK  : {bool(CONFIG.client_secret)}", flush=True)
+    print(f"BOT_ID            : {CONFIG.bot_id}", flush=True)
+    print(f"OWNER_ID          : {CONFIG.owner_id}", flush=True)
+    print(f"CHANNEL           : {CONFIG.channel_name}", flush=True)
+    print(f"BOT_TOKEN OK      : {bool(CONFIG.bot_token)}", flush=True)
+    print(f"OLLAMA_MODEL      : {OLLAMA_MODEL}", flush=True)
+    print(f"GLOBAL_COOLDOWN   : {CONFIG.global_cooldown_seconds}s", flush=True)
+    print(f"USER_COOLDOWN     : {CONFIG.user_cooldown_seconds}s", flush=True)
+    print(f"QUEUE_SIZE        : {CONFIG.message_queue_max_size}", flush=True)
+    print(f"QUEUE_MAX_AGE     : {CONFIG.message_queue_max_age_seconds}s", flush=True)
+    print("==================================================", flush=True)
+
+    bot = Bot()
+
+    try:
+        async with bot:
+            print("⏳ Login Twitch...", flush=True)
+            await bot.login(token=CONFIG.bot_token)
+            print("✅ Login OK", flush=True)
+
+            print("⏳ Démarrage du bot...", flush=True)
+            await bot.start()
+
+    except KeyboardInterrupt:
+        print("🛑 Arrêt demandé par l'utilisateur", flush=True)
+    except Exception as exc:
+        print(f"❌ Erreur critique : {type(exc).__name__}: {exc}", flush=True)
+        raise
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Bot Twitch + Ollama")
+    subparsers = parser.add_subparsers(dest="command")
+
+    subparsers.add_parser("run", help="Lance le bot Twitch")
+    subparsers.add_parser("get-token", help="Génère et enregistre un token Twitch pour le bot")
+
+    return parser.parse_args()
+
+
+def cli() -> int:
+    args = parse_args()
+    command = args.command or "run"
+
+    if command == "get-token":
+        env_path = str(Path(__file__).resolve().parent / ".env")
+        return run_oauth_flow(CONFIG.client_id, CONFIG.client_secret, env_path=env_path)
+
+    try:
+        asyncio.run(main())
+        return 0
+    except KeyboardInterrupt:
+        print("🛑 Arrêt demandé par l'utilisateur", flush=True)
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(cli())
