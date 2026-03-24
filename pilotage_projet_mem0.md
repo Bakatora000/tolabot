@@ -52,6 +52,7 @@ Decision produit :
 Etat courant synthetique :
 - Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
 - Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
+- Linux : Graphiti V1 locale validee jusqu'au pipeline offline (`venv`, Kuzu, export mem0, import dry-run)
 
 ---
 
@@ -252,6 +253,20 @@ Format obligatoire :
 - next_action:
   - Linux: valider l'installation locale de Graphiti dans une venv isolee
   - Linux: preparer un premier import offline test depuis un export mem0 viewer
+
+### 2026-03-24
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: Graphiti Linux V1 a progresse jusqu'a une base technique reelle : `.venv-graphiti` validee, Kuzu local initialise, export mem0 viewer -> JSON valide, import Graphiti `--dry-run` valide. Le blocage restant est l'absence d'un provider LLM/embedder joignable depuis Linux pour faire l'import reel.
+- files:
+  - `graphiti/validate_local_kuzu.py`
+  - `graphiti/export_viewer_memories.py`
+  - `graphiti/import_viewer_memories.py`
+  - `graphiti/README.md`
+  - `graphiti/.env.example`
+- next_action:
+  - Linux: definir un mode batch robuste Linux -> Ollama Windows
+  - Windows: aucune action immediate requise tant que ce mode batch n'est pas choisi
 
 ### 2026-03-24
 - from: Codex Windows

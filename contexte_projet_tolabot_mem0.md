@@ -71,6 +71,7 @@ Etat actuel :
 - service `systemd` actif
 - domaine public actif
 - TLS valide
+- Graphiti V1 locale validee jusqu'au pipeline offline
 
 URL publique :
 - `https://memory.example.net/api/memory`
@@ -88,6 +89,14 @@ Stack Linux actuellement en service :
 Service durable :
 - `mem0-api.service`
 
+Graphiti V1 locale :
+- `.venv-graphiti` validee
+- `graphiti/data/graphiti.kuzu` initialise
+- `graphiti/validate_local_kuzu.py` : OK
+- export mem0 viewer -> JSON : OK
+- import Graphiti `--dry-run` : OK
+- import reel encore bloque faute de provider LLM/embedder joignable depuis Linux
+
 ### Windows
 
 Etat connu :
@@ -104,6 +113,7 @@ Etat connu :
 - admin UI Windows validee en reel via tunnel SSH
 - revue GPT offline viewer-par-viewer en place dans l'admin UI
 - chantier futur Graphiti initialise cote documentation, avec deploiement Linux local/offline prevu
+- Ollama Windows reste le meilleur candidat provider pour Graphiti, mais seulement en mode batch/opportuniste car le PC n'est pas allume en permanence
 
 ---
 
@@ -123,6 +133,9 @@ Etat connu :
 - `graphiti/requirements.txt`
 - `graphiti/.env.example`
 - `graphiti/schema_minimal.md`
+- `graphiti/validate_local_kuzu.py`
+- `graphiti/export_viewer_memories.py`
+- `graphiti/import_viewer_memories.py`
 
 ### Suivi Projet
 
@@ -192,6 +205,7 @@ Note importante :
 - eventuellement historiser les commits de revue GPT
 - reevaluer plus tard une action `merge` une fois le workflow stable
 - deployer Graphiti localement cote Linux pour experimentation offline a partir des exports mem0
+- definir ensuite le mode batch Linux -> Ollama Windows pour permettre un premier import Graphiti reel
 
 ---
 
@@ -204,5 +218,6 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - service Linux durable installe
 - admin UI Windows fonctionnelle via tunnel SSH
 - revue GPT offline avec validation admin et commit en lot disponible dans `windows_bot/`
+- socle Graphiti Linux V1 valide jusqu'au pipeline offline
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.

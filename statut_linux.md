@@ -28,6 +28,7 @@ Etat global Linux :
 - domaine public `https://memory.example.net/api/memory/health` operationnel
 - routes admin locales `/admin/*` actives dans `mem0-api`
 - listing viewers admin corrige via retrolecture Qdrant + registre local
+- socle Graphiti V1 valide localement en venv dediee avec Kuzu
 
 Taches Linux :
 
@@ -39,6 +40,10 @@ Taches Linux :
 | L4 | DONE | `systemd`, Nginx et notes de deploiement appliques; service durable actif |
 | L5 | DONE | admin V1 integree au service principal; auth `X-Admin-Key`, acces via tunnel SSH, healthcheck valide |
 | L6 | DONE | `/admin/users` retroalimente maintenant les viewers existants depuis le stockage Qdrant local |
+| G1 | DONE | cadrage Graphiti V1 pose dans le repo avec choix `graphiti-core[kuzu]`, schema minimal et pipeline offline |
+| G2 | DONE | installation Graphiti validee localement dans `.venv-graphiti`; base Kuzu locale initialisee |
+| G3 | DONE | export mem0 viewer -> JSON et import Graphiti `--dry-run` valides |
+| G4 | BLOCKED | import Graphiti reel en attente d'un provider LLM/embedder local joignable depuis Linux |
 
 ---
 
@@ -88,6 +93,24 @@ Point pratique observe :
 - `mem0` initialise aussi le provider LLM au demarrage
 - pour eviter une cle externe en validation locale, la config actuelle utilise `MEM0_LLM_PROVIDER=lmstudio` avec `infer=False` sur `/remember`
 
+Graphiti V1 valide localement :
+- `.venv-graphiti` creee et dependencies installees
+- `python graphiti/validate_local_kuzu.py` : OK
+- `graphiti/data/graphiti.kuzu` creee
+- `python graphiti/export_viewer_memories.py twitch:expevay:viewer:arthii_tv` : OK
+- `python graphiti/import_viewer_memories.py graphiti/imports/arthii_tv.json --dry-run` : OK
+
+Point Graphiti critique observe :
+- Graphiti ne demarre pas proprement en mode Kuzu seul sans clients explicites
+- il tente OpenAI par defaut si aucun client LLM/embedder/reranker n'est fourni
+- le pipeline offline V1 est donc valide jusqu'au dry-run
+- l'import reel reste bloque tant qu'aucun provider local compatible n'ecoute cote Linux
+
+Decision Graphiti actuelle :
+- pas d'installation d'Ollama sur le serveur Linux
+- le provider cible pour l'ingestion Graphiti reste plutot Ollama sur le PC Windows
+- comme le PC Windows n'est pas allume en permanence, ce provider doit etre traite comme opportuniste/batch, pas comme une dependance permanente Linux
+
 ---
 
 ## Decision Technique Provisoire
@@ -122,6 +145,8 @@ Decision admin V1 retenue :
 - confirmer si Qdrant local par `path` est conserve tel quel pour la prod initiale
 - eventuellement reduire les logs de telechargement/modeles apres stabilisation
 - au prochain redemarrage `mem0-api`, le correctif code de retrolecture viewers depuis Qdrant sera charge en runtime de facon durable
+- definir le mode d'acces Linux -> Ollama Windows le plus robuste pour les imports Graphiti batch
+- une fois ce point tranche, lancer un premier import Graphiti reel sur 1 viewer
 
 ---
 
@@ -135,6 +160,13 @@ Decision admin V1 retenue :
   - endpoints `/admin/*`
   - header `X-Admin-Key`
 - `/admin/users` renvoie maintenant les viewers reels existants
+- Graphiti cote Linux a atteint :
+  - venv dediee validee
+  - Kuzu local valide
+  - export viewer mem0 valide
+  - import `--dry-run` valide
+- blocage restant Graphiti :
+  - pas encore de provider LLM/embedder localement joignable depuis Linux pour l'import reel
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON
