@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="1120" viewBox="0 0 1680 1120">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L10,3 L0,6 z" fill="#24425c"/>
+    </marker>
+    <style>
+      .title { font: 700 28px Arial, sans-serif; fill: #132433; }
+      .subtitle { font: 400 16px Arial, sans-serif; fill: #38536d; }
+      .zone { fill: #f7fafc; stroke: #c7d4e2; stroke-width: 2; rx: 18; ry: 18; }
+      .box-win { fill: #eef6ff; stroke: #6e9cc7; stroke-width: 2; rx: 14; ry: 14; }
+      .box-linux { fill: #eefaf1; stroke: #74a57a; stroke-width: 2; rx: 14; ry: 14; }
+      .box-data { fill: #fff8ea; stroke: #c9a86d; stroke-width: 2; rx: 14; ry: 14; }
+      .box-ext { fill: #fff1f1; stroke: #cb8080; stroke-width: 2; rx: 14; ry: 14; }
+      .head { font: 700 18px Arial, sans-serif; fill: #173047; }
+      .text { font: 400 15px Arial, sans-serif; fill: #24425c; }
+      .small { font: 400 13px Arial, sans-serif; fill: #47637b; }
+      .line { stroke: #24425c; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #4d6c86; stroke-width: 3; fill: none; stroke-dasharray: 8 7; marker-end: url(#arrow); }
+    </style>
+  </defs>
+
+  <text x="40" y="52" class="title">Tolabot mem0 - Flowchart semi-technique</text>
+  <text x="40" y="82" class="subtitle">Vue d'ensemble des briques, des flux et des points d'administration</text>
+
+  <rect x="30" y="110" width="620" height="900" class="zone"/>
+  <text x="55" y="145" class="head">PC Windows</text>
+
+  <rect x="70" y="190" width="260" height="120" class="box-win"/>
+  <text x="90" y="220" class="head">Bot Twitch Windows</text>
+  <text x="90" y="248" class="text">TwitchIO / EventSub</text>
+  <text x="90" y="272" class="text">Lecture memoire distante</text>
+  <text x="90" y="296" class="text">Ecriture memoire distante</text>
+
+  <rect x="370" y="190" width="230" height="120" class="box-win"/>
+  <text x="390" y="220" class="head">Ollama local</text>
+  <text x="390" y="248" class="text">Generation de reponse</text>
+  <text x="390" y="272" class="text">Aucun appel Linux</text>
+
+  <rect x="70" y="360" width="260" height="120" class="box-win"/>
+  <text x="90" y="390" class="head">Memoire locale courte</text>
+  <text x="90" y="418" class="text">Fallback de secours</text>
+  <text x="90" y="442" class="text">Fils specialises</text>
+  <text x="90" y="466" class="small">charades, devinettes, FIFO</text>
+
+  <rect x="70" y="600" width="260" height="150" class="box-win"/>
+  <text x="90" y="630" class="head">UI Admin Windows</text>
+  <text x="90" y="658" class="text">Liste viewers</text>
+  <text x="90" y="682" class="text">Recent / refresh / purge</text>
+  <text x="90" y="706" class="text">Search / export / import</text>
+  <text x="90" y="730" class="small">Interface locale sur 127.0.0.1:9100</text>
+
+  <rect x="370" y="615" width="230" height="120" class="box-win"/>
+  <text x="390" y="645" class="head">Tunnel SSH</text>
+  <text x="390" y="673" class="text">localhost:9000</text>
+  <text x="390" y="697" class="text">-&gt; Linux 127.0.0.1:8000</text>
+  <text x="390" y="721" class="small">Auth SSH + cle admin</text>
+
+  <rect x="70" y="840" width="530" height="120" class="box-ext"/>
+  <text x="90" y="870" class="head">Flux sortants Windows</text>
+  <text x="90" y="898" class="text">1. Bot -&gt; HTTPS public vers /api/memory/*</text>
+  <text x="90" y="922" class="text">2. UI admin -&gt; tunnel SSH vers routes /admin/*</text>
+  <text x="90" y="946" class="small">Le bot et l'UI admin sont separes mais partagent le meme backend Linux</text>
+
+  <rect x="700" y="110" width="610" height="900" class="zone"/>
+  <text x="725" y="145" class="head">Serveur Linux</text>
+
+  <rect x="740" y="190" width="240" height="120" class="box-linux"/>
+  <text x="760" y="220" class="head">Nginx + TLS</text>
+  <text x="760" y="248" class="text">olala.expevay.net</text>
+  <text x="760" y="272" class="text">Expose /api/memory/*</text>
+
+  <rect x="1030" y="190" width="240" height="150" class="box-linux"/>
+  <text x="1050" y="220" class="head">mem0-api (FastAPI)</text>
+  <text x="1050" y="248" class="text">127.0.0.1:8000</text>
+  <text x="1050" y="272" class="text">Service systemd durable</text>
+  <text x="1050" y="296" class="small">API publique + routes admin locales</text>
+  <text x="1050" y="320" class="small">X-API-Key et X-Admin-Key</text>
+
+  <rect x="740" y="390" width="240" height="180" class="box-linux"/>
+  <text x="760" y="420" class="head">Routes publiques</text>
+  <text x="760" y="448" class="text">GET /health</text>
+  <text x="760" y="472" class="text">POST /search</text>
+  <text x="760" y="496" class="text">POST /remember</text>
+  <text x="760" y="520" class="text">POST /forget</text>
+  <text x="760" y="544" class="text">POST /recent</text>
+
+  <rect x="1030" y="390" width="240" height="210" class="box-linux"/>
+  <text x="1050" y="420" class="head">Routes admin locales</text>
+  <text x="1050" y="448" class="text">GET /admin/health</text>
+  <text x="1050" y="472" class="text">GET /admin/users</text>
+  <text x="1050" y="496" class="text">GET /admin/users/.../recent</text>
+  <text x="1050" y="520" class="text">DELETE /admin/users/{user_id}</text>
+  <text x="1050" y="544" class="small">+ search / delete / export / import</text>
+  <text x="1050" y="568" class="small">Refuse les acces via proxy public</text>
+
+  <rect x="830" y="660" width="350" height="170" class="box-linux"/>
+  <text x="850" y="690" class="head">memory_service / backend mem0</text>
+  <text x="850" y="718" class="text">Validation / auth / journalisation</text>
+  <text x="850" y="742" class="text">Backend fichier en dev</text>
+  <text x="850" y="766" class="text">Backend mem0 en prod reelle</text>
+  <text x="850" y="790" class="small">Le listing viewers admin relit Qdrant + registre local</text>
+
+  <rect x="1360" y="110" width="290" height="900" class="zone"/>
+  <text x="1385" y="145" class="head">Stockage et services locaux</text>
+
+  <rect x="1400" y="210" width="210" height="140" class="box-data"/>
+  <text x="1420" y="240" class="head">Qdrant local</text>
+  <text x="1420" y="268" class="text">data/qdrant</text>
+  <text x="1420" y="292" class="text">Vecteurs mem0</text>
+  <text x="1420" y="316" class="small">Mode path, un seul process Python</text>
+
+  <rect x="1400" y="400" width="210" height="120" class="box-data"/>
+  <text x="1420" y="430" class="head">SQLite history</text>
+  <text x="1420" y="458" class="text">data/history.db</text>
+  <text x="1420" y="482" class="small">Historique mem0</text>
+
+  <rect x="1400" y="570" width="210" height="120" class="box-data"/>
+  <text x="1420" y="600" class="head">fastembed</text>
+  <text x="1420" y="628" class="text">Embeddings locaux</text>
+  <text x="1420" y="652" class="small">Modele telecharge au besoin</text>
+
+  <rect x="1400" y="740" width="210" height="140" class="box-data"/>
+  <text x="1420" y="770" class="head">Registre viewers</text>
+  <text x="1420" y="798" class="text">data/user_registry.json</text>
+  <text x="1420" y="822" class="text">Backfill via Qdrant</text>
+  <text x="1420" y="846" class="small">Support de /admin/users</text>
+
+  <rect x="70" y="80" width="210" height="70" class="box-ext"/>
+  <text x="90" y="110" class="head">Twitch</text>
+  <text x="90" y="136" class="text">Messages viewers / streamer</text>
+
+  <path d="M280 115 L180 190" class="line"/>
+  <path d="M330 250 L370 250" class="line"/>
+  <path d="M200 310 L200 360" class="line"/>
+  <path d="M200 310 C 200 330, 450 330, 450 615" class="dash"/>
+  <path d="M330 675 L370 675" class="line"/>
+
+  <path d="M600 250 L740 250" class="line"/>
+  <path d="M980 250 L1030 250" class="line"/>
+  <path d="M1150 340 L1150 390" class="line"/>
+  <path d="M860 310 L860 390" class="line"/>
+  <path d="M860 570 L970 660" class="line"/>
+  <path d="M1150 600 L1040 660" class="line"/>
+  <path d="M1180 745 L1400 280" class="line"/>
+  <path d="M1180 745 L1400 460" class="line"/>
+  <path d="M1180 745 L1400 630" class="line"/>
+  <path d="M1180 745 L1400 810" class="line"/>
+
+  <path d="M600 675 C 670 675, 760 675, 830 675" class="dash"/>
+
+  <text x="640" y="236" class="small">HTTPS public</text>
+  <text x="620" y="655" class="small">SSH local forward</text>
+  <text x="1210" y="735" class="small">lecture / ecriture memoire</text>
+
+  <rect x="40" y="1030" width="1600" height="60" class="zone"/>
+  <text x="65" y="1068" class="small">
+    Lecture rapide : le bot Windows utilise l'API memoire publique ; l'UI admin Windows passe par un tunnel SSH prive vers les routes /admin/* du meme service Linux ;
+    le backend mem0 s'appuie sur Qdrant local, SQLite history, fastembed, et un registre viewers retroalimente depuis Qdrant.
+  </text>
+</svg>
