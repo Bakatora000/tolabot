@@ -220,6 +220,10 @@ Flux recommande :
 
 La V1 ne doit pas envoyer brut toute la memoire mem0 vers Graphiti.
 
+Scripts fournis :
+- `graphiti/export_viewer_memories.py`
+- `graphiti/import_viewer_memories.py`
+
 ---
 
 ## Fichier Intermediaire Recommande
@@ -250,6 +254,23 @@ Ce format permet :
 - stewarding manuel
 - transformation deterministe
 - audit facile
+
+### Workflow V1 recommande
+
+Dans `(.venv-graphiti)` :
+
+```bash
+python graphiti/validate_local_kuzu.py
+python graphiti/export_viewer_memories.py twitch:streamer:viewer:alice
+python graphiti/import_viewer_memories.py graphiti/imports/alice.json --dry-run
+python graphiti/import_viewer_memories.py graphiti/imports/alice.json
+```
+
+Notes :
+- l'export lit l'API admin locale de `mem0-api`
+- il faut donc `MEM0_ADMIN_KEY` dans l'environnement
+- l'import ajoute ensuite des episodes Graphiti en offline
+- le `--dry-run` permet la relecture avant ecriture
 
 ---
 
@@ -305,6 +326,14 @@ Validation technique deja obtenue sur cet hote :
 - initialisation Graphiti + Kuzu validee
 - initialisation necessite des clients explicitement fournis
   - sinon Graphiti tente OpenAI par defaut
+- export mem0 viewer -> JSON valide
+- import Graphiti en `--dry-run` valide
+
+Blocage actuel pour l'import reel :
+- aucun endpoint local LLM/embedder n'ecoute actuellement sur :
+  - `http://127.0.0.1:11434`
+  - `http://127.0.0.1:1234`
+- tant qu'un provider local compatible n'est pas configure, `add_episode` ne pourra pas produire d'ingestion reelle
 
 Le bon jalon V2 seulement ensuite :
 - requetes de consultation plus riches

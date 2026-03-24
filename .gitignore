@@ -4,6 +4,7 @@
 
 .venv/
 .venv-graphiti/
+.venv-graphit/
 venv/
 .deps/
 graphiti/.deps/
@@ -17,6 +18,7 @@ __pycache__/
 
 data/
 graphiti/data/*.kuzu
+graphiti/imports/*.json
 *.db
 *.sqlite
 *.sqlite3
