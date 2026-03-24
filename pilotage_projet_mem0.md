@@ -50,7 +50,7 @@ Decision produit :
 
 Etat courant synthetique :
 - Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
-- Windows : client mem0 et branchements runtime en place, validation reelle en cours/recente contre l'API Linux
+- Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
 
 ---
 
@@ -208,5 +208,17 @@ Format obligatoire :
 - next_action:
   - Windows: poursuivre les tests reels du bot contre `https://olala.expevay.net/api/memory`
   - Linux: surveiller les erreurs remontant de Windows et ajuster seulement si necessaire
+
+### 2026-03-24
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: code du bot Windows migre dans `windows_bot/` du depot partage; architecture hybride mem0 + memoire locale specialisee stabilisee; file FIFO globale bornee avec priorite streamer ajoutee
+- files:
+  - `windows_bot/`
+  - `README.md`
+  - `statut_windows.md`
+- next_action:
+  - Windows: continuer les tests reels de charge chat et ajuster TTL/file si necessaire
+  - Linux: aucune action immediate requise hors suivi normal
 
 ---

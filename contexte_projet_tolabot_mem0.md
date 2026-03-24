@@ -25,6 +25,10 @@ Fichiers de suivi :
 - `statut_linux.md` : suivi operationnel Linux
 - `statut_windows.md` : suivi operationnel Windows
 
+Code partage :
+- `memory_service/` : service Linux
+- `windows_bot/` : bot Twitch Windows
+
 ---
 
 ## Contrat Fonctionnel
@@ -88,6 +92,11 @@ Etat connu :
 - ecriture memoire distante branchee apres generation
 - fallback local conserve
 - validation reelle Windows mem0 deja observee contre l'API Linux
+- code source Windows migre dans `windows_bot/`
+- memoire hybride stabilisee :
+  - `mem0` pour la memoire durable generale
+  - memoire locale pour les fils courts specialises
+- file FIFO globale bornee en place avec priorite streamer
 
 ---
 
