@@ -32,6 +32,7 @@ Code partage :
 - `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
 - `graphiti/` : base de travail Graphiti V1 Linux locale/offline
+- `graphe_metier_maison_v1.md` : cadrage du graphe metier produit base sur `mem0 + GPT + SQLite`
 
 ---
 
@@ -99,6 +100,12 @@ Graphiti V1 locale :
 - import Graphiti reel declenche via Ollama Windows : OK cote connectique
 - compatibilite locale Graphiti/Kuzu corrigee dans l'importeur
 - performance d'ingestion encore insuffisante avec `gemma:7b`, meme sur `--limit 1`
+- Graphiti passe donc en veille pour la voie produit principale
+- voie prioritaire retenue :
+  - graphe metier maison
+  - memoire source = `mem0`
+  - extraction semantique = GPT
+  - stockage = SQLite structuree
 
 ### Windows
 
@@ -209,6 +216,9 @@ Note importante :
 - reevaluer plus tard une action `merge` une fois le workflow stable
 - deployer Graphiti localement cote Linux pour experimentation offline a partir des exports mem0
 - benchmarker ensuite un ou plusieurs modeles d'ingestion Graphiti plus adaptes que `gemma:7b`
+- definir le schema du graphe metier maison
+- definir le format d'extraction GPT
+- implementer un premier pipeline `mem0 -> GPT -> SQLite`
 
 ---
 
@@ -222,5 +232,6 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - admin UI Windows fonctionnelle via tunnel SSH
 - revue GPT offline avec validation admin et commit en lot disponible dans `windows_bot/`
 - socle Graphiti Linux V1 valide jusqu'au premier import reel batch via Ollama Windows, avec tuning performance encore necessaire
+- nouvelle direction produit prioritaire formalisee pour un graphe metier maison plus simple et plus controlable
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.

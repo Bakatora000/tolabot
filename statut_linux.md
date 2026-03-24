@@ -44,7 +44,8 @@ Taches Linux :
 | G2 | DONE | installation Graphiti validee localement dans `.venv-graphiti`; base Kuzu locale initialisee |
 | G3 | DONE | export mem0 viewer -> JSON et import Graphiti `--dry-run` valides |
 | G4 | DONE | provider batch Linux -> Ollama Windows valide via reverse tunnel SSH; import Graphiti reel demarre avec Kuzu |
-| G5 | IN_PROGRESS | compatibilite Graphiti/Kuzu corrigee localement, mais ingestion encore trop lente avec `gemma:7b` meme sur `--limit 1` |
+| G5 | STANDBY | compatibilite Graphiti/Kuzu corrigee, mais ingestion trop lente avec `gemma:7b`; chantier mis en veille |
+| H1 | IN_PROGRESS | cadrage du graphe metier maison base sur `mem0 + GPT + SQLite` |
 
 ---
 
@@ -121,6 +122,15 @@ Point Graphiti critique observe maintenant :
 - mais l'ingestion reste trop lente avec `gemma:7b`, y compris sur `--limit 1`
 - le prochain travail n'est plus la connectivite mais le benchmarking/choix du modele d'ingestion et l'amelioration de l'observabilite
 
+Decision prise ensuite :
+- Graphiti passe en veille pour la voie produit principale
+- la priorite bascule vers un graphe metier maison plus simple et plus controlable
+- architecture cible :
+  - source : `mem0`
+  - extraction : GPT
+  - stockage : SQLite
+  - restitution : contexte viewer compact pour le prompt du bot
+
 Decision Graphiti actuelle :
 - pas d'installation d'Ollama sur le serveur Linux
 - le provider cible pour l'ingestion Graphiti reste plutot Ollama sur le PC Windows
@@ -168,6 +178,9 @@ Decision admin V1 retenue :
 - benchmarker au moins un modele plus leger ou plus adapte pour l'ingestion Graphiti
 - nettoyer le bruit de logs Kuzu `index already exists` si le workflow est conserve
 - relancer un import Graphiti court instrumente (`--limit 1`) avec un modele alternatif
+- definir le schema SQLite du graphe metier maison
+- definir le format JSON d'extraction GPT pour les faits viewer
+- preparer un premier pipeline `mem0 -> GPT -> SQLite`
 
 ---
 
@@ -191,6 +204,9 @@ Decision admin V1 retenue :
   - import reel demarre
 - blocage restant Graphiti :
   - performance d'ingestion insuffisante avec `gemma:7b`
+- nouvelle direction prioritaire :
+  - graphe metier maison
+  - doc de cadrage : `graphe_metier_maison_v1.md`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON

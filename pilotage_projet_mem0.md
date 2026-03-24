@@ -52,7 +52,8 @@ Decision produit :
 Etat courant synthetique :
 - Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
 - Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
-- Linux : Graphiti V1 locale validee jusqu'au premier import reel via Ollama Windows batch; perf encore a optimiser
+- Linux : Graphiti V1 locale validee jusqu'au premier import reel via Ollama Windows batch; chantier maintenant mis en veille
+- Linux : nouvelle voie prioritaire ouverte pour un graphe metier maison `mem0 + GPT + SQLite`
 
 ---
 
