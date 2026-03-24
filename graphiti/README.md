@@ -14,6 +14,52 @@ Graphiti est traite ici comme une brique separee, derivee de mem0.
 
 ---
 
+## Trajectoire Produit
+
+### V1
+
+Mode :
+- offline / local-only
+
+But :
+- installer Graphiti proprement
+- definir le schema minimal
+- tester l'ingestion depuis des exports mem0
+- evaluer la qualite des relations produites
+
+Graphiti n'est pas encore dans la boucle temps reel du bot.
+
+### V2
+
+Mode :
+- consultation live en lecture seule
+
+But :
+- permettre au bot de consulter Graphiti au moment de construire le prompt
+- combiner :
+  - filtrage bot
+  - mem0
+  - resume Graphiti
+  - prompt final vers Ollama
+
+Dans cette phase, Graphiti peut etre consulte en live sans etre encore alimente live a chaque message.
+
+### V3
+
+Mode :
+- ingestion live eventuelle
+
+But :
+- decider plus tard si certaines informations valides doivent etre ajoutees a Graphiti de facon continue
+
+Cette phase est conditionnee par :
+- la qualite reelle du graphe
+- la latence
+- le bruit troll / ephemere
+- la stabilite du schema
+
+---
+
 ## Choix Technique Recommande
 
 ### Backend graphe
@@ -43,6 +89,10 @@ Choix recommande :
 Proposition :
 - venv : `/home/vhserver/bt/.venv-graphiti`
 - DB Kuzu : `/home/vhserver/bt/graphiti/data/graphiti.kuzu`
+
+Constat sur cet hote :
+- `python3-venv` n'est pas installe
+- le fallback local valide pour V1 est donc une installation isolee dans `graphiti/.deps`
 
 ### LLM / embeddings
 
@@ -77,6 +127,40 @@ python3 -m venv .venv-graphiti
 source .venv-graphiti/bin/activate
 pip install -r graphiti/requirements.txt
 ```
+
+### Fallback valide sur cet hote
+
+Si `python3-venv` n'est pas disponible :
+
+```bash
+cd /home/vhserver/bt
+python3 -m pip install --target graphiti/.deps -r graphiti/requirements.txt
+```
+
+Puis lancer les scripts Graphiti avec :
+
+```bash
+PYTHONPATH=graphiti/.deps python3 ...
+```
+
+### Script de validation locale
+
+Le repo contient aussi un helper :
+
+```bash
+PYTHONPATH=graphiti/.deps python3 graphiti/validate_local_kuzu.py
+```
+
+Ce script :
+- initialise Graphiti avec Kuzu
+- cree indices et contraintes
+- valide que le socle local fonctionne
+
+Important :
+- il fournit des clients OpenAI-compatibles explicites
+- sans cela, Graphiti tente OpenAI par defaut au demarrage
+- cette validation ne prouve pas encore l'ingestion reelle
+- elle valide seulement le socle local Graphiti + Kuzu
 
 ### Telemetry
 
@@ -214,6 +298,13 @@ Le bon jalon V1 est :
 - aucun port public
 - import manuel d'un petit lot de viewers
 - documentation claire du schema et du pipeline
+
+Validation technique deja obtenue sur cet hote :
+- installation isolee de `graphiti-core[kuzu]` dans `graphiti/.deps`
+- creation d'une base locale `graphiti/data/graphiti.kuzu`
+- initialisation Graphiti + Kuzu validee
+- initialisation necessite des clients explicitement fournis
+  - sinon Graphiti tente OpenAI par defaut
 
 Le bon jalon V2 seulement ensuite :
 - requetes de consultation plus riches

@@ -3,8 +3,10 @@
 !.env.example
 
 .venv/
+.venv-graphiti/
 venv/
 .deps/
+graphiti/.deps/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -14,6 +16,7 @@ __pycache__/
 .ruff_cache/
 
 data/
+graphiti/data/*.kuzu
 *.db
 *.sqlite
 *.sqlite3
