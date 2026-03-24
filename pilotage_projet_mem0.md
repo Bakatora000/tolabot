@@ -269,6 +269,18 @@ Format obligatoire :
   - Windows: aucune action immediate requise tant que ce mode batch n'est pas choisi
 
 ### 2026-03-24
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: architecture retenue pour Graphiti V1 reel : pas d'Ollama sur Linux. Le provider cible est Ollama sur Windows, joint depuis Linux uniquement via reverse tunnel SSH batch/opportuniste. Aucun couplage permanent ne doit etre introduit entre le serveur Linux et le PC Windows.
+- files:
+  - `graphiti/README.md`
+  - `graphiti/ollama_windows_batch_mode.md`
+  - `graphiti/.env.example`
+- next_action:
+  - Windows: preparer une session batch avec Ollama + reverse tunnel
+  - Linux: verifier la reachability de `127.0.0.1:11434` puis lancer un premier import Graphiti reel
+
+### 2026-03-24
 - from: Codex Windows
 - to: utilisateur / Codex Linux
 - summary: le POC de revue GPT offline est maintenant fonctionnel cote Windows avec export compact, analyse OpenAI, severite reglable, validation admin visuelle et commit en lot. Les informations sensibles restent non versionnees; la doc partagee reste anonymisee.

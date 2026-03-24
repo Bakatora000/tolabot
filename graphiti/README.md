@@ -233,6 +233,9 @@ Topologie retenue :
   - sur la machine Linux
   - ou via tunnel SSH plus tard si necessaire
 
+Voir aussi :
+- `graphiti/ollama_windows_batch_mode.md`
+
 ---
 
 ## Pipeline D'Ingestion V1
@@ -362,6 +365,11 @@ Blocage actuel pour l'import reel :
   - `http://127.0.0.1:11434`
   - `http://127.0.0.1:1234`
 - tant qu'un provider local compatible n'est pas configure, `add_episode` ne pourra pas produire d'ingestion reelle
+
+Decision pragmatique retenue :
+- ne pas installer Ollama sur le serveur Linux
+- utiliser plutot Ollama sur le PC Windows
+- l'exposer a Linux seulement via un reverse tunnel SSH batch/opportuniste
 
 Le bon jalon V2 seulement ensuite :
 - requetes de consultation plus riches

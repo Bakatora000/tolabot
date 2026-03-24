@@ -110,6 +110,10 @@ Decision Graphiti actuelle :
 - pas d'installation d'Ollama sur le serveur Linux
 - le provider cible pour l'ingestion Graphiti reste plutot Ollama sur le PC Windows
 - comme le PC Windows n'est pas allume en permanence, ce provider doit etre traite comme opportuniste/batch, pas comme une dependance permanente Linux
+- mode recommande :
+  - reverse tunnel SSH Windows -> Linux
+  - port local Linux `127.0.0.1:11434`
+  - usage uniquement pendant les sessions d'import Graphiti
 
 ---
 
