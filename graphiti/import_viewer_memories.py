@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import json
 import os
+import re
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -63,6 +65,33 @@ def build_episode_body(memory: dict) -> str:
     return str(memory.get("memory", "")).strip()
 
 
+def normalize_group_id(value: str | None) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "_", raw).strip("_")
+    if not normalized:
+        return None
+    return normalized
+
+
+async def ensure_kuzu_indexes(graphiti) -> None:
+    index_queries = [
+        "CALL CREATE_FTS_INDEX('Episodic', 'episode_content', ['content', 'source', 'source_description']);",
+        "CALL CREATE_FTS_INDEX('Entity', 'node_name_and_summary', ['name', 'summary']);",
+        "CALL CREATE_FTS_INDEX('Community', 'community_name', ['name']);",
+        "CALL CREATE_FTS_INDEX('RelatesToNode_', 'edge_name_and_fact', ['name', 'fact']);",
+    ]
+    for query in index_queries:
+        try:
+            await graphiti.driver.execute_query(query)
+        except Exception as exc:
+            message = str(exc)
+            if "already exists" in message:
+                continue
+            raise
+
+
 async def run_import(input_path: Path, db_path: Path, limit: int | None, group_id: str | None, dry_run: bool) -> None:
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     user_id = str(payload.get("user_id", "")).strip()
@@ -76,9 +105,26 @@ async def run_import(input_path: Path, db_path: Path, limit: int | None, group_i
         print(f"dry_run_ok user_id={user_id} count={len(memories)} input={input_path}")
         return
 
+    resolved_group_id = normalize_group_id(group_id or user_id)
+    if not resolved_group_id:
+        raise ValueError("Could not derive a valid Graphiti group_id from the export payload.")
+
+    run_started = time.perf_counter()
+    print(
+        f"import_start user_id={user_id} group_id={resolved_group_id} count={len(memories)} db={db_path}"
+    )
+
     graphiti = build_graphiti(db_path)
     try:
-        await graphiti.build_indices_and_constraints(delete_existing=False)
+        if getattr(graphiti.driver, "provider", None) and getattr(graphiti.driver.provider, "value", None) == "kuzu":
+            await ensure_kuzu_indexes(graphiti)
+        else:
+            await graphiti.build_indices_and_constraints(delete_existing=False)
+        # Graphiti 0.28.2 expects drivers to expose `_database`, but KuzuDriver
+        # currently only implements `with_database()` and stores all groups in
+        # one local file. Pin the active group id on the driver to avoid the
+        # Neo4j/Falkor-style clone path.
+        setattr(graphiti.driver, "_database", resolved_group_id)
         imported = 0
         for index, memory in enumerate(memories, start=1):
             body = build_episode_body(memory)
@@ -86,19 +132,33 @@ async def run_import(input_path: Path, db_path: Path, limit: int | None, group_i
                 continue
             memory_id = str(memory.get("id", "")).strip() or None
             created_at = parse_reference_time(memory.get("created_at"))
+            episode_name = build_episode_name(memory_id, viewer, index)
             source_description = f"mem0 export for viewer={viewer or user_id}"
             if channel:
                 source_description += f" channel={channel}"
+            if user_id:
+                source_description += f" user_id={user_id}"
+            episode_started = time.perf_counter()
+            print(
+                f"episode_start index={index} total={len(memories)} name={episode_name} created_at={created_at.isoformat()}"
+            )
             await graphiti.add_episode(
-                name=build_episode_name(memory_id, viewer, index),
+                name=episode_name,
                 episode_body=body,
                 source_description=source_description,
                 reference_time=created_at,
                 source=EpisodeType.text,
-                group_id=group_id or user_id or None,
+                group_id=resolved_group_id,
             )
             imported += 1
-        print(f"import_ok user_id={user_id} imported={imported} db={db_path}")
+            print(
+                f"episode_ok index={index} name={episode_name} duration_s={time.perf_counter() - episode_started:.2f}"
+            )
+        print(
+            "import_ok "
+            f"user_id={user_id} group_id={resolved_group_id} imported={imported} "
+            f"duration_s={time.perf_counter() - run_started:.2f} db={db_path}"
+        )
     finally:
         await graphiti.close()
 

@@ -43,7 +43,8 @@ Taches Linux :
 | G1 | DONE | cadrage Graphiti V1 pose dans le repo avec choix `graphiti-core[kuzu]`, schema minimal et pipeline offline |
 | G2 | DONE | installation Graphiti validee localement dans `.venv-graphiti`; base Kuzu locale initialisee |
 | G3 | DONE | export mem0 viewer -> JSON et import Graphiti `--dry-run` valides |
-| G4 | BLOCKED | import Graphiti reel en attente d'un provider LLM/embedder local joignable depuis Linux |
+| G4 | DONE | provider batch Linux -> Ollama Windows valide via reverse tunnel SSH; import Graphiti reel demarre avec Kuzu |
+| G5 | IN_PROGRESS | compatibilite Graphiti/Kuzu corrigee localement, mais ingestion encore trop lente avec `gemma:7b` meme sur `--limit 1` |
 
 ---
 
@@ -99,12 +100,26 @@ Graphiti V1 valide localement :
 - `graphiti/data/graphiti.kuzu` creee
 - `python graphiti/export_viewer_memories.py twitch:expevay:viewer:arthii_tv` : OK
 - `python graphiti/import_viewer_memories.py graphiti/imports/arthii_tv.json --dry-run` : OK
+- reverse tunnel SSH Windows -> Linux valide :
+  - Linux atteint `127.0.0.1:11434`
+  - `curl /api/tags` et `/v1/models` : OK
+  - Ollama Windows traite bien `gemma:7b` et `nomic-embed-text:latest`
+- import Graphiti reel lance avec succes jusqu'aux phases LLM/embedding
 
-Point Graphiti critique observe :
-- Graphiti ne demarre pas proprement en mode Kuzu seul sans clients explicites
-- il tente OpenAI par defaut si aucun client LLM/embedder/reranker n'est fourni
-- le pipeline offline V1 est donc valide jusqu'au dry-run
-- l'import reel reste bloque tant qu'aucun provider local compatible n'ecoute cote Linux
+Corrections Graphiti/Kuzu appliquees localement :
+- normalisation stable `user_id -> group_id` pour respecter les contraintes Graphiti
+- contournement local du bug `KuzuDriver._database` attendu par `Graphiti.add_episode()`
+- creation explicite des index full-text Kuzu attendus par Graphiti
+- instrumentation ajoutee dans l'importeur :
+  - `import_start`
+  - `episode_start`
+  - `episode_ok`
+  - `import_ok`
+
+Point Graphiti critique observe maintenant :
+- le pipeline reel est branche bout en bout
+- mais l'ingestion reste trop lente avec `gemma:7b`, y compris sur `--limit 1`
+- le prochain travail n'est plus la connectivite mais le benchmarking/choix du modele d'ingestion et l'amelioration de l'observabilite
 
 Decision Graphiti actuelle :
 - pas d'installation d'Ollama sur le serveur Linux
@@ -150,7 +165,9 @@ Decision admin V1 retenue :
 - eventuellement reduire les logs de telechargement/modeles apres stabilisation
 - au prochain redemarrage `mem0-api`, le correctif code de retrolecture viewers depuis Qdrant sera charge en runtime de facon durable
 - definir le mode d'acces Linux -> Ollama Windows le plus robuste pour les imports Graphiti batch
-- une fois ce point tranche, lancer un premier import Graphiti reel sur 1 viewer
+- benchmarker au moins un modele plus leger ou plus adapte pour l'ingestion Graphiti
+- nettoyer le bruit de logs Kuzu `index already exists` si le workflow est conserve
+- relancer un import Graphiti court instrumente (`--limit 1`) avec un modele alternatif
 
 ---
 
@@ -169,8 +186,11 @@ Decision admin V1 retenue :
   - Kuzu local valide
   - export viewer mem0 valide
   - import `--dry-run` valide
+  - reverse tunnel Windows -> Linux valide
+  - Ollama Windows vu depuis Linux
+  - import reel demarre
 - blocage restant Graphiti :
-  - pas encore de provider LLM/embedder localement joignable depuis Linux pour l'import reel
+  - performance d'ingestion insuffisante avec `gemma:7b`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON

@@ -95,7 +95,10 @@ Graphiti V1 locale :
 - `graphiti/validate_local_kuzu.py` : OK
 - export mem0 viewer -> JSON : OK
 - import Graphiti `--dry-run` : OK
-- import reel encore bloque faute de provider LLM/embedder joignable depuis Linux
+- reverse tunnel SSH Windows -> Linux vers Ollama : OK
+- import Graphiti reel declenche via Ollama Windows : OK cote connectique
+- compatibilite locale Graphiti/Kuzu corrigee dans l'importeur
+- performance d'ingestion encore insuffisante avec `gemma:7b`, meme sur `--limit 1`
 
 ### Windows
 
@@ -205,7 +208,7 @@ Note importante :
 - eventuellement historiser les commits de revue GPT
 - reevaluer plus tard une action `merge` une fois le workflow stable
 - deployer Graphiti localement cote Linux pour experimentation offline a partir des exports mem0
-- definir ensuite le mode batch Linux -> Ollama Windows pour permettre un premier import Graphiti reel
+- benchmarker ensuite un ou plusieurs modeles d'ingestion Graphiti plus adaptes que `gemma:7b`
 
 ---
 
@@ -218,6 +221,6 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - service Linux durable installe
 - admin UI Windows fonctionnelle via tunnel SSH
 - revue GPT offline avec validation admin et commit en lot disponible dans `windows_bot/`
-- socle Graphiti Linux V1 valide jusqu'au pipeline offline
+- socle Graphiti Linux V1 valide jusqu'au premier import reel batch via Ollama Windows, avec tuning performance encore necessaire
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.
