@@ -28,6 +28,7 @@ Fichiers de suivi :
 Code partage :
 - `memory_service/` : service Linux
 - `windows_bot/` : bot Twitch Windows
+- `admin_interface_v1.md` : design V1 pour l'administration memoire via tunnel SSH
 
 ---
 
@@ -177,6 +178,8 @@ Note importante :
 - ajuster les logs si besoin
 - confirmer si la config Qdrant locale est gardee telle quelle
 - durcir eventuellement la config Nginx / systemd apres retour d'usage
+- concevoir puis implementer une admin API locale Linux
+- concevoir une UI Windows locale ouvrant automatiquement un tunnel SSH d'administration
 
 ---
 

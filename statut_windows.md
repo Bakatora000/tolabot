@@ -34,6 +34,7 @@ Taches Windows connues :
 | W3 | REVIEW | ecriture memoire distante branchee apres generation, non bloquante |
 | W4 | REVIEW | `.env.example`, `README.md`, `test_memory_client.py` et `test_bot_runtime.py` mis a jour |
 | W5 | DONE | test reel mem0 valide en bout en bout contre l'API publique Linux |
+| W6 | TODO | UI admin Windows locale avec tunnel SSH auto vers une admin API Linux non publique |
 
 ---
 
@@ -88,3 +89,8 @@ Point de fonctionnement actuel :
 - mem0 utilisee en priorite pour la memoire generale durable
 - memoire locale conservee pour les fils courts specialises, notamment charades/devinettes
 - file FIFO globale bornee en place avec priorite streamer et expiration configurable
+
+Piste validee pour la suite :
+- l'admin ne sera pas exposee publiquement
+- une UI locale Windows ouvrira un tunnel SSH vers une admin API Linux sur `127.0.0.1`
+- reference de design : `admin_interface_v1.md`
