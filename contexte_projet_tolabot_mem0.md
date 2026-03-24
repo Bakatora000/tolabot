@@ -15,6 +15,53 @@ Il parle uniquement a l'API HTTP Linux.
 
 ---
 
+## Schema Global
+
+```mermaid
+flowchart LR
+    subgraph TW["Twitch"]
+        CHAT["Chat Twitch"]
+    end
+
+    subgraph WIN["PC Windows"]
+        BOT["Bot Twitch Windows\nTwitchIO / EventSub"]
+        OLLAMA["Ollama local"]
+        LOCALMEM["Memoire locale courte\nspecialisee"]
+        UI["UI admin locale"]
+        TUNNEL["Tunnel SSH local\n127.0.0.1:9000"]
+    end
+
+    subgraph LNX["Serveur Linux"]
+        NGINX["Nginx + TLS\nolala.expevay.net"]
+        API["mem0-api FastAPI\n127.0.0.1:8000"]
+        PUB["Routes publiques\n/health /search /remember /forget /recent"]
+        ADM["Routes admin locales\n/admin/*"]
+        BACKEND["memory_service / backend mem0"]
+        QDRANT["Qdrant local\n./data/qdrant"]
+        SQLITE["SQLite history\n./data/history.db"]
+        EMBED["fastembed"]
+    end
+
+    CHAT --> BOT
+    BOT --> OLLAMA
+    BOT --> LOCALMEM
+
+    BOT -->|"HTTPS public\n/api/memory/*"| NGINX
+    NGINX --> API
+    API --> PUB
+    API --> ADM
+    API --> BACKEND
+
+    BACKEND --> QDRANT
+    BACKEND --> SQLITE
+    BACKEND --> EMBED
+
+    UI --> TUNNEL
+    TUNNEL -->|"SSH port forward\n127.0.0.1:9000 -> 127.0.0.1:8000"| API
+```
+
+---
+
 ## Depot Git
 
 Depot partage :
