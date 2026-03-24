@@ -40,12 +40,12 @@ Sous-decoupage recommande pour W6 :
 
 | id | status | notes |
 |---|---|---|
-| W6.1 | TODO | definir la config locale admin Windows : `ADMIN_UI_ENABLED`, `ADMIN_API_LOCAL_URL`, `ADMIN_API_KEY`, `ADMIN_SSH_HOST`, `ADMIN_SSH_USER`, `ADMIN_SSH_LOCAL_PORT`, `ADMIN_SSH_REMOTE_PORT` |
-| W6.2 | TODO | creer `windows_bot/admin_tunnel.py` pour ouvrir, surveiller et fermer un tunnel SSH local |
-| W6.3 | TODO | creer `windows_bot/admin_client.py` pour appeler l'admin API Linux via `127.0.0.1` |
-| W6.4 | TODO | creer `windows_bot/admin_ui.py` pour une UI locale minimale : etat tunnel, etat API, liste viewers, recent |
-| W6.5 | TODO | ajouter des tests Windows pour le helper tunnel et le client admin |
-| W6.6 | BLOCKED | integration des operations `recent`, `purge`, `delete`, `export`, `import` depend d'une admin API Linux minimale disponible |
+| W6.1 | REVIEW | config locale admin Windows ajoutee dans `windows_bot/.env.example` et `windows_bot/bot_config.py` |
+| W6.2 | REVIEW | `windows_bot/admin_tunnel.py` implemente pour ouvrir, verifier et fermer un tunnel SSH local |
+| W6.3 | REVIEW | `windows_bot/admin_client.py` implemente pour appeler l'admin API Linux via `127.0.0.1` |
+| W6.4 | REVIEW | `windows_bot/admin_ui.py` implemente pour une UI locale minimale : etat tunnel, etat API, liste viewers, recent |
+| W6.5 | REVIEW | tests Windows ajoutes pour le helper tunnel et le client admin |
+| W6.6 | TODO | valider en reel les operations `recent`, `purge`, `delete`, `export`, `import` une fois l'admin API Linux deployee sur l'hote |
 
 ---
 
@@ -103,8 +103,14 @@ Point de fonctionnement actuel :
 
 Piste validee pour la suite :
 - l'admin ne sera pas exposee publiquement
-- une UI locale Windows ouvrira un tunnel SSH vers une admin API Linux sur `127.0.0.1`
+- une UI locale Windows ouvrira un tunnel SSH vers le service memoire principal Linux sur `127.0.0.1:8000`
 - reference de design : `admin_interface_v1.md`
+
+Pivot runtime Linux pris en compte :
+- pas de process admin separe en prod V1
+- routes admin montees dans le service memoire principal
+- base locale Windows retenue : `http://127.0.0.1:9000`
+- routes attendues : `/admin/health`, `/admin/users`, `/admin/users/{user_id}/recent`, `DELETE /admin/users/{user_id}`
 
 Ordre d'implementation cote Windows :
 1. helper tunnel SSH

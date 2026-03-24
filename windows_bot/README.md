@@ -63,6 +63,11 @@ Notes :
 - `MEM0_FALLBACK_LOCAL=true` conserve la memoire locale comme secours si l'API distante echoue
 - `MESSAGE_QUEUE_MAX_SIZE` limite le nombre de messages en attente quand le chat accelere
 - `MESSAGE_QUEUE_MAX_AGE_SECONDS` ignore un message devenu trop ancien dans la file
+- `ADMIN_UI_ENABLED=true` active l'UI admin locale Windows
+- `ADMIN_API_LOCAL_URL` est l'URL locale atteinte via tunnel SSH
+- `MEM0_ADMIN_KEY` est la cle d'auth admin distincte de `MEM0_API_KEY`
+- `ADMIN_SSH_HOST` et `ADMIN_SSH_USER` servent a ouvrir le tunnel SSH
+- le tunnel V1 attendu est `localhost:9000 -> SSH -> 127.0.0.1:8000`
 
 ## Generation du token Twitch
 
@@ -132,6 +137,18 @@ Verifier l'API memoire distante :
 
 ```powershell
 py .\manage_bot.py memory-health
+```
+
+Verifier l'API admin locale :
+
+```powershell
+py .\manage_bot.py admin-health
+```
+
+Lancer l'UI admin locale :
+
+```powershell
+py .\manage_bot.py run-admin-ui
 ```
 
 Lister les modeles Ollama detectes :

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import requests
 
+from admin_client import admin_healthcheck, is_admin_ui_enabled
 from bot_config import AppConfig, load_config
 from bot_logic import CHAT_MEMORY_FILE, clear_chat_memory, clear_chat_memory_viewer, get_chat_memory_stats
 from memory_client import healthcheck_memory_api, is_mem0_enabled
@@ -49,6 +50,15 @@ def print_config_status(config: AppConfig) -> None:
     print(f"MEM0_FALLBACK_LOCAL  : {bool_label(config.mem0_fallback_local)}")
     print(f"MESSAGE_QUEUE_SIZE   : {config.message_queue_max_size}")
     print(f"MESSAGE_QUEUE_MAX_AGE: {config.message_queue_max_age_seconds}s")
+    print(f"ADMIN_UI_ENABLED     : {bool_label(config.admin_ui_enabled)}")
+    print(f"ADMIN_API_LOCAL_URL  : {config.admin_api_local_url}")
+    print(f"MEM0_ADMIN_KEY       : {bool_label(bool(config.admin_api_key))}")
+    print(f"ADMIN_API_TIMEOUT    : {config.admin_api_timeout_seconds}s")
+    print(f"ADMIN_SSH_HOST       : {config.admin_ssh_host or '(vide)'}")
+    print(f"ADMIN_SSH_USER       : {config.admin_ssh_user or '(vide)'}")
+    print(f"ADMIN_SSH_LOCAL_PORT : {config.admin_ssh_local_port}")
+    print(f"ADMIN_SSH_REMOTE_PORT: {config.admin_ssh_remote_port}")
+    print(f"ADMIN_UI_BIND        : {config.admin_ui_host}:{config.admin_ui_port}")
 
 
 def validate_twitch_token(config: AppConfig, timeout: int = 15, allow_refresh: bool = True) -> int:
@@ -160,11 +170,34 @@ def check_mem0_api(config: AppConfig) -> int:
     return 1
 
 
+def check_admin_api(config: AppConfig) -> int:
+    print("=== API admin mem0 ===")
+
+    if not config.admin_ui_enabled:
+        print("ℹ️ Admin UI désactivée dans le .env")
+        return 0
+
+    if not is_admin_ui_enabled(config):
+        print("❌ Configuration admin incomplète")
+        return 1
+
+    try:
+        if admin_healthcheck(config):
+            print(f"✅ API admin joignable via {config.admin_api_local_url}/admin/health")
+            return 0
+    except Exception as exc:
+        print(f"❌ API admin inaccessible : {exc}")
+        return 1
+
+    print("❌ Healthcheck admin inattendu")
+    return 1
+
+
 def run_diagnose(config: AppConfig) -> int:
     print_config_status(config)
     print()
 
-    exit_codes = [validate_twitch_token(config), check_ollama_api(config), print_local_models(), check_mem0_api(config)]
+    exit_codes = [validate_twitch_token(config), check_ollama_api(config), print_local_models(), check_mem0_api(config), check_admin_api(config)]
     return 0 if all(code == 0 for code in exit_codes) else 1
 
 
@@ -180,6 +213,12 @@ async def run_bot_ollama_only(config: AppConfig) -> int:
 
     await run_with_model(config.default_ollama_model)
     return 0
+
+
+def run_admin_ui_command(config: AppConfig) -> int:
+    from admin_ui import run_admin_ui
+
+    return run_admin_ui(config=config)
 
 
 def ensure_runtime_config(config: AppConfig) -> AppConfig | None:
@@ -425,6 +464,8 @@ def parse_args() -> argparse.Namespace:
         "ollama-models",
         "get-token",
         "memory-health",
+        "admin-health",
+        "run-admin-ui",
         "run-ollama",
         "run-bg-ollama",
         "status-bg",
@@ -458,6 +499,10 @@ def main() -> int:
             return run_oauth_flow(config.client_id, config.client_secret, env_path=str(ENV_PATH))
         if args.command == "memory-health":
             return check_mem0_api(config)
+        if args.command == "admin-health":
+            return check_admin_api(config)
+        if args.command == "run-admin-ui":
+            return run_admin_ui_command(config)
         if args.command == "run-ollama":
             runtime_config = ensure_runtime_config(config)
             if not runtime_config:

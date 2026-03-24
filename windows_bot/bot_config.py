@@ -29,6 +29,16 @@ class AppConfig:
     mem0_fallback_local: bool = True
     message_queue_max_size: int = 6
     message_queue_max_age_seconds: int = 25
+    admin_ui_enabled: bool = False
+    admin_api_local_url: str = "http://127.0.0.1:9000"
+    admin_api_key: str = ""
+    admin_api_timeout_seconds: int = 10
+    admin_ssh_host: str = ""
+    admin_ssh_user: str = ""
+    admin_ssh_local_port: int = 9000
+    admin_ssh_remote_port: int = 8000
+    admin_ui_host: str = "127.0.0.1"
+    admin_ui_port: int = 9100
 
 
 def load_config() -> AppConfig:
@@ -57,4 +67,14 @@ def load_config() -> AppConfig:
         mem0_fallback_local=os.getenv("MEM0_FALLBACK_LOCAL", "true").strip().lower() in {"1", "true", "yes", "oui", "on"},
         message_queue_max_size=max(1, int(os.getenv("MESSAGE_QUEUE_MAX_SIZE", "6").strip() or "6")),
         message_queue_max_age_seconds=max(5, int(os.getenv("MESSAGE_QUEUE_MAX_AGE_SECONDS", "25").strip() or "25")),
+        admin_ui_enabled=os.getenv("ADMIN_UI_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
+        admin_api_local_url=os.getenv("ADMIN_API_LOCAL_URL", "http://127.0.0.1:9000").strip().rstrip("/"),
+        admin_api_key=os.getenv("MEM0_ADMIN_KEY", "").strip(),
+        admin_api_timeout_seconds=max(1, int(os.getenv("ADMIN_API_TIMEOUT_SECONDS", "10").strip() or "10")),
+        admin_ssh_host=os.getenv("ADMIN_SSH_HOST", "").strip(),
+        admin_ssh_user=os.getenv("ADMIN_SSH_USER", "").strip(),
+        admin_ssh_local_port=max(1, int(os.getenv("ADMIN_SSH_LOCAL_PORT", "9000").strip() or "9000")),
+        admin_ssh_remote_port=max(1, int(os.getenv("ADMIN_SSH_REMOTE_PORT", "8000").strip() or "8000")),
+        admin_ui_host=os.getenv("ADMIN_UI_HOST", "127.0.0.1").strip(),
+        admin_ui_port=max(1, int(os.getenv("ADMIN_UI_PORT", "9100").strip() or "9100")),
     )
