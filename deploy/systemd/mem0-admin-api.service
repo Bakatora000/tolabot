@@ -1,0 +1,23 @@
+[Unit]
+Description=mem0 admin API service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=vhserver
+Group=vhserver
+WorkingDirectory=/home/vhserver/bt
+EnvironmentFile=/home/vhserver/bt/.env
+Environment=PYTHONPATH=/home/vhserver/bt/.deps
+ExecStart=/usr/bin/python3 -m uvicorn admin_main:app --host ${MEM0_ADMIN_HOST} --port ${MEM0_ADMIN_PORT}
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

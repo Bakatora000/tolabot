@@ -149,6 +149,7 @@ Le point pratique important observé ici :
 
 Des gabarits sont fournis dans :
 - `deploy/systemd/mem0-api.service`
+- `deploy/systemd/mem0-admin-api.service`
 - `deploy/nginx/memory.example.net.conf`
 - `deploy/DEPLOYMENT.md`
 
@@ -158,3 +159,25 @@ Recommendation pragmatique actuelle :
 - garder Nginx devant l'API avec TLS
 
 La procedure detaillee est dans `deploy/DEPLOYMENT.md`.
+
+## Admin API locale
+
+Une V1 d'API admin locale est disponible pour une future UI Windows via tunnel SSH.
+
+Principes :
+- bind local recommande : `127.0.0.1:9000`
+- aucune exposition publique via Nginx
+- auth dediee avec `X-Admin-Key`
+- cle separee : `MEM0_ADMIN_KEY`
+
+Entree :
+- `admin_main.py`
+
+Contrat V1 :
+- `admin_api_contract_v1.md`
+
+Lancement local type :
+
+```bash
+uvicorn admin_main:app --host 127.0.0.1 --port 9000
+```

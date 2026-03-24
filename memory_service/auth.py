@@ -16,8 +16,16 @@ def require_api_key(expected_key: str, provided_key: str | None) -> None:
         )
 
 
-def api_key_dependency(expected_key: str):
-    def _dependency(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
-        require_api_key(expected_key, x_api_key)
+def header_key_dependency(header_name: str, expected_key: str):
+    def _dependency(provided_key: str | None = Header(default=None, alias=header_name)) -> None:
+        require_api_key(expected_key, provided_key)
 
     return _dependency
+
+
+def api_key_dependency(expected_key: str):
+    return header_key_dependency("X-API-Key", expected_key)
+
+
+def admin_key_dependency(expected_key: str):
+    return header_key_dependency("X-Admin-Key", expected_key)

@@ -66,16 +66,85 @@ class MemoryBackend(Protocol):
     def recent(self, user_id: str, limit: int) -> list[MemoryRecord]:
         ...
 
+    def list_user_ids(self) -> list[str]:
+        ...
+
+    def export_user(self, user_id: str, limit: int) -> list[MemoryRecord]:
+        ...
+
+    def delete_memory(self, memory_id: str) -> bool:
+        ...
+
+    def purge_user(self, user_id: str, limit: int) -> tuple[int, bool]:
+        ...
+
+    def import_records(self, user_id: str, records: list[dict[str, Any]]) -> int:
+        ...
+
 
 @dataclass
 class FileStore:
     items: list[dict[str, Any]]
 
 
+@dataclass
+class UserRegistryStore:
+    user_ids: list[str]
+
+
+class UserRegistry:
+    def __init__(self, registry_path: Path):
+        self.registry_path = registry_path
+        self.lock = threading.Lock()
+        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+        if not self.registry_path.exists():
+            self._write(UserRegistryStore(user_ids=[]))
+
+    def _read(self) -> UserRegistryStore:
+        try:
+            with self.registry_path.open("r", encoding="utf-8") as file_obj:
+                data = json.load(file_obj)
+        except FileNotFoundError:
+            return UserRegistryStore(user_ids=[])
+        except json.JSONDecodeError as exc:
+            raise MemoryBackendError("User registry is corrupted.") from exc
+        return UserRegistryStore(user_ids=sorted({normalize_spaces(str(item)) for item in data.get("user_ids", []) if normalize_spaces(str(item))}))
+
+    def _write(self, store: UserRegistryStore) -> None:
+        payload = {"user_ids": sorted({normalize_spaces(user_id) for user_id in store.user_ids if normalize_spaces(user_id)})}
+        with self.registry_path.open("w", encoding="utf-8") as file_obj:
+            json.dump(payload, file_obj, ensure_ascii=False, indent=2)
+
+    def list_user_ids(self) -> list[str]:
+        with self.lock:
+            return list(self._read().user_ids)
+
+    def add(self, user_id: str) -> None:
+        normalized = normalize_spaces(user_id)
+        if not normalized:
+            return
+        with self.lock:
+            store = self._read()
+            if normalized not in store.user_ids:
+                store.user_ids.append(normalized)
+                self._write(store)
+
+    def remove(self, user_id: str) -> None:
+        normalized = normalize_spaces(user_id)
+        if not normalized:
+            return
+        with self.lock:
+            store = self._read()
+            updated = [item for item in store.user_ids if item != normalized]
+            if len(updated) != len(store.user_ids):
+                self._write(UserRegistryStore(user_ids=updated))
+
+
 class FileMemoryBackend:
-    def __init__(self, store_path: Path):
+    def __init__(self, store_path: Path, registry_path: Path):
         self.store_path = store_path
         self.lock = threading.Lock()
+        self.registry = UserRegistry(registry_path)
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.store_path.exists():
             self._write(FileStore(items=[]))
@@ -143,6 +212,7 @@ class FileMemoryBackend:
                 }
             )
             self._write(store)
+            self.registry.add(user_id)
             return memory_id
 
     def forget(self, user_id: str, memory_id: str) -> bool:
@@ -156,6 +226,8 @@ class FileMemoryBackend:
             deleted = len(store.items) != original_len
             if deleted:
                 self._write(store)
+                if not any(item.get("user_id") == user_id for item in store.items):
+                    self.registry.remove(user_id)
             return deleted
 
     def recent(self, user_id: str, limit: int) -> list[MemoryRecord]:
@@ -165,10 +237,62 @@ class FileMemoryBackend:
         records.sort(key=lambda record: record.created_at, reverse=True)
         return records[:limit]
 
+    def list_user_ids(self) -> list[str]:
+        with self.lock:
+            store = self._read()
+        discovered = {normalize_spaces(str(item.get("user_id", ""))) for item in store.items if normalize_spaces(str(item.get("user_id", "")))}
+        for user_id in discovered:
+            self.registry.add(user_id)
+        return sorted(set(self.registry.list_user_ids()) | discovered)
+
+    def export_user(self, user_id: str, limit: int) -> list[MemoryRecord]:
+        with self.lock:
+            store = self._read()
+        records = [MemoryRecord(**item) for item in store.items if item.get("user_id") == user_id]
+        records.sort(key=lambda record: record.created_at, reverse=True)
+        return records[:limit]
+
+    def delete_memory(self, memory_id: str) -> bool:
+        with self.lock:
+            store = self._read()
+            deleted_item = next((item for item in store.items if item.get("id") == memory_id), None)
+            if not deleted_item:
+                return False
+            user_id = str(deleted_item.get("user_id", ""))
+            store.items = [item for item in store.items if item.get("id") != memory_id]
+            self._write(store)
+            if user_id and not any(item.get("user_id") == user_id for item in store.items):
+                self.registry.remove(user_id)
+            return True
+
+    def purge_user(self, user_id: str, limit: int) -> tuple[int, bool]:
+        with self.lock:
+            store = self._read()
+            matching_ids = [item.get("id") for item in store.items if item.get("user_id") == user_id]
+            store.items = [item for item in store.items if item.get("user_id") != user_id]
+            deleted_count = len(matching_ids)
+            if deleted_count:
+                self._write(store)
+                self.registry.remove(user_id)
+            return deleted_count, False
+
+    def import_records(self, user_id: str, records: list[dict[str, Any]]) -> int:
+        imported = 0
+        for item in records:
+            text = normalize_spaces(str(item.get("memory", item.get("text", ""))))
+            if not text:
+                continue
+            metadata = dict(item.get("metadata", {}) or {})
+            memory_id = self.remember(user_id, text, metadata=metadata)
+            if memory_id:
+                imported += 1
+        return imported
+
 
 class Mem0MemoryBackend:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.registry = UserRegistry(settings.user_registry_path)
         try:
             from mem0 import Memory
         except ImportError as exc:
@@ -260,6 +384,7 @@ class Mem0MemoryBackend:
             )
         except Exception as exc:
             raise MemoryBackendError(str(exc)) from exc
+        self.registry.add(user_id)
 
         if isinstance(result, dict):
             for key in ("id", "memory_id"):
@@ -303,9 +428,47 @@ class Mem0MemoryBackend:
         normalized.sort(key=lambda record: record.created_at, reverse=True)
         return normalized[:limit]
 
+    def list_user_ids(self) -> list[str]:
+        return self.registry.list_user_ids()
+
+    def export_user(self, user_id: str, limit: int) -> list[MemoryRecord]:
+        return self.recent(user_id, limit)
+
+    def delete_memory(self, memory_id: str) -> bool:
+        try:
+            self._memory.delete(memory_id=memory_id)
+            return True
+        except Exception as exc:
+            logger.warning("mem0 delete failed for memory_id=%s: %s", memory_id, exc)
+            return False
+
+    def purge_user(self, user_id: str, limit: int) -> tuple[int, bool]:
+        records = self.export_user(user_id, limit)
+        deleted_count = 0
+        for record in records:
+            if self.delete_memory(record.id):
+                deleted_count += 1
+        truncated = len(records) >= limit
+        remaining = self.export_user(user_id, 1)
+        if not remaining:
+            self.registry.remove(user_id)
+        return deleted_count, truncated
+
+    def import_records(self, user_id: str, records: list[dict[str, Any]]) -> int:
+        imported = 0
+        for item in records:
+            text = normalize_spaces(str(item.get("memory", item.get("text", ""))))
+            if not text:
+                continue
+            metadata = dict(item.get("metadata", {}) or {})
+            memory_id = self.remember(user_id, text, metadata=metadata)
+            if memory_id:
+                imported += 1
+        return imported
+
 
 def build_backend(settings: Settings) -> MemoryBackend:
     settings.ensure_directories()
     if settings.backend == "mem0":
         return Mem0MemoryBackend(settings)
-    return FileMemoryBackend(settings.file_store_path)
+    return FileMemoryBackend(settings.file_store_path, settings.user_registry_path)
