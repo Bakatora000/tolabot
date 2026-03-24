@@ -69,7 +69,8 @@ class AdminTunnelManager:
             command,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
             creationflags=creationflags,
             close_fds=True,
         )
@@ -82,7 +83,30 @@ class AdminTunnelManager:
                 return self.status()
             time.sleep(0.1)
 
+        process = self.process
+        error_message = ""
+        if process is not None and process.poll() is not None:
+            error_message = self._read_process_stderr(process)
+            self.process = None
+            if error_message:
+                raise RuntimeError(f"SSH tunnel failed to start: {error_message}")
+            raise RuntimeError("SSH tunnel failed to start.")
+
+        process = self.process
+        self.stop()
+        error_message = self._read_process_stderr(process)
+        if error_message:
+            raise RuntimeError(f"SSH tunnel did not become ready in time: {error_message}")
         raise RuntimeError("SSH tunnel did not become ready in time.")
+
+    @staticmethod
+    def _read_process_stderr(process: subprocess.Popen | None) -> str:
+        if process is None or process.stderr is None:
+            return ""
+        try:
+            return process.stderr.read().strip()
+        except OSError:
+            return ""
 
     def stop(self) -> None:
         if self.process is None:

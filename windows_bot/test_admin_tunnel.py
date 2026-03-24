@@ -51,7 +51,7 @@ class AdminTunnelTests(unittest.TestCase):
         self.assertIn("9000:127.0.0.1:8000", command)
         self.assertIn("vhserver@server.example.net", command)
 
-    @patch("admin_tunnel.is_local_port_open", side_effect=[False, True])
+    @patch("admin_tunnel.is_local_port_open", side_effect=[False, True, True])
     @patch("admin_tunnel.subprocess.Popen")
     def test_tunnel_manager_start_waits_until_port_is_ready(self, mock_popen, mock_port_open):
         process = Mock()
@@ -64,6 +64,20 @@ class AdminTunnelTests(unittest.TestCase):
 
         self.assertTrue(status.local_port_open)
         self.assertEqual(status.pid, 1234)
+
+    @patch("admin_tunnel.is_local_port_open", return_value=False)
+    @patch("admin_tunnel.subprocess.Popen")
+    def test_tunnel_manager_start_surfaces_ssh_stderr(self, mock_popen, _mock_port_open):
+        process = Mock()
+        process.poll.return_value = 255
+        process.pid = 1234
+        process.stderr.read.return_value = "Permission denied (publickey)."
+        mock_popen.return_value = process
+
+        manager = AdminTunnelManager(make_config())
+
+        with self.assertRaisesRegex(RuntimeError, "Permission denied"):
+            manager.start(startup_timeout_seconds=0.1)
 
 
 if __name__ == "__main__":
