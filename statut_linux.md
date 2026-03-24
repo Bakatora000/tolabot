@@ -45,7 +45,9 @@ Taches Linux :
 | G3 | DONE | export mem0 viewer -> JSON et import Graphiti `--dry-run` valides |
 | G4 | DONE | provider batch Linux -> Ollama Windows valide via reverse tunnel SSH; import Graphiti reel demarre avec Kuzu |
 | G5 | STANDBY | compatibilite Graphiti/Kuzu corrigee, mais ingestion trop lente avec `gemma:7b`; chantier mis en veille |
-| H1 | IN_PROGRESS | cadrage du graphe metier maison base sur `mem0 + GPT + SQLite` |
+| H1 | DONE | cadrage du graphe metier maison base sur `mem0 + GPT + SQLite` |
+| H2 | DONE | schema SQLite V1 et scripts Linux minimaux poses dans `homegraph/` |
+| H3 | IN_PROGRESS | pipeline maison `mem0 export -> payload GPT` amorce; merge SQLite reste a implementer |
 
 ---
 
@@ -181,6 +183,8 @@ Decision admin V1 retenue :
 - definir le schema SQLite du graphe metier maison
 - definir le format JSON d'extraction GPT pour les faits viewer
 - preparer un premier pipeline `mem0 -> GPT -> SQLite`
+- implementer le mergeur `GPT JSON -> SQLite`
+- definir ensuite le builder `SQLite -> prompt context`
 
 ---
 
@@ -207,6 +211,7 @@ Decision admin V1 retenue :
 - nouvelle direction prioritaire :
   - graphe metier maison
   - doc de cadrage : `graphe_metier_maison_v1.md`
+  - socle technique Linux : `homegraph/`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON

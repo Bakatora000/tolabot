@@ -54,6 +54,7 @@ Etat courant synthetique :
 - Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
 - Linux : Graphiti V1 locale validee jusqu'au premier import reel via Ollama Windows batch; chantier maintenant mis en veille
 - Linux : nouvelle voie prioritaire ouverte pour un graphe metier maison `mem0 + GPT + SQLite`
+- Linux : socle `homegraph/` deja pose avec schema SQLite V1 et payload viewer pour extraction GPT
 
 ---
 

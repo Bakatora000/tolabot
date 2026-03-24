@@ -1,0 +1,56 @@
+# Homegraph V1
+
+Cette brique porte le graphe metier maison du projet.
+
+Objectif :
+- partir des souvenirs `mem0`
+- produire un profil viewer structure
+- stocker les faits/relations utiles en SQLite
+- generer ensuite un contexte compact pour le prompt du bot
+
+## Etat Actuel
+
+Disponible :
+- schema SQLite V1
+- script d'initialisation de base
+- script d'inspection simple
+- script de construction d'un payload viewer pour extraction GPT
+
+## Fichiers
+
+- `homegraph/schema.py`
+- `homegraph/init_db.py`
+- `homegraph/inspect_db.py`
+- `homegraph/build_viewer_payload.py`
+
+## Initialisation
+
+```bash
+python3 homegraph/init_db.py
+```
+
+## Inspection
+
+```bash
+python3 homegraph/inspect_db.py
+```
+
+## Construction D'Un Payload GPT
+
+Depuis un export mem0 viewer :
+
+```bash
+python3 homegraph/build_viewer_payload.py graphiti/imports/arthii_tv.json
+```
+
+Le fichier de sortie est ecrit sous :
+
+```text
+homegraph/payloads/<viewer>_gpt_payload.json
+```
+
+## Prochaine Etape
+
+- definir le prompt GPT exact
+- implementer le merge `JSON -> SQLite`
+- produire ensuite un builder `SQLite -> prompt context`

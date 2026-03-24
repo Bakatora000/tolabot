@@ -33,6 +33,7 @@ Code partage :
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
 - `graphiti/` : base de travail Graphiti V1 Linux locale/offline
 - `graphe_metier_maison_v1.md` : cadrage du graphe metier produit base sur `mem0 + GPT + SQLite`
+- `homegraph/` : implementation Linux du graphe metier maison
 
 ---
 
@@ -106,6 +107,11 @@ Graphiti V1 locale :
   - memoire source = `mem0`
   - extraction semantique = GPT
   - stockage = SQLite structuree
+- premiere brique maison deja posee :
+  - schema SQLite V1
+  - initialisation DB
+  - inspection DB
+  - payload viewer pour extraction GPT
 
 ### Windows
 
@@ -146,6 +152,10 @@ Etat connu :
 - `graphiti/validate_local_kuzu.py`
 - `graphiti/export_viewer_memories.py`
 - `graphiti/import_viewer_memories.py`
+- `homegraph/schema.py`
+- `homegraph/init_db.py`
+- `homegraph/inspect_db.py`
+- `homegraph/build_viewer_payload.py`
 
 ### Suivi Projet
 

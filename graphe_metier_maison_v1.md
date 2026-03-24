@@ -307,9 +307,17 @@ L'admin Windows pourra a terme :
 
 Definir le schema SQLite V1
 
+Etat :
+- fait
+- implementation initiale dans `homegraph/schema.py`
+- initialisation via `homegraph/init_db.py`
+
 ### M2
 
 Ajouter un export viewer `mem0 -> payload GPT`
+
+Etat :
+- version initiale disponible dans `homegraph/build_viewer_payload.py`
 
 ### M3
 
@@ -337,4 +345,3 @@ Decision actuelle :
 - source memoire = `mem0`
 - extraction semantique = GPT
 - stockage structure = SQLite maison
-
