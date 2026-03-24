@@ -48,6 +48,11 @@ Champ important pour Windows :
 
 Windows peut l'injecter tel quel dans le prompt, sans avoir besoin de reconstruire la presentation.
 
+Important :
+- `text_block` peut etre une chaine vide
+- ce n'est pas une erreur
+- cela signifie simplement que `homegraph` n'a pas encore assez de matiere utile pour produire un contexte viewer de qualite
+
 ---
 
 ## Regles De Construction
@@ -77,6 +82,11 @@ Ordre recommande :
 - `personality_trait`
 - `recurring_topic`
 - autres ensuite
+
+Regle de qualite :
+- les faits doivent etre reformates en phrases utiles
+- eviter les valeurs brutes trop pauvres du type `Satisfactory` seules
+- preferer `joue souvent a Satisfactory`
 
 ### `recent_relevant`
 
@@ -119,6 +129,12 @@ Si le contexte depasse le plafond :
 - puis couper `uncertain_points`
 - puis limiter `facts_high_confidence`
 
+Seuil minimal de production :
+- ne produire un `text_block` non vide que s'il existe au moins un fait ou relation concret utile
+- ne pas produire seulement le placeholder `Contexte viewer:`
+- ne pas produire un bloc trop court ou trop pauvre
+- en V1, si la longueur finale est < 60 caracteres, renvoyer `text_block=""`
+
 ---
 
 ## Strategie De Fraicheur
@@ -150,10 +166,13 @@ Une strategie de cache pourra venir plus tard si :
 ## Mode D'Acces
 
 V1 retenue :
-- script local Linux
+- endpoint admin local Linux ou script local Linux
 
 Script cible :
 - `python3 homegraph/build_viewer_context.py --viewer-id twitch:streamer:viewer:alice`
+
+Endpoint admin local cible :
+- `GET /admin/homegraph/users/{user_id}/context`
 
 Sortie :
 - JSON sur stdout
@@ -165,11 +184,9 @@ Pourquoi :
   - de l'appeler via SSH ponctuel
   - ou de demander une future exposition admin locale
 
-Evolution probable V2 :
-- endpoint admin local non public :
-  - `GET /admin/homegraph/users/{user_id}/context`
-
-Mais ce n'est pas requis pour commencer cote Windows.
+Decision actuelle :
+- Windows peut privilegier l'endpoint admin local
+- le script local reste utile pour debug Linux
 
 ---
 
@@ -192,5 +209,4 @@ Decision V1 :
 - format compact fige
 - taille cible figee
 - calcul a la volee retenu
-- acces par script local Linux retenu
-
+- acces par endpoint admin local retenu cote integration Windows

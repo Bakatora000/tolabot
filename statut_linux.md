@@ -51,6 +51,7 @@ Taches Linux :
 | H4 | DONE | merge initial `GPT JSON -> SQLite` implemente avec traçabilite `graph_jobs` |
 | H5 | DONE | builder `SQLite -> prompt context` implemente avec contrat V1 fige |
 | H6 | DONE | endpoint admin local `GET /admin/homegraph/users/{user_id}/context` ajoute cote Linux |
+| H7 | DONE | qualite du `text_block` Homegraph durcie pour eviter placeholders et blocs trop pauvres |
 
 ---
 
@@ -194,6 +195,7 @@ Decision admin V1 retenue :
 - transmettre a Windows le contrat V1 du contexte viewer compact
 - brancher ensuite une nouvelle source de contexte cote bot Windows
 - redemarrer `mem0-api` sur l'hote pour charger le nouvel endpoint admin Homegraph
+- surveiller les retours Windows sur la qualite reelle du `text_block`
 
 ---
 

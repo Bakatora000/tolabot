@@ -115,6 +115,7 @@ Graphiti V1 locale :
   - merge GPT JSON -> SQLite
   - builder contexte viewer compact
   - endpoint admin local pour recuperer ce contexte
+  - durcissement qualite du `text_block` pour reduire les cas `too_short` / `low_value` / `empty`
 
 ### Windows
 

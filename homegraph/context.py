@@ -12,6 +12,7 @@ MAX_FACTS = 4
 MAX_RECENT = 2
 MAX_UNCERTAIN = 2
 TEXT_BLOCK_HARD_LIMIT = 900
+TEXT_BLOCK_MIN_LEN = 60
 
 
 def utc_now() -> datetime:
@@ -69,23 +70,81 @@ def fetch_facts(conn: sqlite3.Connection, viewer_id: str) -> list[sqlite3.Row]:
     return list(rows)
 
 
+def fetch_relations(conn: sqlite3.Connection, viewer_id: str) -> list[sqlite3.Row]:
+    rows = conn.execute(
+        """
+        SELECT target_type, target_id_or_value, relation_type, confidence, updated_at
+        FROM viewer_relations
+        WHERE viewer_id = ?
+        ORDER BY
+            COALESCE(confidence, 0) DESC,
+            COALESCE(updated_at, '') DESC
+        """,
+        (viewer_id,),
+    ).fetchall()
+    return list(rows)
+
+
+def normalize_phrase(text: str) -> str:
+    value = text.strip()
+    if not value:
+        return ""
+    return value[0].lower() + value[1:] if len(value) > 1 else value.lower()
+
+
+def fact_to_phrase(kind: str, value: str) -> str:
+    normalized = normalize_phrase(value)
+    if not normalized:
+        return ""
+    mappings = {
+        "plays_game": f"joue souvent a {value}",
+        "likes_game": f"apprecie {value}",
+        "dislikes_game": f"n'apprecie pas {value}",
+        "plays_role": f"joue plutot en tant que {normalized}",
+        "build_style": normalized,
+        "personality_trait": normalized,
+        "recurring_topic": f"parle souvent de {normalized}",
+        "social_relation": normalized,
+        "stream_context": normalized,
+    }
+    return mappings.get(kind, normalized)
+
+
+def relation_to_phrase(target_type: str, relation_type: str, target_value: str) -> str:
+    value = target_value.strip()
+    if not value:
+        return ""
+    if target_type == "game" and relation_type == "plays":
+        return f"joue souvent a {value}"
+    if target_type == "game" and relation_type == "likes":
+        return f"apprecie {value}"
+    if target_type == "topic" and relation_type == "likes":
+        return f"s'interesse a {normalize_phrase(value)}"
+    if target_type == "viewer" and relation_type == "knows":
+        return f"semble connaitre {value}"
+    return normalize_phrase(value)
+
+
 def build_text_block(
     summary_short: str,
     facts_high_confidence: list[str],
     recent_relevant: list[str],
     uncertain_points: list[str],
 ) -> str:
-    lines = ["Contexte viewer:"]
+    content_lines: list[str] = []
     if summary_short and summary_short != "aucun":
-        lines.append(f"- {summary_short}")
+        content_lines.append(f"- {summary_short}")
     for item in facts_high_confidence:
-        lines.append(f"- {item}")
+        content_lines.append(f"- {item}")
     for item in recent_relevant:
-        lines.append(f"- {item}")
+        content_lines.append(f"- {item}")
     for item in uncertain_points:
-        lines.append(f"- incertain : {item}")
+        content_lines.append(f"- incertain : {item}")
 
-    text = "\n".join(lines)
+    if not content_lines:
+        return ""
+
+    text = "\n".join(["Contexte viewer:", *content_lines])
     if len(text) <= TEXT_BLOCK_HARD_LIMIT:
         return text
 
@@ -111,6 +170,7 @@ def build_viewer_context_payload(viewer_id: str, db_path: Path | str) -> dict[st
     try:
         profile = fetch_profile(conn, viewer_id)
         facts = fetch_facts(conn, viewer_id)
+        relations = fetch_relations(conn, viewer_id)
     finally:
         conn.close()
 
@@ -123,27 +183,50 @@ def build_viewer_context_payload(viewer_id: str, db_path: Path | str) -> dict[st
     facts_high_confidence: list[str] = []
     recent_relevant: list[str] = []
     uncertain_points: list[str] = []
+    concrete_items = 0
 
     for row in facts:
-        value = str(row["value"] or "").strip()
-        if not value:
+        phrase = fact_to_phrase(str(row["kind"] or "").strip(), str(row["value"] or "").strip())
+        if not phrase:
             continue
         confidence = float(row["confidence"] or 0.0)
         status = str(row["status"] or "").strip()
 
         if status == "active" and confidence >= 0.75 and len(facts_high_confidence) < MAX_FACTS:
-            if value not in facts_high_confidence:
-                facts_high_confidence.append(value)
+            if phrase not in facts_high_confidence:
+                facts_high_confidence.append(phrase)
+                concrete_items += 1
             continue
 
         if (status == "uncertain" or confidence < 0.75) and len(uncertain_points) < MAX_UNCERTAIN:
-            if value not in uncertain_points:
-                uncertain_points.append(value)
+            if phrase not in uncertain_points:
+                uncertain_points.append(phrase)
             continue
 
         if status == "active" and len(recent_relevant) < MAX_RECENT:
-            if value not in facts_high_confidence and value not in recent_relevant:
-                recent_relevant.append(value)
+            if phrase not in facts_high_confidence and phrase not in recent_relevant:
+                recent_relevant.append(phrase)
+                concrete_items += 1
+
+    for row in relations:
+        phrase = relation_to_phrase(
+            str(row["target_type"] or "").strip(),
+            str(row["relation_type"] or "").strip(),
+            str(row["target_id_or_value"] or "").strip(),
+        )
+        if not phrase:
+            continue
+        confidence = float(row["confidence"] or 0.0)
+        if confidence < 0.75:
+            continue
+        if phrase in facts_high_confidence or phrase in recent_relevant:
+            continue
+        if len(facts_high_confidence) < MAX_FACTS:
+            facts_high_confidence.append(phrase)
+            concrete_items += 1
+        elif len(recent_relevant) < MAX_RECENT:
+            recent_relevant.append(phrase)
+            concrete_items += 1
 
     text_block = build_text_block(
         summary_short=summary_short,
@@ -151,6 +234,8 @@ def build_viewer_context_payload(viewer_id: str, db_path: Path | str) -> dict[st
         recent_relevant=recent_relevant,
         uncertain_points=uncertain_points,
     )
+    if concrete_items < 1 or len(text_block.strip()) < TEXT_BLOCK_MIN_LEN:
+        text_block = ""
 
     return {
         "ok": True,
