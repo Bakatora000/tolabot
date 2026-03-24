@@ -108,6 +108,26 @@ Remarque :
 - le projet indique explicitement un support Kuzu et un support Ollama local
 - pour rester cohérent avec le cadrage "local-only", il vaut mieux eviter de rendre V1 dependante d'une API distante
 
+### Separation des roles de modeles
+
+Il faut separer les roles :
+
+- bot chat live Windows
+  - priorite a la vitesse
+  - exemple : `qwen3.5`
+
+- Graphiti ingestion
+  - priorite a la qualite d'extraction relationnelle
+  - exemple recommande : `llama3.3:7b`
+
+- Graphiti embeddings
+  - modele dedie embeddings
+  - exemple recommande : `nomic-embed-text`
+
+Cette separation est importante :
+- une reponse chat un peu moins riche est acceptable si elle est rapide
+- une extraction Graphiti mediocre pollue le graphe durablement
+
 ---
 
 ## Installation Recommandee
@@ -187,6 +207,14 @@ Variables LLM locales a ajouter plus tard si ingestion activee :
 - `GRAPHITI_LLM_MODEL`
 - `GRAPHITI_EMBEDDING_BASE_URL`
 - `GRAPHITI_EMBEDDING_MODEL`
+
+Convention recommande :
+- chat live Windows :
+  - `OLLAMA_MODEL=qwen3.5:latest`
+- Graphiti LLM :
+  - `GRAPHITI_LLM_MODEL=llama3.3:7b`
+- Graphiti embeddings :
+  - `GRAPHITI_EMBEDDING_MODEL=nomic-embed-text`
 
 ---
 
