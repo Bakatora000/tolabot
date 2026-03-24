@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
+import sqlite3
 import threading
 import uuid
 from collections import Counter
@@ -429,7 +431,46 @@ class Mem0MemoryBackend:
         return normalized[:limit]
 
     def list_user_ids(self) -> list[str]:
-        return self.registry.list_user_ids()
+        discovered = set(self.registry.list_user_ids())
+        discovered.update(self._extract_user_ids_from_qdrant_storage())
+        for user_id in discovered:
+            self.registry.add(user_id)
+        return sorted(discovered)
+
+    def _extract_user_ids_from_qdrant_storage(self) -> set[str]:
+        qdrant_path = self.settings.mem0_qdrant_path
+        if not qdrant_path:
+            return set()
+
+        storage_path = qdrant_path / "collection" / self.settings.mem0_qdrant_collection / "storage.sqlite"
+        if not storage_path.exists():
+            return set()
+
+        try:
+            connection = sqlite3.connect(f"file:{storage_path}?mode=ro", uri=True)
+        except sqlite3.Error as exc:
+            logger.warning("Cannot open Qdrant storage for admin user listing: %s", exc)
+            return set()
+
+        try:
+            cursor = connection.cursor()
+            cursor.execute("SELECT point FROM points")
+            discovered: set[str] = set()
+            pattern = re.compile(rb"twitch:[A-Za-z0-9_]+:viewer:[A-Za-z0-9_]+")
+            for (blob,) in cursor.fetchall():
+                raw = blob.tobytes() if isinstance(blob, memoryview) else blob
+                if isinstance(raw, str):
+                    raw = raw.encode("utf-8", "ignore")
+                for match in pattern.findall(raw or b""):
+                    user_id = normalize_spaces(match.decode("utf-8", "ignore"))
+                    if user_id:
+                        discovered.add(user_id)
+            return discovered
+        except sqlite3.Error as exc:
+            logger.warning("Cannot scan Qdrant storage for admin user listing: %s", exc)
+            return set()
+        finally:
+            connection.close()
 
     def export_user(self, user_id: str, limit: int) -> list[MemoryRecord]:
         return self.recent(user_id, limit)
