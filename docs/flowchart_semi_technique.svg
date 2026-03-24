@@ -66,7 +66,7 @@
 
   <rect x="740" y="190" width="240" height="120" class="box-linux"/>
   <text x="760" y="220" class="head">Nginx + TLS</text>
-  <text x="760" y="248" class="text">olala.expevay.net</text>
+  <text x="760" y="248" class="text">memory.example.net</text>
   <text x="760" y="272" class="text">Expose /api/memory/*</text>
 
   <rect x="1030" y="190" width="240" height="150" class="box-linux"/>
