@@ -54,7 +54,7 @@ class BotLogicTextTests(unittest.TestCase):
 
     def test_detects_channel_content_questions(self):
         self.assertTrue(asks_about_channel_content("@anneaunimouss tu fais quoi sur cette chaîne ?"))
-        self.assertTrue(asks_about_channel_content("@anneaunimouss @expevay joue à quoi ?"))
+        self.assertTrue(asks_about_channel_content("@anneaunimouss @streamer joue à quoi ?"))
         self.assertFalse(asks_about_channel_content("@anneaunimouss raconte une blague"))
 
     def test_detects_explicit_memory_instruction(self):
@@ -188,10 +188,10 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "Alice", "Salut bot", "Salut Alice", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "Bob", "Hello", "Salut Bob", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "Alice", "Salut bot", "Salut Alice", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "Bob", "Hello", "Salut Bob", chat_memory_file=chat_memory_file)
 
-            channel_data = chat_memory["channels"]["expevay"]
+            channel_data = chat_memory["channels"]["streamer"]
             self.assertEqual(len(channel_data["global_turns"]), 2)
             self.assertEqual(channel_data["viewer_turns"]["alice"][0]["bot_reply"], "Salut Alice")
             self.assertEqual(channel_data["viewer_turns"]["bob"][0]["viewer_message"], "Hello")
@@ -201,11 +201,11 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "alice", "Tu vas bien ?", "Oui, ça va.", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "bob", "Une blague ?", "Pas aujourd'hui.", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "alice", "Et toi ?", "Je tiens la route.", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Tu vas bien ?", "Oui, ça va.", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "bob", "Une blague ?", "Pas aujourd'hui.", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Et toi ?", "Je tiens la route.", chat_memory_file=chat_memory_file)
 
-            context = build_chat_context(chat_memory, "expevay", "alice")
+            context = build_chat_context(chat_memory, "streamer", "alice")
 
             self.assertIn("alice: Tu vas bien ?", context["viewer_context"])
             self.assertIn("bot: Je tiens la route.", context["viewer_context"])
@@ -217,13 +217,13 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "alice", "Ancienne charade", "Vieille reponse", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "alice", "Nouveau premier", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "alice", "Nouveau second", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Ancienne charade", "Vieille reponse", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Nouveau premier", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Nouveau second", chat_memory_file=chat_memory_file)
 
             context = build_chat_context(
                 chat_memory,
-                "expevay",
+                "streamer",
                 "alice",
                 prefer_active_thread=True,
             )
@@ -238,10 +238,10 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "alice", "Premiere charade", "Bonne reponse", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Premiere charade", "Bonne reponse", chat_memory_file=chat_memory_file)
             append_chat_turn(
                 chat_memory,
-                "expevay",
+                "streamer",
                 "alice",
                 "Nouvelle charade: mon premier",
                 chat_memory_file=chat_memory_file,
@@ -250,7 +250,7 @@ class BotLogicChatMemoryTests(unittest.TestCase):
 
             context = build_chat_context(
                 chat_memory,
-                "expevay",
+                "streamer",
                 "alice",
                 prefer_active_thread=True,
             )
@@ -262,10 +262,10 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "alice", "Mon premier", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Mon premier", chat_memory_file=chat_memory_file)
             append_chat_turn(
                 chat_memory,
-                "expevay",
+                "streamer",
                 "alice",
                 "Et non, la réponse était un pissenlit",
                 "Bien vu",
@@ -275,7 +275,7 @@ class BotLogicChatMemoryTests(unittest.TestCase):
 
             context = build_chat_context(
                 chat_memory,
-                "expevay",
+                "streamer",
                 "alice",
                 prefer_active_thread=True,
             )
@@ -287,9 +287,9 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "alice", "Mon premier n'est pas haut.", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Mon premier n'est pas haut.", chat_memory_file=chat_memory_file)
 
-            context = build_chat_context(chat_memory, "expevay", "alice")
+            context = build_chat_context(chat_memory, "streamer", "alice")
 
             self.assertIn("alice: Mon premier n'est pas haut.", context["viewer_context"])
             self.assertNotIn("bot:", context["viewer_context"])
@@ -299,10 +299,10 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
 
-            append_chat_turn(chat_memory, "expevay", "alice", "Salut ici", "Salut expevay", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Salut ici", "Salut streamer", chat_memory_file=chat_memory_file)
             append_chat_turn(chat_memory, "autrechaine", "bob", "Salut ailleurs", "Salut autre", chat_memory_file=chat_memory_file)
 
-            context = build_chat_context(chat_memory, "expevay", "alice")
+            context = build_chat_context(chat_memory, "streamer", "alice")
 
             self.assertIn("alice: Salut ici", context["viewer_context"])
             self.assertNotIn("bob: Salut ailleurs", context["global_context"])
@@ -311,7 +311,7 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
             chat_memory = {"channels": {}}
-            append_chat_turn(chat_memory, "expevay", "alice", "Salut", "Bonjour", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Salut", "Bonjour", chat_memory_file=chat_memory_file)
 
             clear_chat_memory(chat_memory_file)
             loaded = load_chat_memory(chat_memory_file)
@@ -325,22 +325,22 @@ class BotLogicChatMemoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
             chat_memory = {"channels": {}}
-            append_chat_turn(chat_memory, "expevay", "alice", "Salut", "Bonjour", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "bob", "Yo", "Salut Bob", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Salut", "Bonjour", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "bob", "Yo", "Salut Bob", chat_memory_file=chat_memory_file)
 
-            cleared = clear_chat_memory_viewer("expevay", "alice", chat_memory_file=chat_memory_file)
+            cleared = clear_chat_memory_viewer("streamer", "alice", chat_memory_file=chat_memory_file)
             loaded = load_chat_memory(chat_memory_file)
 
             self.assertTrue(cleared)
-            self.assertNotIn("alice", loaded["channels"]["expevay"]["viewer_turns"])
-            self.assertIn("bob", loaded["channels"]["expevay"]["viewer_turns"])
+            self.assertNotIn("alice", loaded["channels"]["streamer"]["viewer_turns"])
+            self.assertIn("bob", loaded["channels"]["streamer"]["viewer_turns"])
 
     def test_get_chat_memory_stats_summarizes_channels_and_viewers(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
             chat_memory = {"channels": {}}
-            append_chat_turn(chat_memory, "expevay", "alice", "Salut", "Bonjour", chat_memory_file=chat_memory_file)
-            append_chat_turn(chat_memory, "expevay", "bob", "Yo", "Salut Bob", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "alice", "Salut", "Bonjour", chat_memory_file=chat_memory_file)
+            append_chat_turn(chat_memory, "streamer", "bob", "Yo", "Salut Bob", chat_memory_file=chat_memory_file)
             append_chat_turn(chat_memory, "autrechaine", "claire", "Hey", "Salut Claire", chat_memory_file=chat_memory_file)
 
             stats = get_chat_memory_stats(chat_memory_file=chat_memory_file, ttl_hours=10)

@@ -41,7 +41,7 @@ Référence produit / doc :
 
 Le service sera exposé derrière HTTPS sur :
 
-- `https://olala.expevay.net`
+- `https://memory.example.net`
 
 Le déploiement attendu côté Linux est :
 - reverse proxy HTTP(S)
@@ -89,7 +89,7 @@ Le bot Windows est responsable de :
 Variables minimales :
 
 ```env
-MEM0_API_BASE_URL=https://olala.expevay.net/api/memory
+MEM0_API_BASE_URL=https://memory.example.net/api/memory
 MEM0_API_KEY=xxxxxxxxxxxxxxxx
 MEM0_TIMEOUT_SECONDS=10
 MEM0_ENABLED=true
@@ -145,7 +145,7 @@ Format retenu :
 
 Exemple :
 
-- `twitch:expevay:viewer:alice`
+- `twitch:streamer:viewer:alice`
 
 ### Règles
 
@@ -238,7 +238,7 @@ POST /search
 
 ```json
 {
-  "user_id": "twitch:expevay:viewer:alice",
+  "user_id": "twitch:streamer:viewer:alice",
   "query": "De quoi parlait-on hier à propos du setup audio ?",
   "limit": 5
 }
@@ -304,11 +304,11 @@ POST /remember
 
 ```json
 {
-  "user_id": "twitch:expevay:viewer:alice",
+  "user_id": "twitch:streamer:viewer:alice",
   "text": "Le viewer préfère qu'on l'appelle Alice en vocal.",
   "metadata": {
     "source": "twitch_chat",
-    "channel": "expevay",
+    "channel": "streamer",
     "viewer": "alice",
     "message_id": "abc123"
   }
@@ -353,7 +353,7 @@ POST /forget
 
 ```json
 {
-  "user_id": "twitch:expevay:viewer:alice",
+  "user_id": "twitch:streamer:viewer:alice",
   "memory_id": "mem_003"
 }
 ```
@@ -402,7 +402,7 @@ POST /recent
 
 ```json
 {
-  "user_id": "twitch:expevay:viewer:alice",
+  "user_id": "twitch:streamer:viewer:alice",
   "limit": 10
 }
 ```
@@ -558,7 +558,7 @@ Le service doit journaliser au minimum :
 
 ```bash
 curl -H "X-API-Key: xxxxxxxxxxxxxxxx" \
-  https://olala.expevay.net/api/memory/health
+  https://memory.example.net/api/memory/health
 ```
 
 ### Search
@@ -567,9 +567,9 @@ curl -H "X-API-Key: xxxxxxxxxxxxxxxx" \
 curl -X POST \
   -H "X-API-Key: xxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  https://olala.expevay.net/api/memory/search \
+  https://memory.example.net/api/memory/search \
   -d '{
-    "user_id": "twitch:expevay:viewer:alice",
+    "user_id": "twitch:streamer:viewer:alice",
     "query": "De quoi parlait-on hier ?",
     "limit": 5
   }'
@@ -581,13 +581,13 @@ curl -X POST \
 curl -X POST \
   -H "X-API-Key: xxxxxxxxxxxxxxxx" \
   -H "Content-Type: application/json" \
-  https://olala.expevay.net/api/memory/remember \
+  https://memory.example.net/api/memory/remember \
   -d '{
-    "user_id": "twitch:expevay:viewer:alice",
+    "user_id": "twitch:streamer:viewer:alice",
     "text": "Alice a expliqué qu elle préfère qu on l appelle Alice sur le chat.",
     "metadata": {
       "source": "twitch_chat",
-      "channel": "expevay",
+      "channel": "streamer",
       "viewer": "alice",
       "message_id": "abc123"
     }
@@ -631,4 +631,4 @@ Le système est considéré opérationnel si :
 3. le bot peut enregistrer de nouveaux souvenirs à distance
 4. la mémoire est partitionnée correctement par viewer
 5. la configuration passe uniquement par variables d'environnement
-6. le service Linux est déployable proprement derrière `olala.expevay.net`
+6. le service Linux est déployable proprement derrière `memory.example.net`

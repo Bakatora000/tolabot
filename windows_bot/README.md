@@ -142,7 +142,7 @@ py .\manage_bot.py ollama-models
 
 ## Memoire distante mem0
 
-Le bot peut maintenant etre configure pour parler a une API memoire distante compatible avec le contrat du service Linux sur `olala.expevay.net`.
+Le bot peut maintenant etre configure pour parler a une API memoire distante compatible avec le contrat du service Linux sur `memory.example.net`.
 
 Dans l'etat actuel :
 - mem0 sert de memoire generale durable, reutilisable d'un live a l'autre

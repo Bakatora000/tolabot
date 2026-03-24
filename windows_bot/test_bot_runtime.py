@@ -23,7 +23,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_enqueue_message_drops_oldest_when_queue_is_full(self):
         bot = self.make_bot()
-        payload = SimpleNamespace(text="@AnneAuNimouss salut", chatter=SimpleNamespace(name="alice"), broadcaster=SimpleNamespace(name="expevay"), id="m1")
+        payload = SimpleNamespace(text="@AnneAuNimouss salut", chatter=SimpleNamespace(name="alice"), broadcaster=SimpleNamespace(name="streamer"), id="m1")
         for idx in range(6):
             bot_queued_message = QueuedMessage(
                 payload=payload,
@@ -51,7 +51,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_enqueue_message_prioritizes_streamer_messages(self):
         bot = self.make_bot()
-        payload = SimpleNamespace(text="@AnneAuNimouss salut", chatter=SimpleNamespace(name="alice"), broadcaster=SimpleNamespace(name="expevay"), id="m1")
+        payload = SimpleNamespace(text="@AnneAuNimouss salut", chatter=SimpleNamespace(name="alice"), broadcaster=SimpleNamespace(name="streamer"), id="m1")
         viewer_message = QueuedMessage(
             payload=payload,
             text="viewer-msg",
@@ -64,7 +64,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
             payload=payload,
             text="owner-msg",
             clean_viewer_message="owner-msg",
-            author="expevay",
+            author="streamer",
             msg_id="owner-1",
             received_at=101.0,
         )
@@ -130,8 +130,8 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         mock_append_chat_turn,
     ):
         bot = self.make_bot()
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
-        chatter = SimpleNamespace(name="expevay")
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="streamer")
         payload = SimpleNamespace(
             text='@AnneAuNimouss "Mon second est absent"',
             chatter=chatter,
@@ -156,7 +156,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
     ):
         bot = self.make_bot()
         bot.mark_replied = unittest.mock.Mock()
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
         chatter = SimpleNamespace(name="alice")
         payload = SimpleNamespace(
             text='@AnneAuNimouss note que je joue à wow',
@@ -194,7 +194,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         mock_store_memory_turn,
     ):
         bot = self.make_bot()
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
         chatter = SimpleNamespace(name="alice")
         payload = SimpleNamespace(
             text="@AnneAuNimouss tu te souviens de notre discussion ?",
@@ -226,7 +226,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         mock_store_memory_turn,
     ):
         bot = self.make_bot()
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
         chatter = SimpleNamespace(name="alice")
         payload = SimpleNamespace(
             text="@AnneAuNimouss salut",
@@ -244,7 +244,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
             token_for="bot-id",
         )
         _, kwargs = mock_store_memory_turn.call_args
-        self.assertEqual(kwargs["channel"], "expevay")
+        self.assertEqual(kwargs["channel"], "streamer")
         self.assertEqual(kwargs["viewer"], "alice")
         self.assertEqual(kwargs["bot_reply"], "Réponse finale")
         self.assertEqual(kwargs["metadata"]["message_id"], "msg-3")
@@ -266,7 +266,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
     ):
         bot = self.make_bot()
         bot.mark_replied = unittest.mock.Mock()
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
         chatter = SimpleNamespace(name="alice")
         payload = SimpleNamespace(
             text="@AnneAuNimouss pourquoi tu ne veux pas parler ?",
@@ -302,13 +302,13 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bot = self.make_bot()
         bot.chat_memory = {
             "channels": {
-                "expevay": {
+                "streamer": {
                     "global_turns": [],
                     "viewer_turns": {
                         "alice": [
                             {
                                 "timestamp": "2026-03-23T12:00:00+00:00",
-                                "channel": "expevay",
+                                "channel": "streamer",
                                 "viewer": "alice",
                                 "viewer_message": "Mon premier n'est pas haut.",
                                 "bot_reply": "",
@@ -319,7 +319,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 }
             }
         }
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
         chatter = SimpleNamespace(name="alice")
         payload = SimpleNamespace(
             text='@AnneAuNimouss "Mon tout est un mammifère qui vit dans l\'eau." Qui suis-je ?',
@@ -353,14 +353,14 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bot = self.make_bot()
         bot.chat_memory = {
             "channels": {
-                "expevay": {
+                "streamer": {
                     "global_turns": [],
                     "viewer_turns": {
-                        "expevay": [
+                        "streamer": [
                             {
                                 "timestamp": "2026-03-23T12:00:00+00:00",
-                                "channel": "expevay",
-                                "viewer": "expevay",
+                                "channel": "streamer",
+                                "viewer": "streamer",
                                 "viewer_message": "Mon tout est un mammifère qui vit dans l'eau. Qui suis-je ?",
                                 "bot_reply": "Baleine !",
                                 "thread_boundary": "",
@@ -370,8 +370,8 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 }
             }
         }
-        broadcaster = SimpleNamespace(name="expevay", send_message=AsyncMock())
-        chatter = SimpleNamespace(name="expevay")
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="streamer")
         payload = SimpleNamespace(
             text='@AnneAuNimouss Bravo! Bien joué.',
             chatter=chatter,

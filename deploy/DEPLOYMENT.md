@@ -4,7 +4,7 @@
 
 La configuration la plus pragmatique actuellement validee est :
 - API FastAPI locale sur `127.0.0.1:8000`
-- reverse proxy Nginx sur `olala.expevay.net`
+- reverse proxy Nginx sur `memory.example.net`
 - backend `mem0`
 - Qdrant local par `MEM0_QDRANT_PATH`
 - SQLite history locale par `MEM0_HISTORY_DB_PATH`
@@ -55,7 +55,7 @@ curl http://127.0.0.1:8000/health
 curl -X POST http://127.0.0.1:8000/remember \
   -H 'X-API-Key: change-me' \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"twitch:expevay:viewer:alice","text":"test","metadata":{"message_id":"deploy-check-001"}}'
+  -d '{"user_id":"twitch:streamer:viewer:alice","text":"test","metadata":{"message_id":"deploy-check-001"}}'
 ```
 
 ## 3. Installation systemd
@@ -80,8 +80,8 @@ journalctl -u mem0-api -f
 Copier la conf :
 
 ```bash
-sudo cp deploy/nginx/olala.expevay.net.conf /etc/nginx/sites-available/olala.expevay.net.conf
-sudo ln -s /etc/nginx/sites-available/olala.expevay.net.conf /etc/nginx/sites-enabled/olala.expevay.net.conf
+sudo cp deploy/nginx/memory.example.net.conf /etc/nginx/sites-available/memory.example.net.conf
+sudo ln -s /etc/nginx/sites-available/memory.example.net.conf /etc/nginx/sites-enabled/memory.example.net.conf
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -92,7 +92,7 @@ Avec Certbot :
 
 ```bash
 sudo mkdir -p /var/www/certbot
-sudo certbot certonly --webroot -w /var/www/certbot -d olala.expevay.net
+sudo certbot certonly --webroot -w /var/www/certbot -d memory.example.net
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -100,7 +100,7 @@ sudo systemctl reload nginx
 ## 6. Validation publique
 
 ```bash
-curl https://olala.expevay.net/api/memory/health
+curl https://memory.example.net/api/memory/health
 ```
 
 Puis depuis Windows :

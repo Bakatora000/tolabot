@@ -22,7 +22,7 @@ def make_config(**overrides) -> AppConfig:
         "owner_id": "",
         "bot_token": "",
         "refresh_token": "",
-        "channel_name": "expevay",
+        "channel_name": "streamer",
         "ollama_url": "http://localhost:11434/api/chat",
         "default_ollama_model": "qwen3.5:latest",
         "request_timeout_seconds": 90,
@@ -31,7 +31,7 @@ def make_config(**overrides) -> AppConfig:
         "global_cooldown_seconds": 2,
         "user_cooldown_seconds": 8,
         "mem0_enabled": True,
-        "mem0_api_base_url": "https://olala.expevay.net/api/memory",
+        "mem0_api_base_url": "https://memory.example.net/api/memory",
         "mem0_api_key": "secret",
         "mem0_timeout_seconds": 10,
         "mem0_verify_ssl": True,
@@ -44,7 +44,7 @@ def make_config(**overrides) -> AppConfig:
 
 class MemoryClientTests(unittest.TestCase):
     def test_build_mem0_user_id_normalizes_channel_and_viewer(self):
-        self.assertEqual(build_mem0_user_id("Expevay ", " Alice "), "twitch:expevay:viewer:alice")
+        self.assertEqual(build_mem0_user_id("Streamer ", " Alice "), "twitch:streamer:viewer:alice")
 
     def test_is_useful_memory_item_filters_low_value_fragments(self):
         self.assertFalse(is_useful_memory_item(MemorySearchItem(id="1", score=0.8, memory="bonjour")))
@@ -87,14 +87,14 @@ class MemoryClientTests(unittest.TestCase):
         }
         mock_request.return_value = response
 
-        context = get_memory_context(make_config(), "expevay", "alice", "On parlait de quoi déjà ?")
+        context = get_memory_context(make_config(), "streamer", "alice", "On parlait de quoi déjà ?")
 
         self.assertIn("alice: Préfère les amplis compacts.", context["viewer_context"])
         self.assertNotIn("bonjour", context["viewer_context"].lower())
         self.assertEqual(context["global_context"], "aucun")
         self.assertEqual(len(context["items"]), 2)
         _, kwargs = mock_request.call_args
-        self.assertEqual(kwargs["json"]["user_id"], "twitch:expevay:viewer:alice")
+        self.assertEqual(kwargs["json"]["user_id"], "twitch:streamer:viewer:alice")
         self.assertEqual(kwargs["json"]["limit"], 5)
 
     @patch("memory_client.requests.request")
@@ -106,7 +106,7 @@ class MemoryClientTests(unittest.TestCase):
 
         memory_id = store_memory_turn(
             make_config(),
-            channel="expevay",
+            channel="streamer",
             viewer="alice",
             user_message="Salut bot",
             bot_reply="Salut Alice",
@@ -115,8 +115,8 @@ class MemoryClientTests(unittest.TestCase):
 
         self.assertEqual(memory_id, "mem_123")
         _, kwargs = mock_request.call_args
-        self.assertEqual(kwargs["json"]["user_id"], "twitch:expevay:viewer:alice")
-        self.assertEqual(kwargs["json"]["metadata"]["channel"], "expevay")
+        self.assertEqual(kwargs["json"]["user_id"], "twitch:streamer:viewer:alice")
+        self.assertEqual(kwargs["json"]["metadata"]["channel"], "streamer")
         self.assertEqual(kwargs["json"]["metadata"]["viewer"], "alice")
         self.assertEqual(kwargs["json"]["metadata"]["message_id"], "msg-1")
         self.assertIn("Réponse du bot: Salut Alice", kwargs["json"]["text"])
@@ -125,7 +125,7 @@ class MemoryClientTests(unittest.TestCase):
     def test_store_memory_turn_skips_low_value_memory(self, mock_request):
         memory_id = store_memory_turn(
             make_config(),
-            channel="expevay",
+            channel="streamer",
             viewer="alice",
             user_message="bonjour",
             bot_reply="Salut",
@@ -143,7 +143,7 @@ class MemoryClientTests(unittest.TestCase):
         mock_request.return_value = response
 
         with self.assertRaises(MemoryApiError):
-            get_memory_context(make_config(), "expevay", "alice", "test")
+            get_memory_context(make_config(), "streamer", "alice", "test")
 
 
 if __name__ == "__main__":

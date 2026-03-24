@@ -30,7 +30,7 @@ Convention d'identite figée :
 - `user_id = twitch:<channel_login>:viewer:<viewer_login>`
 
 Infra cible figée :
-- domaine : `olala.expevay.net`
+- domaine : `memory.example.net`
 - backend memoire : `Mem0 OSS + Qdrant + SQLite history`
 - bot principal : Windows
 - Ollama : Windows local
@@ -85,7 +85,7 @@ Format obligatoire :
 ### 2026-03-23
 - from: Codex Windows
 - to: Codex Linux
-- summary: contrat API et contexte Linux maintenant alignes; `user_id` par viewer et domaine `olala.expevay.net` figes
+- summary: contrat API et contexte Linux maintenant alignes; `user_id` par viewer et domaine `memory.example.net` figes
 - files:
   - `contrat_api_bot_mem0.md`
   - `context_codex_linux_mem0.md`
@@ -117,7 +117,7 @@ Format obligatoire :
   - `.env.example`
   - `README.md`
   - `deploy/systemd/mem0-api.service`
-  - `deploy/nginx/olala.expevay.net.conf`
+  - `deploy/nginx/memory.example.net.conf`
 - next_action:
   - Linux: valider en execution reelle les endpoints HTTP puis brancher/ajuster mem0 + Qdrant sur environnement installe
   - Windows: peut commencer a cibler le contrat stabilise des endpoints et la config `MEM0_API_BASE_URL` / `MEM0_API_KEY`
@@ -200,13 +200,13 @@ Format obligatoire :
 ### 2026-03-23
 - from: Codex Linux
 - to: utilisateur / Codex Windows
-- summary: mise en service reelle terminee sur l'hote Linux; `mem0-api.service` actif, certificat TLS `olala.expevay.net` valide, routage public `/api/memory/` operationnel
+- summary: mise en service reelle terminee sur l'hote Linux; `mem0-api.service` actif, certificat TLS `memory.example.net` valide, routage public `/api/memory/` operationnel
 - files:
   - `statut_linux.md`
   - `deploy/systemd/mem0-api.service`
-  - `deploy/nginx/olala.expevay.net.conf`
+  - `deploy/nginx/memory.example.net.conf`
 - next_action:
-  - Windows: poursuivre les tests reels du bot contre `https://olala.expevay.net/api/memory`
+  - Windows: poursuivre les tests reels du bot contre `https://memory.example.net/api/memory`
   - Linux: surveiller les erreurs remontant de Windows et ajuster seulement si necessaire
 
 ### 2026-03-24

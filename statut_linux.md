@@ -25,7 +25,7 @@ Etat global Linux :
 - backend `mem0` valide en HTTP reelle
 - depot Git partage en place
 - service `systemd` actif sur l'hote
-- domaine public `https://olala.expevay.net/api/memory/health` operationnel
+- domaine public `https://memory.example.net/api/memory/health` operationnel
 
 Taches Linux :
 
@@ -33,7 +33,7 @@ Taches Linux :
 |---|---|---|
 | L1 | DONE | API FastAPI conforme au contrat pour `/health`, `/search`, `/remember`, `/forget`, `/recent` |
 | L2 | DONE | `mem0ai` + SQLite history + Qdrant local par `path` + `fastembed` valides localement puis en usage reel |
-| L3 | DONE | `olala.expevay.net` sert maintenant le bon certificat TLS et route `/api/memory/` vers l'API |
+| L3 | DONE | `memory.example.net` sert maintenant le bon certificat TLS et route `/api/memory/` vers l'API |
 | L4 | DONE | `systemd`, Nginx et notes de deploiement appliques; service durable actif |
 
 ---
@@ -55,7 +55,7 @@ Backend `mem0` valide :
 - SQLite history valide via `MEM0_HISTORY_DB_PATH`
 - embeddings locaux valides via `fastembed`
 - API HTTP validee sur `/health`, `/remember`, `/search`, `/recent`, `/forget`
-- domaine public valide sur `https://olala.expevay.net/api/memory/health`
+- domaine public valide sur `https://memory.example.net/api/memory/health`
 - service durable valide via `mem0-api.service`
 
 Point pratique observe :
@@ -95,7 +95,7 @@ Decision encore ouverte pour la prod :
 
 - le contrat HTTP est maintenant valide en bout en bout aussi en backend `mem0`
 - Windows peut tester `memory-health` et `run-ollama` contre une API non theorique
-- le routage public attendu est `https://olala.expevay.net/api/memory/...`
+- le routage public attendu est `https://memory.example.net/api/memory/...`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON

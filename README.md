@@ -109,11 +109,11 @@ curl -X POST http://127.0.0.1:8000/remember \
   -H 'X-API-Key: xxxxxxxxxxxxxxxx' \
   -H 'Content-Type: application/json' \
   -d '{
-    "user_id": "twitch:expevay:viewer:alice",
+    "user_id": "twitch:streamer:viewer:alice",
     "text": "Le viewer préfère les amplis compacts.",
     "metadata": {
       "source": "twitch_chat",
-      "channel": "expevay",
+      "channel": "streamer",
       "viewer": "alice",
       "message_id": "abc123"
     }
@@ -127,7 +127,7 @@ curl -X POST http://127.0.0.1:8000/search \
   -H 'X-API-Key: xxxxxxxxxxxxxxxx' \
   -H 'Content-Type: application/json' \
   -d '{
-    "user_id": "twitch:expevay:viewer:alice",
+    "user_id": "twitch:streamer:viewer:alice",
     "query": "De quoi parlait-on à propos des amplis ?",
     "limit": 5
   }'
@@ -149,7 +149,7 @@ Le point pratique important observé ici :
 
 Des gabarits sont fournis dans :
 - `deploy/systemd/mem0-api.service`
-- `deploy/nginx/olala.expevay.net.conf`
+- `deploy/nginx/memory.example.net.conf`
 - `deploy/DEPLOYMENT.md`
 
 Recommendation pragmatique actuelle :

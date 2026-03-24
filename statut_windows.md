@@ -22,7 +22,7 @@ Derniere synthese connue depuis le depot partage :
 - tests cibles Windows OK
 - validation reelle Windows reussie contre l'API Linux
 - configuration `.env` mem0 cote Windows OK
-- `memory-health` OK sur l'URL publique `https://olala.expevay.net/api/memory/health`
+- `memory-health` OK sur l'URL publique `https://memory.example.net/api/memory/health`
 - code source Windows migre dans `windows_bot/` du repo partage
 
 Taches Windows connues :
@@ -74,8 +74,8 @@ Constats finaux :
 
 Validation croisee Linux observee pendant le test Windows :
 - `GET /health` -> `200`
-- `POST /search` -> `200` pour `user_id=twitch:expevay:viewer:expevay`
-- `POST /remember` -> `200` pour `user_id=twitch:expevay:viewer:expevay`
+- `POST /search` -> `200` pour `user_id=twitch:streamer:viewer:streamer`
+- `POST /remember` -> `200` pour `user_id=twitch:streamer:viewer:streamer`
 - insertion Qdrant observee cote Linux
 
 Conclusion cote Windows :

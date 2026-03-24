@@ -42,7 +42,7 @@ Convention d'identite :
 - `user_id = twitch:<channel_login>:viewer:<viewer_login>`
 
 Exemple :
-- `twitch:expevay:viewer:alice`
+- `twitch:streamer:viewer:alice`
 
 API publique attendue :
 - `GET /api/memory/health`
@@ -69,10 +69,10 @@ Etat actuel :
 - TLS valide
 
 URL publique :
-- `https://olala.expevay.net/api/memory`
+- `https://memory.example.net/api/memory`
 
 Healthcheck public valide :
-- `https://olala.expevay.net/api/memory/health`
+- `https://memory.example.net/api/memory/health`
 
 Stack Linux actuellement en service :
 - `mem0ai`
@@ -110,7 +110,7 @@ Etat connu :
 - `memory_service/config.py`
 - `.env.example`
 - `deploy/systemd/mem0-api.service`
-- `deploy/nginx/olala.expevay.net.conf`
+- `deploy/nginx/memory.example.net.conf`
 - `deploy/DEPLOYMENT.md`
 
 ### Suivi Projet
@@ -151,7 +151,7 @@ Note importante :
 ## Incidents Techniques Deja Resolus
 
 - absence initiale de service durable Linux
-- certificat TLS incorrect sur `olala.expevay.net`
+- certificat TLS incorrect sur `memory.example.net`
 - mauvais routage public vers une page HTML AMP
 - alignement corrige du routage public vers `/api/memory/...`
 - chargement `.env` corrige cote Python

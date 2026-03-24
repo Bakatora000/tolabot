@@ -8,7 +8,7 @@ Le but n'est pas de faire tourner le bot Twitch complet sur Linux.
 Le bot Twitch principal tourne sur un PC Windows.
 
 Le serveur Linux doit heberger :
-- un service HTTP expose sur `olala.expevay.net`
+- un service HTTP expose sur `memory.example.net`
 - qui encapsule mem0
 - et qui sert de backend memoire distant pour le bot Windows
 
@@ -56,7 +56,7 @@ Ce serveur doit donc heberger au minimum :
 
 Le domaine retenu pour l'API est :
 
-- `olala.expevay.net`
+- `memory.example.net`
 
 Exposition attendue :
 - reverse proxy HTTPS
@@ -94,7 +94,7 @@ Format retenu :
 
 Exemple :
 
-- `twitch:expevay:viewer:alice`
+- `twitch:streamer:viewer:alice`
 
 En complement, les metadonnees doivent contenir quand utile :
 - `channel`
@@ -284,7 +284,7 @@ Le travail cote Linux doit produire :
 3. une persistance correcte
 4. un deploiement simple sur le serveur
 5. un mode d'execution durable (`systemd`)
-6. une exposition HTTPS sur `olala.expevay.net`
+6. une exposition HTTPS sur `memory.example.net`
 
 ---
 
@@ -332,7 +332,7 @@ Le backend doit :
 - encapsuler mem0 OSS
 - utiliser Qdrant + SQLite history
 - servir une memoire persistante par viewer
-- etre deployable derriere `olala.expevay.net`
+- etre deployable derriere `memory.example.net`
 
 Le zip du bot Windows est la pour contexte d'integration,
 pas pour faire tourner le bot lui-meme sur Linux.
