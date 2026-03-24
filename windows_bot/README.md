@@ -216,8 +216,8 @@ But :
 Exemples :
 
 ```text
-@anneaunimouss pour info, @raptormekhong est feru de defis sur Valheim
-@anneaunimouss note que sarahp79 aime Valheim et Enshrouded
+@anneaunimouss pour info, @viewer_a est feru de defis sur Valheim
+@anneaunimouss note que viewer_b aime Valheim et Enshrouded
 ```
 
 Effet :

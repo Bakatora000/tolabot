@@ -207,10 +207,10 @@ Configuration actuellement validee :
 MEMORY_BACKEND=mem0
 MEM0_HOST=127.0.0.1
 MEM0_PORT=8000
-MEM0_QDRANT_PATH=/home/vhserver/bt/data/qdrant
+MEM0_QDRANT_PATH=/home/appuser/project/data/qdrant
 MEM0_QDRANT_COLLECTION=mem0
 MEM0_QDRANT_ON_DISK=true
-MEM0_HISTORY_DB_PATH=/home/vhserver/bt/data/history.db
+MEM0_HISTORY_DB_PATH=/home/appuser/project/data/history.db
 MEM0_LLM_PROVIDER=lmstudio
 MEM0_LLM_MODEL=dummy-local-model
 MEM0_LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
@@ -233,7 +233,7 @@ Note importante :
 - mauvais routage public vers une page HTML AMP
 - alignement corrige du routage public vers `/api/memory/...`
 - chargement `.env` corrige cote Python
-- unite `systemd` corrigee pour utiliser `/usr/bin/python3` et `PYTHONPATH=/home/vhserver/bt/.deps`
+- unite `systemd` corrigee pour utiliser `/usr/bin/python3` et `PYTHONPATH=/home/appuser/project/.deps`
 
 ---
 

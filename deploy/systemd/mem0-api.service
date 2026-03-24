@@ -5,11 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=vhserver
-Group=vhserver
-WorkingDirectory=/home/vhserver/bt
-EnvironmentFile=/home/vhserver/bt/.env
-Environment=PYTHONPATH=/home/vhserver/bt/.deps
+User=appuser
+Group=appuser
+WorkingDirectory=/home/appuser/project
+EnvironmentFile=/home/appuser/project/.env
+Environment=PYTHONPATH=/home/appuser/project/.deps
 ExecStart=/usr/bin/python3 -m uvicorn main:app --host ${MEM0_HOST} --port ${MEM0_PORT}
 Restart=always
 RestartSec=3

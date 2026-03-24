@@ -35,7 +35,7 @@ def make_config(**overrides) -> AppConfig:
         "admin_api_key": "admin-secret",
         "admin_api_timeout_seconds": 10,
         "admin_ssh_host": "server.example.net",
-        "admin_ssh_user": "vhserver",
+        "admin_ssh_user": "appuser",
         "admin_ssh_local_port": 9000,
         "admin_ssh_remote_port": 8000,
         "admin_ui_host": "127.0.0.1",
@@ -49,7 +49,7 @@ class AdminTunnelTests(unittest.TestCase):
     def test_build_ssh_tunnel_command_uses_expected_ports(self):
         command = build_ssh_tunnel_command(make_config())
         self.assertIn("9000:127.0.0.1:8000", command)
-        self.assertIn("vhserver@server.example.net", command)
+        self.assertIn("appuser@server.example.net", command)
 
     @patch("admin_tunnel.is_local_port_open", side_effect=[False, True, True])
     @patch("admin_tunnel.subprocess.Popen")

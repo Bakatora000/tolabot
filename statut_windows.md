@@ -239,11 +239,11 @@ Triggers supportes :
 - `n'oublie pas que`
 
 Exemple valide :
-- `@anneaunimouss pour info, @raptormekhong est feru de defis sur Valheim`
+- `@anneaunimouss pour info, @viewer_a est feru de defis sur Valheim`
 
 Validation reelle cote Windows :
-- log runtime : `Memoire ciblee : @expevay C'est note pour @raptormekhong.`
-- verification admin/search : souvenir present dans mem0 pour `twitch:streamer:viewer:raptormekhong`
+- log runtime : `Memoire ciblee : @streamer C'est note pour @viewer_a.`
+- verification admin/search : souvenir present dans mem0 pour `twitch:streamer:viewer:viewer_a`
 - metadata attendue :
   - `source=twitch_owner_targeted_memory`
   - `source_author=streamer`

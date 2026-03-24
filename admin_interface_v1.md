@@ -62,7 +62,7 @@ Windows localhost:9000 -> SSH -> Linux 127.0.0.1:8000
 Exemple de commande :
 
 ```bash
-ssh -L 9000:127.0.0.1:8000 vhserver@server
+ssh -L 9000:127.0.0.1:8000 appuser@server
 ```
 
 ---

@@ -64,7 +64,7 @@ ssh -N ^
   -o ServerAliveInterval=30 ^
   -o ServerAliveCountMax=3 ^
   -R 127.0.0.1:11434:127.0.0.1:11434 ^
-  vhserver@linux-host
+  appuser@linux-host
 ```
 
 Point important :
@@ -122,7 +122,7 @@ ssh -N ^
   -o ServerAliveInterval=30 ^
   -o ServerAliveCountMax=3 ^
   -R 127.0.0.1:11434:127.0.0.1:11434 ^
-  vhserver@linux-host
+  appuser@linux-host
 ```
 
 ### 3. Verifier cote Linux

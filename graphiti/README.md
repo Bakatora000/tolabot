@@ -87,8 +87,8 @@ Choix recommande :
 - data dediee sous `graphiti/data/`
 
 Proposition :
-- venv : `/home/vhserver/bt/.venv-graphiti`
-- DB Kuzu : `/home/vhserver/bt/graphiti/data/graphiti.kuzu`
+- venv : `/home/appuser/project/.venv-graphiti`
+- DB Kuzu : `/home/appuser/project/graphiti/data/graphiti.kuzu`
 
 Constat sur cet hote :
 - `python3-venv` n'est pas installe
@@ -142,7 +142,7 @@ Base proposee :
 ### Venv dediee
 
 ```bash
-cd /home/vhserver/bt
+cd /home/appuser/project
 python3 -m venv .venv-graphiti
 source .venv-graphiti/bin/activate
 pip install -r graphiti/requirements.txt
@@ -153,7 +153,7 @@ pip install -r graphiti/requirements.txt
 Si `python3-venv` n'est pas disponible :
 
 ```bash
-cd /home/vhserver/bt
+cd /home/appuser/project
 python3 -m pip install --target graphiti/.deps -r graphiti/requirements.txt
 ```
 
@@ -198,9 +198,9 @@ Voir `graphiti/.env.example`.
 
 Variables recommandees :
 - `GRAPHITI_TELEMETRY_ENABLED=false`
-- `GRAPHITI_KUZU_DB_PATH=/home/vhserver/bt/graphiti/data/graphiti.kuzu`
-- `GRAPHITI_WORKDIR=/home/vhserver/bt/graphiti`
-- `GRAPHITI_IMPORT_DIR=/home/vhserver/bt/graphiti/imports`
+- `GRAPHITI_KUZU_DB_PATH=/home/appuser/project/graphiti/data/graphiti.kuzu`
+- `GRAPHITI_WORKDIR=/home/appuser/project/graphiti`
+- `GRAPHITI_IMPORT_DIR=/home/appuser/project/graphiti/imports`
 
 Variables LLM locales a ajouter plus tard si ingestion activee :
 - `GRAPHITI_LLM_BASE_URL`
@@ -265,9 +265,9 @@ Exemple :
 
 ```json
 {
-  "user_id": "twitch:streamer:viewer:arthii_tv",
+  "user_id": "twitch:streamer:viewer:viewer_a",
   "channel": "streamer",
-  "viewer": "arthii_tv",
+  "viewer": "viewer_a",
   "memories": [
     {
       "id": "mem_xxx",

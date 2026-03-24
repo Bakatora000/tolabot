@@ -53,8 +53,8 @@ class MemoryClientTests(unittest.TestCase):
 
     def test_should_store_in_mem0_keeps_durable_items_and_skips_noise(self):
         self.assertTrue(should_store_in_mem0("je joue aussi sur world of warcraft", "Tu joues aussi à World of Warcraft ?"))
-        self.assertTrue(should_store_in_mem0("n'oublie pas que dame_gaby est un gentil bouledogue français", "Bien noté.", author_is_owner=True))
-        self.assertFalse(should_store_in_mem0("n'oublie pas que dame_gaby est un gentil bouledogue français", "Bien noté.", author_is_owner=False))
+        self.assertTrue(should_store_in_mem0("n'oublie pas que viewer_pet est un gentil bouledogue français", "Bien noté.", author_is_owner=True))
+        self.assertFalse(should_store_in_mem0("n'oublie pas que viewer_pet est un gentil bouledogue français", "Bien noté.", author_is_owner=False))
         self.assertFalse(should_store_in_mem0("bonjour", "Salut"))
         self.assertFalse(should_store_in_mem0("dit moi le meilleur jeu de 2025", "Valheim"))
         self.assertFalse(should_store_in_mem0("Bravo! Bien joué.", "Merci !"))

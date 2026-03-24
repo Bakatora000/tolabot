@@ -51,7 +51,7 @@ python3 homegraph/inspect_db.py
 Depuis un export mem0 viewer :
 
 ```bash
-python3 homegraph/build_viewer_payload.py graphiti/imports/arthii_tv.json
+python3 homegraph/build_viewer_payload.py graphiti/imports/viewer_a.json
 ```
 
 Le fichier de sortie est ecrit sous :

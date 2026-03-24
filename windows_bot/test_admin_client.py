@@ -40,7 +40,7 @@ def make_config(**overrides) -> AppConfig:
         "admin_api_key": "admin-secret",
         "admin_api_timeout_seconds": 10,
         "admin_ssh_host": "server",
-        "admin_ssh_user": "vhserver",
+        "admin_ssh_user": "appuser",
         "admin_ssh_local_port": 9000,
         "admin_ssh_remote_port": 9000,
         "admin_ui_host": "127.0.0.1",

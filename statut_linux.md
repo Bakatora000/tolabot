@@ -108,8 +108,8 @@ Graphiti V1 valide localement :
 - `.venv-graphiti` creee et dependencies installees
 - `python graphiti/validate_local_kuzu.py` : OK
 - `graphiti/data/graphiti.kuzu` creee
-- `python graphiti/export_viewer_memories.py twitch:expevay:viewer:arthii_tv` : OK
-- `python graphiti/import_viewer_memories.py graphiti/imports/arthii_tv.json --dry-run` : OK
+- `python graphiti/export_viewer_memories.py twitch:streamer:viewer:viewer_a` : OK
+- `python graphiti/import_viewer_memories.py graphiti/imports/viewer_a.json --dry-run` : OK
 - reverse tunnel SSH Windows -> Linux valide :
   - Linux atteint `127.0.0.1:11434`
   - `curl /api/tags` et `/v1/models` : OK

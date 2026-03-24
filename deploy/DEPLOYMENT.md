@@ -15,7 +15,7 @@ Cette approche evite un service Qdrant separe pour le premier deploiement.
 ## 1. Preparation du projet
 
 ```bash
-cd /home/vhserver/bt
+cd /home/appuser/project
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -29,10 +29,10 @@ MEM0_API_KEY=change-me
 MEM0_HOST=127.0.0.1
 MEM0_PORT=8000
 MEMORY_BACKEND=mem0
-MEM0_QDRANT_PATH=/home/vhserver/bt/data/qdrant
+MEM0_QDRANT_PATH=/home/appuser/project/data/qdrant
 MEM0_QDRANT_COLLECTION=mem0
 MEM0_QDRANT_ON_DISK=true
-MEM0_HISTORY_DB_PATH=/home/vhserver/bt/data/history.db
+MEM0_HISTORY_DB_PATH=/home/appuser/project/data/history.db
 MEM0_LLM_PROVIDER=lmstudio
 MEM0_LLM_MODEL=dummy-local-model
 MEM0_LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1
@@ -44,7 +44,7 @@ MEM0_EMBEDDER_DIMS=384
 ## 2. Test local avant systemd
 
 ```bash
-source /home/vhserver/bt/.venv/bin/activate
+source /home/appuser/project/.venv/bin/activate
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 

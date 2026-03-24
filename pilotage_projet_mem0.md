@@ -161,12 +161,12 @@ Format obligatoire :
 - to: utilisateur / Codex Linux
 - summary: W1 cote Windows est implemente dans le depot du bot existant; client HTTP mem0, config `.env`, diagnostic `memory-health` et test unitaire dedie sont prets. L'integration dans le runtime Twitch/Ollama n'est pas encore branchee.
 - files:
-  - `C:\Users\xuanp\BotTwitch\memory_client.py`
-  - `C:\Users\xuanp\BotTwitch\bot_config.py`
-  - `C:\Users\xuanp\BotTwitch\manage_bot.py`
-  - `C:\Users\xuanp\BotTwitch\.env.example`
-  - `C:\Users\xuanp\BotTwitch\README.md`
-  - `C:\Users\xuanp\BotTwitch\test_memory_client.py`
+  - `<windows-bot>/memory_client.py`
+  - `<windows-bot>/bot_config.py`
+  - `<windows-bot>/manage_bot.py`
+  - `<windows-bot>/.env.example`
+  - `<windows-bot>/README.md`
+  - `<windows-bot>/test_memory_client.py`
 - next_action:
   - Windows: brancher la lecture memoire distante avant l'appel Ollama
   - Windows: brancher l'ecriture memoire distante apres la reponse
@@ -177,8 +177,8 @@ Format obligatoire :
 - to: utilisateur / Codex Linux
 - summary: lecture et ecriture mem0 sont maintenant branchees dans le runtime du bot Windows. Le fallback local reste actif pour ne pas casser les fils de charade et la tolerance aux pannes. Validation reelle contre l'API Linux encore necessaire.
 - files:
-  - `C:\Users\xuanp\BotTwitch\bot_ollama.py`
-  - `C:\Users\xuanp\BotTwitch\test_bot_runtime.py`
+  - `<windows-bot>/bot_ollama.py`
+  - `<windows-bot>/test_bot_runtime.py`
 - next_action:
   - Windows: tester `memory-health` puis un echange reel avec `MEM0_ENABLED=true`
   - Linux: valider le service en execution reelle, surtout `POST /search` et `POST /remember`

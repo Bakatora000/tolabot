@@ -123,14 +123,14 @@ Exemples d'entrees mem0 :
 
 - `Le viewer joue aussi à World of Warcraft.`
   - entites :
-    - Viewer(karramelle)
+    - Viewer(viewer_a)
     - Game(World of Warcraft)
   - relation :
     - `PLAYS`
 
 - `Le viewer dit être un builder sur Satisfactory.`
   - entites :
-    - Viewer(arthii_tv)
+    - Viewer(viewer_b)
     - Game(Satisfactory)
     - Topic(builder)
   - relations :
