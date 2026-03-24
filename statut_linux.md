@@ -47,7 +47,9 @@ Taches Linux :
 | G5 | STANDBY | compatibilite Graphiti/Kuzu corrigee, mais ingestion trop lente avec `gemma:7b`; chantier mis en veille |
 | H1 | DONE | cadrage du graphe metier maison base sur `mem0 + GPT + SQLite` |
 | H2 | DONE | schema SQLite V1 et scripts Linux minimaux poses dans `homegraph/` |
-| H3 | IN_PROGRESS | pipeline maison `mem0 export -> payload GPT` amorce; merge SQLite reste a implementer |
+| H3 | DONE | pipeline maison `mem0 export -> payload GPT` amorce |
+| H4 | DONE | merge initial `GPT JSON -> SQLite` implemente avec traçabilite `graph_jobs` |
+| H5 | IN_PROGRESS | builder `SQLite -> prompt context` reste a implementer |
 
 ---
 
@@ -185,6 +187,8 @@ Decision admin V1 retenue :
 - preparer un premier pipeline `mem0 -> GPT -> SQLite`
 - implementer le mergeur `GPT JSON -> SQLite`
 - definir ensuite le builder `SQLite -> prompt context`
+- definir le prompt GPT de production
+- implementer le builder `SQLite -> prompt context`
 
 ---
 
@@ -212,6 +216,7 @@ Decision admin V1 retenue :
   - graphe metier maison
   - doc de cadrage : `graphe_metier_maison_v1.md`
   - socle technique Linux : `homegraph/`
+  - mergeur initial : `homegraph/merge_extraction.py`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :
   - code HTTP
   - body JSON

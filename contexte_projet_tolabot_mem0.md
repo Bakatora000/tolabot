@@ -112,6 +112,7 @@ Graphiti V1 locale :
   - initialisation DB
   - inspection DB
   - payload viewer pour extraction GPT
+  - merge GPT JSON -> SQLite
 
 ### Windows
 
@@ -156,6 +157,8 @@ Etat connu :
 - `homegraph/init_db.py`
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
+- `homegraph/merge_extraction.py`
+- `homegraph/extraction_output_example.json`
 
 ### Suivi Projet
 

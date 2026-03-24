@@ -15,6 +15,7 @@ Disponible :
 - script d'initialisation de base
 - script d'inspection simple
 - script de construction d'un payload viewer pour extraction GPT
+- script de merge `GPT JSON -> SQLite`
 
 ## Fichiers
 
@@ -22,6 +23,8 @@ Disponible :
 - `homegraph/init_db.py`
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
+- `homegraph/merge_extraction.py`
+- `homegraph/extraction_output_example.json`
 
 ## Initialisation
 
@@ -49,8 +52,27 @@ Le fichier de sortie est ecrit sous :
 homegraph/payloads/<viewer>_gpt_payload.json
 ```
 
+## Format D'Extraction GPT Attendu
+
+Exemple :
+
+```text
+homegraph/extraction_output_example.json
+```
+
+## Merge D'Une Extraction GPT
+
+```bash
+python3 homegraph/merge_extraction.py homegraph/extraction_output_example.json --model-name gpt-5
+```
+
+Ce script :
+- upsert le profil viewer
+- upsert les facts
+- upsert les relations
+- trace l'operation dans `graph_jobs` et `graph_job_items`
+
 ## Prochaine Etape
 
 - definir le prompt GPT exact
-- implementer le merge `JSON -> SQLite`
-- produire ensuite un builder `SQLite -> prompt context`
+- produire un builder `SQLite -> prompt context`

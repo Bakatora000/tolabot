@@ -1,0 +1,43 @@
+{
+  "viewer_id": "twitch:streamer:viewer:alice",
+  "channel": "streamer",
+  "viewer_login": "alice",
+  "display_name": "Alice",
+  "summary_short": "Viewer regulier qui parle souvent de jeux de construction et d'optimisation.",
+  "summary_long": "Alice revient souvent sur les jeux d'automatisation, prefere les builds efficaces et semble apprecier les discussions techniques.",
+  "facts": [
+    {
+      "kind": "plays_game",
+      "value": "Satisfactory",
+      "confidence": 0.92,
+      "status": "active",
+      "source_memory_ids": ["mem_1", "mem_2"],
+      "source_excerpt": "J'adore optimiser mes usines sur Satisfactory."
+    },
+    {
+      "kind": "build_style",
+      "value": "prefere les builds efficaces",
+      "confidence": 0.81,
+      "status": "active",
+      "source_memory_ids": ["mem_2"]
+    }
+  ],
+  "relations": [
+    {
+      "target_type": "game",
+      "target_id_or_value": "Satisfactory",
+      "relation_type": "plays",
+      "confidence": 0.92,
+      "source_memory_ids": ["mem_1", "mem_2"]
+    },
+    {
+      "target_type": "topic",
+      "target_id_or_value": "automation",
+      "relation_type": "likes",
+      "confidence": 0.74,
+      "source_memory_ids": ["mem_3"]
+    }
+  ],
+  "conflicts": [],
+  "needs_human_review": []
+}

@@ -323,9 +323,15 @@ Etat :
 
 Ajouter un extracteur `GPT -> JSON structure`
 
+Etat :
+- format d'exemple pose dans `homegraph/extraction_output_example.json`
+
 ### M4
 
 Ajouter un mergeur `JSON -> SQLite`
+
+Etat :
+- version initiale disponible dans `homegraph/merge_extraction.py`
 
 ### M5
 
