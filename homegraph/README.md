@@ -15,6 +15,8 @@ Disponible :
 - script d'initialisation de base
 - script d'inspection simple
 - script de construction d'un payload viewer pour extraction GPT
+- template de prompt GPT d'extraction
+- script de construction du prompt GPT
 - script de merge `GPT JSON -> SQLite`
 - script de construction du contexte viewer compact
 
@@ -24,10 +26,13 @@ Disponible :
 - `homegraph/init_db.py`
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
+- `homegraph/extraction_prompt_v1.md`
+- `homegraph/build_extraction_prompt.py`
 - `homegraph/merge_extraction.py`
 - `homegraph/extraction_output_example.json`
 - `homegraph/build_viewer_context.py`
 - `homegraph/viewer_context_contract_v1.md`
+- `homegraph/workflow_v1.md`
 
 ## Initialisation
 
@@ -63,6 +68,18 @@ Exemple :
 homegraph/extraction_output_example.json
 ```
 
+## Construction Du Prompt GPT
+
+```bash
+python3 homegraph/build_extraction_prompt.py homegraph/payloads/alice_gpt_payload.json
+```
+
+Le prompt reutilise :
+
+```text
+homegraph/extraction_prompt_v1.md
+```
+
 ## Merge D'Une Extraction GPT
 
 ```bash
@@ -93,5 +110,5 @@ homegraph/viewer_context_contract_v1.md
 
 ## Prochaine Etape
 
-- definir le prompt GPT exact
+- automatiser eventuellement l'appel GPT
 - brancher l'appel cote Windows

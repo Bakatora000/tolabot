@@ -325,6 +325,8 @@ Ajouter un extracteur `GPT -> JSON structure`
 
 Etat :
 - format d'exemple pose dans `homegraph/extraction_output_example.json`
+- prompt V1 pose dans `homegraph/extraction_prompt_v1.md`
+- generateur de prompt pose dans `homegraph/build_extraction_prompt.py`
 
 ### M4
 

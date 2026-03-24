@@ -52,6 +52,7 @@ Taches Linux :
 | H5 | DONE | builder `SQLite -> prompt context` implemente avec contrat V1 fige |
 | H6 | DONE | endpoint admin local `GET /admin/homegraph/users/{user_id}/context` ajoute cote Linux |
 | H7 | DONE | qualite du `text_block` Homegraph durcie pour eviter placeholders et blocs trop pauvres |
+| H8 | DONE | workflow reproductible `mem0 -> payload -> prompt GPT -> merge -> context` documente et outille |
 
 ---
 
@@ -196,6 +197,7 @@ Decision admin V1 retenue :
 - brancher ensuite une nouvelle source de contexte cote bot Windows
 - redemarrer `mem0-api` sur l'hote pour charger le nouvel endpoint admin Homegraph
 - surveiller les retours Windows sur la qualite reelle du `text_block`
+- automatiser si besoin l'appel GPT pour eviter l'etape manuelle
 
 ---
 

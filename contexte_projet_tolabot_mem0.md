@@ -112,6 +112,7 @@ Graphiti V1 locale :
   - initialisation DB
   - inspection DB
   - payload viewer pour extraction GPT
+  - prompt GPT reproductible
   - merge GPT JSON -> SQLite
   - builder contexte viewer compact
   - endpoint admin local pour recuperer ce contexte
@@ -160,10 +161,13 @@ Etat connu :
 - `homegraph/init_db.py`
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
+- `homegraph/extraction_prompt_v1.md`
+- `homegraph/build_extraction_prompt.py`
 - `homegraph/merge_extraction.py`
 - `homegraph/extraction_output_example.json`
 - `homegraph/build_viewer_context.py`
 - `homegraph/viewer_context_contract_v1.md`
+- `homegraph/workflow_v1.md`
 - `GET /admin/homegraph/users/{user_id}/context`
 
 ### Suivi Projet
