@@ -228,6 +228,28 @@ Decision admin V1 retenue :
   - import `--dry-run` valide
   - reverse tunnel Windows -> Linux valide
   - Ollama Windows vu depuis Linux
+
+---
+
+## Point De Reprise Session
+
+Dernier commit Linux pousse :
+- `920d982` — `Add heuristic homegraph viewer bootstrap`
+
+Etat de reprise recommande :
+- la priorite est maintenant le tuning `homegraph` viewer-par-viewer
+- la chaine produit Windows -> admin tunnel -> Homegraph -> prompt bot est validee
+- trois viewers faibles ont ete debloques localement via bootstrap heuristique :
+  - `karramelle`
+  - `arthii_tv`
+  - `raptormekhong`
+- un viewer reste faible :
+  - `sarahp79`
+
+Point d'attention :
+- la matiere bootstrappee est locale a `homegraph.sqlite3`
+- elle reste disponible sur l'hote Linux tant que la base n'est pas purgee
+- elle n'apparait pas dans Git, seul le code de bootstrap y est versionne
   - import reel demarre
 - blocage restant Graphiti :
   - performance d'ingestion insuffisante avec `gemma:7b`

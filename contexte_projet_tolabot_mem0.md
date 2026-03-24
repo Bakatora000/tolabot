@@ -142,6 +142,33 @@ Etat connu :
   - local general
 - une voie de memoire ciblee reservee au streamer existe maintenant cote Windows pour injecter un fait durable sur un viewer cible directement dans mem0
 
+### Point De Reprise 2026-03-24 Soir
+
+Etat de reprise recommande :
+- `homegraph` est maintenant la voie produit principale pour enrichir le prompt du bot
+- l'integration runtime Windows de `homegraph` est validee
+- la priorite actuelle n'est plus l'architecture, mais l'alimentation qualitative viewer-par-viewer cote Linux
+
+Dernier jalon Linux pousse :
+- commit `920d982` : bootstrap heuristique `homegraph` depuis exports mem0
+
+Etat viewer observe apres bootstrap local Linux :
+- `twitch:expevay:viewer:expevay` : contexte utile
+- `twitch:expevay:viewer:karramelle` : `stale=false`, `text_block` utile
+- `twitch:expevay:viewer:arthii_tv` : `stale=false`, `text_block` utile
+- `twitch:expevay:viewer:raptormekhong` : `stale=false`, `text_block` utile
+- `twitch:expevay:viewer:sarahp79` : `stale=false`, mais `text_block` encore vide faute de matiere suffisante
+
+Important :
+- les donnees bootstrappees vivent dans `homegraph.sqlite3` sur l'hote Linux
+- elles ne sont pas versionnees dans Git
+- le code et la documentation du bootstrap, eux, sont bien pousses dans le depot partage
+
+Point de reprise recommande pour demain :
+- observer les nouveaux retours Windows viewer-par-viewer
+- corriger les formulations Homegraph encore trop brutes si besoin
+- enrichir ou automatiser progressivement l'alimentation Linux des viewers faibles
+
 ---
 
 ## Fichiers Importants
