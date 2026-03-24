@@ -95,7 +95,27 @@ Graphiti V1 locale :
 - `graphiti/validate_local_kuzu.py` : OK
 - export mem0 viewer -> JSON : OK
 - import Graphiti `--dry-run` : OK
-- import reel encore bloque faute de provider LLM/embedder joignable depuis Linux
+- reverse tunnel SSH Windows -> Linux vers Ollama : OK
+- import Graphiti reel declenche via Ollama Windows : OK cote connectique
+- compatibilite locale Graphiti/Kuzu corrigee dans l'importeur
+- performance d'ingestion encore insuffisante avec `gemma:7b`, meme sur `--limit 1`
+- Graphiti passe donc en veille pour la voie produit principale
+- voie prioritaire retenue :
+  - graphe metier maison
+  - memoire source = `mem0`
+  - extraction semantique = GPT
+  - stockage = SQLite structuree
+- premiere brique maison deja posee :
+  - schema SQLite V1
+  - initialisation DB
+  - inspection DB
+  - payload viewer pour extraction GPT
+  - prompt GPT reproductible
+  - merge GPT JSON -> SQLite
+  - builder contexte viewer compact
+  - endpoint admin local pour recuperer ce contexte
+  - durcissement qualite du `text_block` pour reduire les cas `too_short` / `low_value` / `empty`
+  - bootstrap heuristique local depuis exports mem0 pour alimenter rapidement certains viewers avant l'automatisation GPT complete
 
 ### Windows
 

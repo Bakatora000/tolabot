@@ -53,6 +53,7 @@ Taches Linux :
 | H6 | DONE | endpoint admin local `GET /admin/homegraph/users/{user_id}/context` ajoute cote Linux |
 | H7 | DONE | qualite du `text_block` Homegraph durcie pour eviter placeholders et blocs trop pauvres |
 | H8 | DONE | workflow reproductible `mem0 -> payload -> prompt GPT -> merge -> context` documente et outille |
+| H9 | DONE | bootstrap heuristique local depuis exports mem0 pour debloquer des viewers faibles sans attendre l'automatisation GPT complete |
 
 ---
 
@@ -148,6 +149,14 @@ Decision Graphiti actuelle :
   - port local Linux `127.0.0.1:11434`
   - usage uniquement pendant les sessions d'import Graphiti
 
+Bootstrap Homegraph local constate :
+- `karramelle`, `arthii_tv` et `raptormekhong` ont ete debloques localement via un bootstrap heuristique base sur les exports mem0
+- ces viewers retournent maintenant `stale=false` et un `text_block` non vide via le builder Homegraph local
+- `sarahp79` reste un cas faible :
+  - profil present et non stale
+  - mais matiere encore trop pauvre pour produire un `text_block` utile
+- les donnees bootstrappees restent locales dans `homegraph.sqlite3` et ne sont pas versionnees dans Git
+
 ---
 
 ## Decision Technique Provisoire
@@ -198,6 +207,7 @@ Decision admin V1 retenue :
 - redemarrer `mem0-api` sur l'hote pour charger le nouvel endpoint admin Homegraph
 - surveiller les retours Windows sur la qualite reelle du `text_block`
 - automatiser si besoin l'appel GPT pour eviter l'etape manuelle
+- ameliorer encore les heuristiques Homegraph pour les viewers faibles ou tres bruites
 
 ---
 

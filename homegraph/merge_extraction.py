@@ -311,13 +311,15 @@ def validate_payload(payload: dict[str, Any]) -> str:
     return viewer_id
 
 
-def main() -> None:
-    args = parse_args()
-    input_path = Path(args.input_path)
-    payload = json.loads(input_path.read_text(encoding="utf-8"))
+def merge_payload(
+    payload: dict[str, Any],
+    *,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    source_ref: str | None = None,
+    model_name: str | None = None,
+) -> dict[str, Any]:
     viewer_id = validate_payload(payload)
-
-    db_path = init_db(Path(args.db))
+    db_path = init_db(Path(db_path))
     now = utc_now()
 
     conn = sqlite3.connect(db_path)
@@ -326,8 +328,8 @@ def main() -> None:
         job_id = create_job(
             conn,
             viewer_id=viewer_id,
-            source_ref=args.source_ref or str(input_path),
-            model_name=args.model_name,
+            source_ref=source_ref,
+            model_name=model_name,
             now=now,
         )
         try:
@@ -354,9 +356,42 @@ def main() -> None:
     finally:
         conn.close()
 
+    return {
+        "viewer_id": viewer_id,
+        "facts": len(payload.get("facts", [])),
+        "relations": len(payload.get("relations", [])),
+        "db_path": str(db_path),
+    }
+
+
+def merge_file(
+    input_path: Path | str,
+    *,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    source_ref: str | None = None,
+    model_name: str | None = None,
+) -> dict[str, Any]:
+    resolved_input = Path(input_path)
+    payload = json.loads(resolved_input.read_text(encoding="utf-8"))
+    return merge_payload(
+        payload,
+        db_path=db_path,
+        source_ref=source_ref or str(resolved_input),
+        model_name=model_name,
+    )
+
+
+def main() -> None:
+    args = parse_args()
+    result = merge_file(
+        args.input_path,
+        db_path=args.db,
+        source_ref=args.source_ref or str(Path(args.input_path)),
+        model_name=args.model_name,
+    )
     print(
-        f"homegraph_merge_ok viewer_id={viewer_id} facts={len(payload.get('facts', []))} "
-        f"relations={len(payload.get('relations', []))} db={db_path}"
+        f"homegraph_merge_ok viewer_id={result['viewer_id']} facts={result['facts']} "
+        f"relations={result['relations']} db={result['db_path']}"
     )
 
 

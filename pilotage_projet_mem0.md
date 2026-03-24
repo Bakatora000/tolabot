@@ -56,6 +56,13 @@ Etat courant synthetique :
 - Linux/Windows : Homegraph devient la voie produit principale pour enrichir les prompts avec un contexte viewer compact
 - Windows : integration runtime Homegraph validee en reel via le tunnel admin et fallback `mem0`
 - Windows : memoire ciblee streamer -> viewer cible validee en reel, avec ecriture directe dans mem0
+- Linux : Graphiti V1 locale validee jusqu'au premier import reel via Ollama Windows batch; chantier maintenant mis en veille
+- Linux : nouvelle voie prioritaire ouverte pour un graphe metier maison `mem0 + GPT + SQLite`
+- Linux : socle `homegraph/` deja pose avec schema SQLite V1 et payload viewer pour extraction GPT
+- Linux : bootstrap heuristique local depuis mem0 deja utilise pour debloquer plusieurs viewers faibles (`karramelle`, `arthii_tv`, `raptormekhong`), avec un cas encore faible (`sarahp79`)
+- Linux/Windows : Homegraph devient la voie produit principale pour enrichir les prompts avec un contexte viewer compact
+- Windows : integration runtime Homegraph validee en reel via le tunnel admin et fallback `mem0`
+- Windows : memoire ciblee streamer -> viewer cible validee en reel, avec ecriture directe dans mem0
 
 ---
 

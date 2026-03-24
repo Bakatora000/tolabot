@@ -19,6 +19,8 @@ __pycache__/
 data/
 graphiti/data/*.kuzu
 graphiti/imports/*.json
+homegraph/payloads/*.json
+homegraph/payloads/*.txt
 *.db
 *.sqlite
 *.sqlite3

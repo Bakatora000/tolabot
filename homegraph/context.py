@@ -96,6 +96,10 @@ def fact_to_phrase(kind: str, value: str) -> str:
     normalized = normalize_phrase(value)
     if not normalized:
         return ""
+    if kind == "recurring_topic":
+        if normalized.startswith("revient ") or normalized.startswith("parle "):
+            return normalized
+        return f"parle souvent de {value}"
     mappings = {
         "plays_game": f"joue souvent a {value}",
         "likes_game": f"apprecie {value}",
@@ -103,7 +107,6 @@ def fact_to_phrase(kind: str, value: str) -> str:
         "plays_role": f"joue plutot en tant que {normalized}",
         "build_style": normalized,
         "personality_trait": normalized,
-        "recurring_topic": f"parle souvent de {normalized}",
         "social_relation": normalized,
         "stream_context": normalized,
     }
