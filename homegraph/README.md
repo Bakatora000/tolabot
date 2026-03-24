@@ -16,6 +16,7 @@ Disponible :
 - script d'inspection simple
 - script de construction d'un payload viewer pour extraction GPT
 - script de merge `GPT JSON -> SQLite`
+- script de construction du contexte viewer compact
 
 ## Fichiers
 
@@ -25,6 +26,8 @@ Disponible :
 - `homegraph/build_viewer_payload.py`
 - `homegraph/merge_extraction.py`
 - `homegraph/extraction_output_example.json`
+- `homegraph/build_viewer_context.py`
+- `homegraph/viewer_context_contract_v1.md`
 
 ## Initialisation
 
@@ -72,7 +75,23 @@ Ce script :
 - upsert les relations
 - trace l'operation dans `graph_jobs` et `graph_job_items`
 
+## Construction Du Contexte Viewer Compact
+
+```bash
+python3 homegraph/build_viewer_context.py --viewer-id twitch:streamer:viewer:alice
+```
+
+Sortie :
+- JSON sur stdout
+- contient un champ `text_block` directement injectable dans le prompt
+
+Le contrat est documente ici :
+
+```text
+homegraph/viewer_context_contract_v1.md
+```
+
 ## Prochaine Etape
 
 - definir le prompt GPT exact
-- produire un builder `SQLite -> prompt context`
+- brancher l'appel cote Windows

@@ -337,6 +337,10 @@ Etat :
 
 Ajouter un builder `SQLite -> prompt context`
 
+Etat :
+- version initiale disponible dans `homegraph/build_viewer_context.py`
+- contrat fige dans `homegraph/viewer_context_contract_v1.md`
+
 ### M6
 
 Ajouter la visualisation/edition minimale dans l'admin UI Windows
