@@ -68,6 +68,11 @@ Notes :
 - `MEM0_ADMIN_KEY` est la cle d'auth admin distincte de `MEM0_API_KEY`
 - `ADMIN_SSH_HOST` et `ADMIN_SSH_USER` servent a ouvrir le tunnel SSH
 - le tunnel V1 attendu est `localhost:9000 -> SSH -> 127.0.0.1:8000`
+- `OPENAI_REVIEW_ENABLED=true` active l'analyse de souvenirs via OpenAI
+- `OPENAI_API_KEY` est la cle API OpenAI
+- `OPENAI_REVIEW_MODEL=gpt-5-mini` est un bon choix pour une revue structuree a cout modere
+- `OPENAI_REVIEW_MAX_RECORDS` limite le nombre de souvenirs envoyes a l'analyse pour reduire les tokens
+- `OPENAI_REVIEW_TIMEOUT_SECONDS=90` laisse plus de marge pour les exports plus gros
 
 ## Generation du token Twitch
 
@@ -150,6 +155,30 @@ Lancer l'UI admin locale :
 ```powershell
 py .\manage_bot.py run-admin-ui
 ```
+
+Dans l'UI admin, les actions suivantes existent maintenant :
+- `Exporter ce viewer` : export brut complet
+- `Exporter pour revue` : export compact optimise tokens
+- `Analyser avec GPT` : analyse structuree via OpenAI
+- `Purger ce viewer`
+- `Valider` / `Refuser` : staging visuel des propositions de revue
+- `Commit` : applique en lot uniquement les propositions acceptees
+
+Workflow review actuel :
+- selection d'un viewer
+- export brut ou export compact `review`
+- analyse GPT avec severite reglable
+- validation admin visuelle proposition par proposition
+- `Commit` global pour appliquer les `delete` / `rewrite`
+
+Actions appliquees au commit :
+- `delete` : suppression de la memoire cible
+- `rewrite` : creation du nouveau souvenir puis suppression de l'ancien
+- `keep` / `review` : aucune mutation backend
+
+Limites volontaires du POC :
+- pas d'action `merge` pour le moment
+- `OPENAI_REVIEW_MAX_RECORDS=15` a `20` recommande pour limiter latence et tokens
 
 Lister les modeles Ollama detectes :
 

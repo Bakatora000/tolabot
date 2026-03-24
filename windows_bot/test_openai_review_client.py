@@ -1,0 +1,75 @@
+import unittest
+
+from bot_config import AppConfig
+from openai_review_client import build_review_export
+
+
+def make_config(**overrides) -> AppConfig:
+    base = {
+        "client_id": "",
+        "client_secret": "",
+        "bot_id": "",
+        "owner_id": "",
+        "bot_token": "",
+        "refresh_token": "",
+        "channel_name": "streamer",
+        "ollama_url": "http://localhost:11434/api/chat",
+        "default_ollama_model": "qwen3.5:latest",
+        "request_timeout_seconds": 90,
+        "chat_memory_ttl_hours": 10,
+        "debug_chat_memory": False,
+        "global_cooldown_seconds": 2,
+        "user_cooldown_seconds": 8,
+        "mem0_enabled": False,
+        "mem0_api_base_url": "",
+        "mem0_api_key": "",
+        "mem0_timeout_seconds": 10,
+        "mem0_verify_ssl": True,
+        "mem0_context_limit": 5,
+        "mem0_fallback_local": True,
+        "message_queue_max_size": 6,
+        "message_queue_max_age_seconds": 25,
+        "admin_ui_enabled": True,
+        "admin_api_local_url": "http://127.0.0.1:9000",
+        "admin_api_key": "admin-secret",
+        "admin_api_timeout_seconds": 10,
+        "admin_ssh_host": "server",
+        "admin_ssh_user": "vhserver",
+        "admin_ssh_local_port": 9000,
+        "admin_ssh_remote_port": 8000,
+        "admin_ui_host": "127.0.0.1",
+        "admin_ui_port": 9100,
+        "openai_review_enabled": True,
+        "openai_api_key": "sk-test",
+        "openai_review_model": "gpt-5-mini",
+        "openai_review_timeout_seconds": 60,
+        "openai_review_max_records": 2,
+    }
+    base.update(overrides)
+    return AppConfig(**base)
+
+
+class OpenAIReviewClientTests(unittest.TestCase):
+    def test_build_review_export_compacts_payload(self):
+        export_payload = {
+            "export": {
+                "user_id": "twitch:streamer:viewer:alice",
+                "count": 3,
+                "records": [
+                    {"id": "1", "memory": "  bonjour   Réponse du bot: salut  ", "metadata": {"viewer": "alice"}},
+                    {"id": "2", "memory": "je joue aussi sur world of warcraft"},
+                    {"id": "3", "memory": "ignored because max records is 2"},
+                ],
+            }
+        }
+
+        compact = build_review_export(make_config(), export_payload)
+
+        self.assertEqual(compact["viewer"], "alice")
+        self.assertEqual(compact["user_id"], "twitch:streamer:viewer:alice")
+        self.assertEqual(len(compact["records"]), 2)
+        self.assertEqual(compact["records"][0], {"id": "1", "text": "bonjour Réponse du bot: salut"})
+
+
+if __name__ == "__main__":
+    unittest.main()

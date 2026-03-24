@@ -15,53 +15,6 @@ Il parle uniquement a l'API HTTP Linux.
 
 ---
 
-## Schema Global
-
-```mermaid
-flowchart LR
-    subgraph TW["Twitch"]
-        CHAT["Chat Twitch"]
-    end
-
-    subgraph WIN["PC Windows"]
-        BOT["Bot Twitch Windows\nTwitchIO / EventSub"]
-        OLLAMA["Ollama local"]
-        LOCALMEM["Memoire locale courte\nspecialisee"]
-        UI["UI admin locale"]
-        TUNNEL["Tunnel SSH local\n127.0.0.1:9000"]
-    end
-
-    subgraph LNX["Serveur Linux"]
-        NGINX["Nginx + TLS\nolala.expevay.net"]
-        API["mem0-api FastAPI\n127.0.0.1:8000"]
-        PUB["Routes publiques\n/health /search /remember /forget /recent"]
-        ADM["Routes admin locales\n/admin/*"]
-        BACKEND["memory_service / backend mem0"]
-        QDRANT["Qdrant local\n./data/qdrant"]
-        SQLITE["SQLite history\n./data/history.db"]
-        EMBED["fastembed"]
-    end
-
-    CHAT --> BOT
-    BOT --> OLLAMA
-    BOT --> LOCALMEM
-
-    BOT -->|"HTTPS public\n/api/memory/*"| NGINX
-    NGINX --> API
-    API --> PUB
-    API --> ADM
-    API --> BACKEND
-
-    BACKEND --> QDRANT
-    BACKEND --> SQLITE
-    BACKEND --> EMBED
-
-    UI --> TUNNEL
-    TUNNEL -->|"SSH port forward\n127.0.0.1:9000 -> 127.0.0.1:8000"| API
-```
-
----
-
 ## Depot Git
 
 Depot partage :
@@ -76,6 +29,7 @@ Code partage :
 - `memory_service/` : service Linux
 - `windows_bot/` : bot Twitch Windows
 - `admin_interface_v1.md` : design V1 pour l'administration memoire via tunnel SSH
+- `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
 
 ---
 
@@ -115,9 +69,6 @@ Etat actuel :
 - service `systemd` actif
 - domaine public actif
 - TLS valide
-- admin V1 integree au service principal
-- routes admin locales sous `/admin/*`
-- listing viewers admin corrige via retrolecture Qdrant + registre local
 
 URL publique :
 - `https://memory.example.net/api/memory`
@@ -135,12 +86,6 @@ Stack Linux actuellement en service :
 Service durable :
 - `mem0-api.service`
 
-Admin V1 reelle :
-- pas de service Linux separe en prod actuelle
-- routes admin montees dans `mem0-api`
-- auth dediee par `X-Admin-Key`
-- acces prevu uniquement via tunnel SSH vers `127.0.0.1:8000`
-
 ### Windows
 
 Etat connu :
@@ -154,10 +99,8 @@ Etat connu :
   - `mem0` pour la memoire durable generale
   - memoire locale pour les fils courts specialises
 - file FIFO globale bornee en place avec priorite streamer
-- UI admin Windows locale validee en reel :
-  - tunnel SSH OK
-  - `/admin/health` OK
-  - viewers list OK apres correctif Linux
+- admin UI Windows validee en reel via tunnel SSH
+- revue GPT offline viewer-par-viewer en place dans l'admin UI
 
 ---
 
@@ -217,12 +160,6 @@ Note importante :
 - alignement corrige du routage public vers `/api/memory/...`
 - chargement `.env` corrige cote Python
 - unite `systemd` corrigee pour utiliser `/usr/bin/python3` et `PYTHONPATH=/home/vhserver/bt/.deps`
-- tentative de service admin Linux separe abandonnee :
-  - conflit de lock Qdrant en mode local `path`
-  - pivot vers routes admin integrees dans `mem0-api`
-- `/admin/users` initialement vide :
-  - cause : `user_registry.json` non retroalimente depuis les memoires plus anciennes
-  - correctif : extraction des `user_id` depuis `data/qdrant/collection/mem0/storage.sqlite`
 
 ---
 
@@ -230,7 +167,6 @@ Note importante :
 
 - Qdrant tourne actuellement en mode local par `path`
 - c'est pragmatique et valide pour la prod initiale, mais pourra etre remplace plus tard par un service dedie si besoin
-- tant que Qdrant reste en mode `path`, eviter les doubles process Python qui tentent d'ouvrir le meme stockage vectoriel
 
 - `fastembed` peut telecharger son modele au premier lancement
 - il faut garder cela en tete en cas de redeploiement ou de machine neuve
@@ -245,8 +181,9 @@ Note importante :
 - ajuster les logs si besoin
 - confirmer si la config Qdrant locale est gardee telle quelle
 - durcir eventuellement la config Nginx / systemd apres retour d'usage
-- poursuivre l'ergonomie de l'UI admin Windows
-- confirmer au prochain redemarrage Linux que le correctif `/admin/users` est bien charge en runtime sans backfill manuel
+- enrichir l'admin UI Windows (`search`, suppression unitaire, export/import)
+- eventuellement historiser les commits de revue GPT
+- reevaluer plus tard une action `merge` une fois le workflow stable
 
 ---
 
@@ -257,6 +194,7 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - memoire distante fonctionnelle en reel
 - domaine public et TLS valides
 - service Linux durable installe
-- admin V1 fonctionnelle via tunnel SSH
+- admin UI Windows fonctionnelle via tunnel SSH
+- revue GPT offline avec validation admin et commit en lot disponible dans `windows_bot/`
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.

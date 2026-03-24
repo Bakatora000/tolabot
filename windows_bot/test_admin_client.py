@@ -82,10 +82,18 @@ class AdminClientTests(unittest.TestCase):
     def test_delete_user_memories_returns_deleted_flag(self, mock_request):
         response = Mock()
         response.status_code = 200
-        response.json.return_value = {"ok": True, "deleted": True}
+        response.json.return_value = {
+            "ok": True,
+            "user_id": "twitch:streamer:viewer:alice",
+            "deleted_count": 2,
+            "truncated": False,
+        }
         mock_request.return_value = response
 
-        self.assertTrue(delete_user_memories(make_config(), "twitch:streamer:viewer:alice"))
+        result = delete_user_memories(make_config(), "twitch:streamer:viewer:alice")
+        self.assertTrue(result.ok)
+        self.assertEqual(result.deleted_count, 2)
+        self.assertFalse(result.truncated)
 
     @patch("admin_client.requests.request")
     def test_admin_client_raises_clear_error_on_http_failure(self, mock_request):

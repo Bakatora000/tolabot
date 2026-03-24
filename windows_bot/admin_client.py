@@ -19,6 +19,14 @@ class AdminUser:
     viewer: str
 
 
+@dataclass(frozen=True)
+class DeleteUserResult:
+    ok: bool
+    user_id: str
+    deleted_count: int
+    truncated: bool
+
+
 def build_admin_headers(config: AppConfig) -> dict[str, str]:
     return {
         "X-Admin-Key": config.admin_api_key,
@@ -98,10 +106,15 @@ def search_user_memories(config: AppConfig, user_id: str, query: str, limit: int
     return list(data.get("results", []))
 
 
-def delete_user_memories(config: AppConfig, user_id: str) -> bool:
+def delete_user_memories(config: AppConfig, user_id: str) -> DeleteUserResult:
     response = _request(config, "DELETE", f"/admin/users/{user_id}")
     data = response.json()
-    return bool(data.get("deleted", True))
+    return DeleteUserResult(
+        ok=bool(data.get("ok", False)),
+        user_id=str(data.get("user_id", user_id)),
+        deleted_count=int(data.get("deleted_count", 0)),
+        truncated=bool(data.get("truncated", False)),
+    )
 
 
 def delete_memory(config: AppConfig, memory_id: str) -> bool:

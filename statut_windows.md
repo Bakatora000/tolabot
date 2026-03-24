@@ -45,7 +45,8 @@ Sous-decoupage recommande pour W6 :
 | W6.3 | REVIEW | `windows_bot/admin_client.py` implemente pour appeler l'admin API Linux via `127.0.0.1` |
 | W6.4 | REVIEW | `windows_bot/admin_ui.py` implemente pour une UI locale minimale : etat tunnel, etat API, liste viewers, recent |
 | W6.5 | REVIEW | tests Windows ajoutes pour le helper tunnel et le client admin |
-| W6.6 | REVIEW | validation reelle faite pour tunnel SSH, port local, auth admin et reachability `/admin/health`; operations avancees encore a valider en reel |
+| W6.6 | DONE | validation reelle faite pour tunnel SSH, port local, auth admin, `/admin/health`, viewers, recent et purge viewer |
+| W6.7 | REVIEW | revue GPT offline viewer-par-viewer implemente avec export compact, severite, staging admin et commit en lot |
 
 ---
 
@@ -150,3 +151,36 @@ Prochain lot UI cote Windows :
 3. bouton `refresh`
 4. bouton `purge viewer`
 5. puis `search`, `delete memory`, `export`, `import`
+
+---
+
+## Revue GPT Offline
+
+Etat actuel :
+- export brut viewer : OK
+- export compact `review` optimise tokens : OK
+- analyse GPT via OpenAI : OK
+- severite `conservative` / `balanced` / `aggressive` : OK
+- mode verbose activable dans l'UI : OK
+- staging des decisions admin :
+  - `Valider` colore en vert
+  - `Refuser` colore en rouge
+  - aucune mutation backend avant commit
+- commit en lot :
+  - bouton `Commit` en haut et en bas de la liste
+  - applique uniquement les propositions acceptees
+- actions backend reelles au commit :
+  - `delete` : suppression memoire par `memory_id`
+  - `rewrite` : creation du nouveau souvenir puis suppression de l'ancien
+  - `keep` / `review` : pas de mutation backend
+
+Contraintes retenues pour stabiliser le POC :
+- export review compact limite a un petit lot interactif
+- action `merge` retiree du POC pour reduire l'instabilite des propositions
+- schema de sortie GPT limite a `keep`, `rewrite`, `review`, `delete`
+
+Configuration Windows utile :
+- `OPENAI_REVIEW_ENABLED=true`
+- `OPENAI_REVIEW_MODEL=gpt-5-mini`
+- `OPENAI_REVIEW_TIMEOUT_SECONDS=90`
+- `OPENAI_REVIEW_MAX_RECORDS=15` a `20` recommande pour l'usage interactif

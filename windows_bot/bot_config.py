@@ -39,6 +39,11 @@ class AppConfig:
     admin_ssh_remote_port: int = 8000
     admin_ui_host: str = "127.0.0.1"
     admin_ui_port: int = 9100
+    openai_review_enabled: bool = False
+    openai_api_key: str = ""
+    openai_review_model: str = "gpt-5-mini"
+    openai_review_timeout_seconds: int = 90
+    openai_review_max_records: int = 50
 
 
 def load_config() -> AppConfig:
@@ -77,4 +82,9 @@ def load_config() -> AppConfig:
         admin_ssh_remote_port=max(1, int(os.getenv("ADMIN_SSH_REMOTE_PORT", "8000").strip() or "8000")),
         admin_ui_host=os.getenv("ADMIN_UI_HOST", "127.0.0.1").strip(),
         admin_ui_port=max(1, int(os.getenv("ADMIN_UI_PORT", "9100").strip() or "9100")),
+        openai_review_enabled=os.getenv("OPENAI_REVIEW_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
+        openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+        openai_review_model=os.getenv("OPENAI_REVIEW_MODEL", "gpt-5-mini").strip(),
+        openai_review_timeout_seconds=max(5, int(os.getenv("OPENAI_REVIEW_TIMEOUT_SECONDS", "90").strip() or "90")),
+        openai_review_max_records=max(1, int(os.getenv("OPENAI_REVIEW_MAX_RECORDS", "50").strip() or "50")),
     )

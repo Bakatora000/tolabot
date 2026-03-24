@@ -59,6 +59,11 @@ def print_config_status(config: AppConfig) -> None:
     print(f"ADMIN_SSH_LOCAL_PORT : {config.admin_ssh_local_port}")
     print(f"ADMIN_SSH_REMOTE_PORT: {config.admin_ssh_remote_port}")
     print(f"ADMIN_UI_BIND        : {config.admin_ui_host}:{config.admin_ui_port}")
+    print(f"OPENAI_REVIEW_ENABLED: {bool_label(config.openai_review_enabled)}")
+    print(f"OPENAI_API_KEY       : {bool_label(bool(config.openai_api_key))}")
+    print(f"OPENAI_REVIEW_MODEL  : {config.openai_review_model}")
+    print(f"OPENAI_REVIEW_TIMEOUT: {config.openai_review_timeout_seconds}s")
+    print(f"OPENAI_REVIEW_MAXREC : {config.openai_review_max_records}")
 
 
 def validate_twitch_token(config: AppConfig, timeout: int = 15, allow_refresh: bool = True) -> int:

@@ -50,9 +50,7 @@ Decision produit :
 
 Etat courant synthetique :
 - Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
-- Linux : admin V1 integree au service principal, tunnel SSH + `X-Admin-Key` valides, `/admin/users` retroalimente depuis Qdrant
 - Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
-- Windows : UI admin V1 validee en reel jusqu'a la liste viewers
 
 ---
 
@@ -240,15 +238,19 @@ Format obligatoire :
   - Linux: aucune action immediate requise tant que les routes `/admin/*` restent stables
 
 ### 2026-03-24
-- from: Codex Linux
-- to: utilisateur / Codex Windows
-- summary: correction du blocage fonctionnel `/admin/users`; la route etait vide car le registre local etait non retroalimente. Les `user_id` existants ont ete relus depuis `data/qdrant/collection/mem0/storage.sqlite`, backfilles dans `data/user_registry.json`, puis le correctif durable a ete pousse dans le code.
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: le POC de revue GPT offline est maintenant fonctionnel cote Windows avec export compact, analyse OpenAI, severite reglable, validation admin visuelle et commit en lot. Les informations sensibles restent non versionnees; la doc partagee reste anonymisee.
 - files:
-  - `memory_service/backend.py`
-  - `statut_linux.md`
+  - `windows_bot/admin_ui.py`
+  - `windows_bot/openai_review_client.py`
+  - `windows_bot/bot_config.py`
+  - `windows_bot/.env.example`
+  - `windows_bot/README.md`
+  - `statut_windows.md`
   - `contexte_projet_tolabot_mem0.md`
 - next_action:
-  - Windows: retester l'UI admin; les viewers doivent maintenant etre cliquables
-  - Linux: au prochain redemarrage de `mem0-api`, le correctif code sera charge durablement en runtime
+  - Windows: continuer l'ergonomie de l'admin UI si besoin (`search`, suppression unitaire, historique des commits)
+  - Linux: aucune action immediate requise pour le POC review actuel
 
 ---
