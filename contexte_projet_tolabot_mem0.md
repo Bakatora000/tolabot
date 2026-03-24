@@ -30,6 +30,7 @@ Code partage :
 - `windows_bot/` : bot Twitch Windows
 - `admin_interface_v1.md` : design V1 pour l'administration memoire via tunnel SSH
 - `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
+- `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
 
 ---
 
@@ -101,6 +102,7 @@ Etat connu :
 - file FIFO globale bornee en place avec priorite streamer
 - admin UI Windows validee en reel via tunnel SSH
 - revue GPT offline viewer-par-viewer en place dans l'admin UI
+- chantier futur Graphiti initialise cote documentation, avec deploiement Linux local/offline prevu
 
 ---
 
@@ -184,6 +186,7 @@ Note importante :
 - enrichir l'admin UI Windows (`search`, suppression unitaire, export/import)
 - eventuellement historiser les commits de revue GPT
 - reevaluer plus tard une action `merge` une fois le workflow stable
+- deployer Graphiti localement cote Linux pour experimentation offline a partir des exports mem0
 
 ---
 

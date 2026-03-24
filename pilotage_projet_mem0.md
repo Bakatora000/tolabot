@@ -22,6 +22,7 @@ Documents de reference :
 - contrat API : `contrat_api_bot_mem0.md`
 - contexte Linux : `context_codex_linux_mem0.md`
 - contexte Windows : `context_codex_windows.md`
+- contexte Graphiti Linux : `context_codex_linux_graphiti.md`
 - depot Git partage : `git@github.com:Bakatora000/tolabot.git`
 - suivi Linux : `statut_linux.md`
 - suivi Windows : `statut_windows.md`
@@ -252,5 +253,15 @@ Format obligatoire :
 - next_action:
   - Windows: continuer l'ergonomie de l'admin UI si besoin (`search`, suppression unitaire, historique des commits)
   - Linux: aucune action immediate requise pour le POC review actuel
+
+### 2026-03-24
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: nouveau chantier Graphiti cadre cote documentation. Objectif : deploiement local/offline sur le serveur Linux pour construire une couche graphe temporelle derivee de mem0, sans exposition publique et sans integration live immediate au bot.
+- files:
+  - `context_codex_linux_graphiti.md`
+- next_action:
+  - Linux: proposer et documenter le deploiement local de Graphiti, le schema minimal et le pipeline d'ingestion offline depuis mem0
+  - Windows: aucune action immediate requise tant que le chantier reste cote Linux
 
 ---
