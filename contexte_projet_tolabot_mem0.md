@@ -115,6 +115,9 @@ Etat actuel :
 - service `systemd` actif
 - domaine public actif
 - TLS valide
+- admin V1 integree au service principal
+- routes admin locales sous `/admin/*`
+- listing viewers admin corrige via retrolecture Qdrant + registre local
 
 URL publique :
 - `https://memory.example.net/api/memory`
@@ -132,6 +135,12 @@ Stack Linux actuellement en service :
 Service durable :
 - `mem0-api.service`
 
+Admin V1 reelle :
+- pas de service Linux separe en prod actuelle
+- routes admin montees dans `mem0-api`
+- auth dediee par `X-Admin-Key`
+- acces prevu uniquement via tunnel SSH vers `127.0.0.1:8000`
+
 ### Windows
 
 Etat connu :
@@ -145,6 +154,10 @@ Etat connu :
   - `mem0` pour la memoire durable generale
   - memoire locale pour les fils courts specialises
 - file FIFO globale bornee en place avec priorite streamer
+- UI admin Windows locale validee en reel :
+  - tunnel SSH OK
+  - `/admin/health` OK
+  - viewers list OK apres correctif Linux
 
 ---
 
@@ -204,6 +217,12 @@ Note importante :
 - alignement corrige du routage public vers `/api/memory/...`
 - chargement `.env` corrige cote Python
 - unite `systemd` corrigee pour utiliser `/usr/bin/python3` et `PYTHONPATH=/home/vhserver/bt/.deps`
+- tentative de service admin Linux separe abandonnee :
+  - conflit de lock Qdrant en mode local `path`
+  - pivot vers routes admin integrees dans `mem0-api`
+- `/admin/users` initialement vide :
+  - cause : `user_registry.json` non retroalimente depuis les memoires plus anciennes
+  - correctif : extraction des `user_id` depuis `data/qdrant/collection/mem0/storage.sqlite`
 
 ---
 
@@ -211,6 +230,7 @@ Note importante :
 
 - Qdrant tourne actuellement en mode local par `path`
 - c'est pragmatique et valide pour la prod initiale, mais pourra etre remplace plus tard par un service dedie si besoin
+- tant que Qdrant reste en mode `path`, eviter les doubles process Python qui tentent d'ouvrir le meme stockage vectoriel
 
 - `fastembed` peut telecharger son modele au premier lancement
 - il faut garder cela en tete en cas de redeploiement ou de machine neuve
@@ -225,8 +245,8 @@ Note importante :
 - ajuster les logs si besoin
 - confirmer si la config Qdrant locale est gardee telle quelle
 - durcir eventuellement la config Nginx / systemd apres retour d'usage
-- concevoir puis implementer une admin API locale Linux
-- concevoir une UI Windows locale ouvrant automatiquement un tunnel SSH d'administration
+- poursuivre l'ergonomie de l'UI admin Windows
+- confirmer au prochain redemarrage Linux que le correctif `/admin/users` est bien charge en runtime sans backfill manuel
 
 ---
 
@@ -237,5 +257,6 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - memoire distante fonctionnelle en reel
 - domaine public et TLS valides
 - service Linux durable installe
+- admin V1 fonctionnelle via tunnel SSH
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.

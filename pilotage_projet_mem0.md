@@ -50,7 +50,9 @@ Decision produit :
 
 Etat courant synthetique :
 - Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
+- Linux : admin V1 integree au service principal, tunnel SSH + `X-Admin-Key` valides, `/admin/users` retroalimente depuis Qdrant
 - Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
+- Windows : UI admin V1 validee en reel jusqu'a la liste viewers
 
 ---
 
@@ -236,5 +238,17 @@ Format obligatoire :
 - next_action:
   - Windows: enrichir l'UI locale avec viewers cliquables, `recent`, `refresh`, `purge viewer`
   - Linux: aucune action immediate requise tant que les routes `/admin/*` restent stables
+
+### 2026-03-24
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: correction du blocage fonctionnel `/admin/users`; la route etait vide car le registre local etait non retroalimente. Les `user_id` existants ont ete relus depuis `data/qdrant/collection/mem0/storage.sqlite`, backfilles dans `data/user_registry.json`, puis le correctif durable a ete pousse dans le code.
+- files:
+  - `memory_service/backend.py`
+  - `statut_linux.md`
+  - `contexte_projet_tolabot_mem0.md`
+- next_action:
+  - Windows: retester l'UI admin; les viewers doivent maintenant etre cliquables
+  - Linux: au prochain redemarrage de `mem0-api`, le correctif code sera charge durablement en runtime
 
 ---
