@@ -4,10 +4,15 @@
 
 Cette API est reservee a l'administration memoire.
 
-Contraintes V1 :
-- ecoute locale seulement sur `127.0.0.1:9000`
-- acces via tunnel SSH depuis Windows
+Contraintes V1 en production actuelle :
+- les routes admin sont montees dans le process `mem0-api` existant
+- acces via tunnel SSH vers `127.0.0.1:8000`
 - pas d'exposition publique via Nginx
+- les routes admin sont sous le prefixe `/admin`
+
+Pourquoi :
+- le backend prod utilise Qdrant local par `path`
+- un second process Python ouvrirait le meme stockage Qdrant et echouerait sur un lock
 
 ## Auth
 
@@ -35,7 +40,7 @@ Erreurs d'auth :
 
 ## Endpoints minimaux V1
 
-### `GET /health`
+### `GET /admin/health`
 
 Reponse `200` :
 
@@ -46,7 +51,7 @@ Reponse `200` :
 }
 ```
 
-### `GET /users`
+### `GET /admin/users`
 
 Headers :
 - `X-Admin-Key`
@@ -75,7 +80,7 @@ Notes :
 - `channel` et `viewer` sont derives du `user_id`
 - si le format ne matche pas la convention Twitch, `channel` et `viewer` peuvent etre `null`
 
-### `GET /users/{user_id}/recent`
+### `GET /admin/users/{user_id}/recent`
 
 Headers :
 - `X-Admin-Key`
@@ -106,7 +111,7 @@ Reponse `200` :
 }
 ```
 
-### `DELETE /users/{user_id}`
+### `DELETE /admin/users/{user_id}`
 
 Headers :
 - `X-Admin-Key`
@@ -126,11 +131,11 @@ Reponse `200` :
 
 ## Endpoints disponibles en plus dans la V1 Linux
 
-- `POST /users/{user_id}/search`
-- `DELETE /memories/{memory_id}`
-- `POST /users/{user_id}/export`
-- `POST /users/{user_id}/import`
-- `POST /users/{user_id}/remember`
+- `POST /admin/users/{user_id}/search`
+- `DELETE /admin/memories/{memory_id}`
+- `POST /admin/users/{user_id}/export`
+- `POST /admin/users/{user_id}/import`
+- `POST /admin/users/{user_id}/remember`
 
 ## Format d'erreur generique
 

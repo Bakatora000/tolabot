@@ -6,9 +6,9 @@ Fournir une interface d'administration de la memoire distante sans exposer un `/
 
 Le principe retenu :
 - une API d'administration reste cote Linux, au plus pres des donnees
-- cette API admin n'ecoute que sur `127.0.0.1`
+- en prod actuelle, les routes admin sont montees dans le process `mem0-api` deja vivant
 - une interface locale cote Windows ouvre automatiquement un tunnel SSH
-- l'UI Windows appelle ensuite l'API admin via `http://127.0.0.1:<port-local>`
+- l'UI Windows appelle ensuite l'API admin via `http://127.0.0.1:<port-local>/admin/...`
 
 Ce choix evite :
 - une exposition publique de l'admin
@@ -21,11 +21,11 @@ Ce choix evite :
 
 ### Linux
 
-Nouveau composant logique :
-- `admin-api` FastAPI
+Composant logique :
+- routes admin FastAPI dans le service Linux memoire existant
 
-Bind :
-- `127.0.0.1:9000`
+Bind prod actuel :
+- `127.0.0.1:8000`
 
 Responsabilites :
 - lecture admin de la memoire
@@ -53,16 +53,16 @@ Pour la V1, le plus simple est :
 - serveur UI local sur `127.0.0.1`
 - ouverture automatique d'un tunnel SSH au lancement
 
-Tunnel attendu :
+Tunnel attendu en prod actuelle :
 
 ```text
-Windows localhost:9000 -> SSH -> Linux 127.0.0.1:9000
+Windows localhost:9000 -> SSH -> Linux 127.0.0.1:8000
 ```
 
 Exemple de commande :
 
 ```bash
-ssh -L 9000:127.0.0.1:9000 vhserver@server
+ssh -L 9000:127.0.0.1:8000 vhserver@server
 ```
 
 ---
@@ -133,22 +133,22 @@ Cela suppose d'ajouter un petit stockage d'etat admin si `mem0` ne porte pas nat
 
 ## Endpoints Admin Linux Proposes
 
-Tous ces endpoints doivent rester disponibles uniquement sur l'API admin liee a `127.0.0.1`.
+Tous ces endpoints doivent rester disponibles uniquement via acces local direct au service Linux.
 
 ### Sante
 
-- `GET /health`
+- `GET /admin/health`
 
 ### Exploration
 
-- `GET /users`
+- `GET /admin/users`
   - liste des `user_id` connus
   - filtres possibles : `channel`, `viewer`, pagination
 
-- `GET /users/{user_id}/recent`
+- `GET /admin/users/{user_id}/recent`
   - souvenirs recents
 
-- `POST /users/{user_id}/search`
+- `POST /admin/users/{user_id}/search`
   - recherche textuelle/semantique
 
 - `GET /users/{user_id}/stats`
@@ -158,19 +158,19 @@ Tous ces endpoints doivent rester disponibles uniquement sur l'API admin liee a 
 
 ### Operations
 
-- `DELETE /memories/{memory_id}`
+- `DELETE /admin/memories/{memory_id}`
   - suppression ciblee
 
-- `DELETE /users/{user_id}`
+- `DELETE /admin/users/{user_id}`
   - purge viewer complete
 
-- `POST /users/{user_id}/export`
+- `POST /admin/users/{user_id}/export`
   - export JSON
 
-- `POST /users/{user_id}/import`
+- `POST /admin/users/{user_id}/import`
   - reimport JSON
 
-- `POST /users/{user_id}/remember`
+- `POST /admin/users/{user_id}/remember`
   - ajout manuel d'un souvenir
 
 ### Edition V1.1
@@ -201,7 +201,7 @@ Plus tard :
 Au lancement :
 1. verifier si un tunnel local repond deja
 2. si non, lancer `ssh -L`
-3. tester `GET /health` sur `http://127.0.0.1:9000`
+3. tester `GET /admin/health` sur `http://127.0.0.1:9000/admin/health`
 4. afficher l'etat de connexion
 
 Pendant l'usage :
@@ -276,11 +276,11 @@ Ajouter par exemple :
 ### Etape 1
 
 Linux :
-- creer une `admin-api` locale minimale
-- `GET /health`
-- `GET /users`
-- `GET /users/{user_id}/recent`
-- `DELETE /users/{user_id}`
+- creer les routes admin locales minimales dans le service memoire existant
+- `GET /admin/health`
+- `GET /admin/users`
+- `GET /admin/users/{user_id}/recent`
+- `DELETE /admin/users/{user_id}`
 
 ### Etape 2
 

@@ -8,7 +8,23 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from memory_service.auth import api_key_dependency
+from admin_service.models import (
+    AdminDeleteMemoryResponse,
+    AdminExportResponse,
+    AdminHealthResponse,
+    AdminImportRequest,
+    AdminImportResponse,
+    AdminMemoryResult,
+    AdminPurgeUserResponse,
+    AdminRecentResponse,
+    AdminRememberRequest,
+    AdminRememberResponse,
+    AdminSearchRequest,
+    AdminSearchResponse,
+    UserListResponse,
+    UserSummary,
+)
+from memory_service.auth import admin_key_dependency, api_key_dependency
 from memory_service.backend import MemoryBackendError, build_backend
 from memory_service.config import Settings
 from memory_service.models import (
@@ -129,6 +145,34 @@ def clamp_limit(raw_limit: int | None, settings_obj: Settings) -> int:
     return max(1, min(raw_limit, settings_obj.max_limit))
 
 
+def clamp_admin_limit(raw_limit: int | None, settings_obj: Settings) -> int:
+    if raw_limit is None:
+        return settings_obj.default_limit
+    return max(1, min(raw_limit, settings_obj.admin_export_limit))
+
+
+def parse_user_parts(user_id: str) -> tuple[str | None, str | None]:
+    parts = user_id.split(":")
+    if len(parts) >= 4 and parts[0] == "twitch" and parts[2] == "viewer":
+        return parts[1] or None, parts[3] or None
+    return None, None
+
+
+def admin_local_only_dependency(request: Request) -> None:
+    if request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"ok": False, "error": "admin_local_only"},
+        )
+
+
+def admin_auth_dependencies(expected_key: str):
+    return [
+        Depends(admin_key_dependency(expected_key)),
+        Depends(admin_local_only_dependency),
+    ]
+
+
 @app.get("/health", response_model=HealthResponse)
 async def healthcheck():
     return HealthResponse()
@@ -168,3 +212,81 @@ async def recent_memory(payload: RecentRequest, request: Request, backend=Depend
             for item in results
         ]
     )
+
+
+@app.get("/admin/health", response_model=AdminHealthResponse)
+async def admin_healthcheck():
+    return AdminHealthResponse()
+
+
+@app.get("/admin/users", response_model=UserListResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_list_users(
+    channel: str | None = None,
+    viewer: str | None = None,
+    backend=Depends(backend_dependency),
+):
+    requested_channel = (channel or "").strip().lower()
+    requested_viewer = (viewer or "").strip().lower()
+    users: list[UserSummary] = []
+    for user_id in backend.list_user_ids():
+        parsed_channel, parsed_viewer = parse_user_parts(user_id)
+        if requested_channel and (parsed_channel or "").lower() != requested_channel:
+            continue
+        if requested_viewer and (parsed_viewer or "").lower() != requested_viewer:
+            continue
+        users.append(UserSummary(user_id=user_id, channel=parsed_channel, viewer=parsed_viewer))
+    users.sort(key=lambda item: item.user_id)
+    return UserListResponse(users=users)
+
+
+@app.get("/admin/users/{user_id}/recent", response_model=AdminRecentResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_recent_user_memories(user_id: str, request: Request, limit: int | None = None, backend=Depends(backend_dependency)):
+    effective_limit = clamp_admin_limit(limit, request.app.state.settings)
+    results = backend.recent(user_id, effective_limit)
+    return AdminRecentResponse(results=[AdminMemoryResult.from_record(item) for item in results])
+
+
+@app.post("/admin/users/{user_id}/search", response_model=AdminSearchResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_search_user_memories(user_id: str, payload: AdminSearchRequest, request: Request, backend=Depends(backend_dependency)):
+    effective_limit = clamp_admin_limit(payload.limit, request.app.state.settings)
+    results = backend.search(user_id, payload.query, effective_limit)
+    return AdminSearchResponse(results=[AdminMemoryResult.from_record(item) for item in results])
+
+
+@app.delete("/admin/memories/{memory_id}", response_model=AdminDeleteMemoryResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_delete_memory(memory_id: str, backend=Depends(backend_dependency)):
+    deleted = backend.delete_memory(memory_id)
+    return AdminDeleteMemoryResponse(deleted=deleted)
+
+
+@app.delete("/admin/users/{user_id}", response_model=AdminPurgeUserResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_purge_user_memories(user_id: str, request: Request, backend=Depends(backend_dependency)):
+    deleted_count, truncated = backend.purge_user(user_id, request.app.state.settings.admin_export_limit)
+    return AdminPurgeUserResponse(user_id=user_id, deleted_count=deleted_count, truncated=truncated)
+
+
+@app.post("/admin/users/{user_id}/export", response_model=AdminExportResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_export_user_memories(user_id: str, request: Request, backend=Depends(backend_dependency)):
+    limit = request.app.state.settings.admin_export_limit
+    records = backend.export_user(user_id, limit)
+    return AdminExportResponse(
+        user_id=user_id,
+        count=len(records),
+        truncated=len(records) >= limit,
+        records=[AdminMemoryResult.from_record(item) for item in records],
+    )
+
+
+@app.post("/admin/users/{user_id}/import", response_model=AdminImportResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_import_user_memories(user_id: str, payload: AdminImportRequest, backend=Depends(backend_dependency)):
+    imported_count = backend.import_records(
+        user_id,
+        [{"text": item.text, "metadata": item.metadata or {}} for item in payload.records],
+    )
+    return AdminImportResponse(user_id=user_id, imported_count=imported_count)
+
+
+@app.post("/admin/users/{user_id}/remember", response_model=AdminRememberResponse, dependencies=admin_auth_dependencies(settings.admin_key))
+async def admin_remember_user_memory(user_id: str, payload: AdminRememberRequest, backend=Depends(backend_dependency)):
+    memory_id = backend.remember(user_id, payload.text, metadata=payload.metadata)
+    return AdminRememberResponse(id=memory_id)
