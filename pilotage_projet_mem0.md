@@ -221,4 +221,20 @@ Format obligatoire :
   - Windows: continuer les tests reels de charge chat et ajuster TTL/file si necessaire
   - Linux: aucune action immediate requise hors suivi normal
 
+### 2026-03-24
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: validation reelle admin V1 cote Windows terminee; tunnel SSH, auth admin, port local et reachability `/admin/health` fonctionnent en bout en bout. La suite est principalement UI/ergonomie cote Windows.
+- files:
+  - `windows_bot/admin_tunnel.py`
+  - `windows_bot/admin_client.py`
+  - `windows_bot/admin_ui.py`
+  - `windows_bot/manage_bot.py`
+  - `windows_bot/test_admin_client.py`
+  - `windows_bot/test_admin_tunnel.py`
+  - `statut_windows.md`
+- next_action:
+  - Windows: enrichir l'UI locale avec viewers cliquables, `recent`, `refresh`, `purge viewer`
+  - Linux: aucune action immediate requise tant que les routes `/admin/*` restent stables
+
 ---

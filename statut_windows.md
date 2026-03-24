@@ -34,7 +34,7 @@ Taches Windows connues :
 | W3 | REVIEW | ecriture memoire distante branchee apres generation, non bloquante |
 | W4 | REVIEW | `.env.example`, `README.md`, `test_memory_client.py` et `test_bot_runtime.py` mis a jour |
 | W5 | DONE | test reel mem0 valide en bout en bout contre l'API publique Linux |
-| W6 | TODO | UI admin Windows locale avec tunnel SSH auto vers une admin API Linux non publique |
+| W6 | REVIEW | UI admin Windows locale avec tunnel SSH auto vers l'API admin Linux montee dans le service memoire principal |
 
 Sous-decoupage recommande pour W6 :
 
@@ -45,7 +45,7 @@ Sous-decoupage recommande pour W6 :
 | W6.3 | REVIEW | `windows_bot/admin_client.py` implemente pour appeler l'admin API Linux via `127.0.0.1` |
 | W6.4 | REVIEW | `windows_bot/admin_ui.py` implemente pour une UI locale minimale : etat tunnel, etat API, liste viewers, recent |
 | W6.5 | REVIEW | tests Windows ajoutes pour le helper tunnel et le client admin |
-| W6.6 | TODO | valider en reel les operations `recent`, `purge`, `delete`, `export`, `import` une fois l'admin API Linux deployee sur l'hote |
+| W6.6 | REVIEW | validation reelle faite pour tunnel SSH, port local, auth admin et reachability `/admin/health`; operations avancees encore a valider en reel |
 
 ---
 
@@ -117,3 +117,36 @@ Ordre d'implementation cote Windows :
 2. client HTTP admin
 3. ecran local minimal viewers + recent
 4. actions `purge`, `delete`, `export`, `import` une fois l'API admin Linux disponible
+
+---
+
+## Validation Reelle Admin V1
+
+Tests executes cote Windows :
+
+```powershell
+py -m unittest test_admin_client.py test_admin_tunnel.py
+py .\manage_bot.py run-admin-ui
+```
+
+Constats :
+- tests unitaires `admin_client` et `admin_tunnel` : OK
+- tunnel SSH Windows -> Linux : OK apres enregistrement de la cle d'hote et activation d'une cle SSH non interactive pour `BatchMode=yes`
+- port local `127.0.0.1:9000` : OK
+- auth admin `X-Admin-Key` : OK
+- route admin Linux `/admin/health` joignable via tunnel : OK
+- UI locale Windows demarre et affiche :
+  - `Tunnel: OK`
+  - `Port local: OK`
+  - `Admin API: OK`
+
+Conclusion :
+- la chaine complete Windows -> tunnel SSH -> service memoire Linux -> routes `/admin/*` fonctionne en reel
+- la V1 actuelle reste minimale cote interface
+
+Prochain lot UI cote Windows :
+1. viewers cliquables
+2. panneau `recent` utile
+3. bouton `refresh`
+4. bouton `purge viewer`
+5. puis `search`, `delete memory`, `export`, `import`
