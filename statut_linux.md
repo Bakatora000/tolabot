@@ -50,6 +50,7 @@ Taches Linux :
 | H3 | DONE | pipeline maison `mem0 export -> payload GPT` amorce |
 | H4 | DONE | merge initial `GPT JSON -> SQLite` implemente avec traçabilite `graph_jobs` |
 | H5 | DONE | builder `SQLite -> prompt context` implemente avec contrat V1 fige |
+| H6 | DONE | endpoint admin local `GET /admin/homegraph/users/{user_id}/context` ajoute cote Linux |
 
 ---
 
@@ -77,6 +78,7 @@ Backend `mem0` valide :
   - `GET /admin/users`
   - `GET /admin/users/{user_id}/recent`
   - `DELETE /admin/users/{user_id}`
+  - `GET /admin/homegraph/users/{user_id}/context`
   - auth `X-Admin-Key`
   - refus des acces proxifies publics via `admin_local_only`
 
@@ -191,6 +193,7 @@ Decision admin V1 retenue :
 - implementer le builder `SQLite -> prompt context`
 - transmettre a Windows le contrat V1 du contexte viewer compact
 - brancher ensuite une nouvelle source de contexte cote bot Windows
+- redemarrer `mem0-api` sur l'hote pour charger le nouvel endpoint admin Homegraph
 
 ---
 
@@ -218,6 +221,7 @@ Decision admin V1 retenue :
   - graphe metier maison
   - doc de cadrage : `graphe_metier_maison_v1.md`
   - socle technique Linux : `homegraph/`
+  - endpoint admin local : `GET /admin/homegraph/users/{user_id}/context`
   - mergeur initial : `homegraph/merge_extraction.py`
   - builder contexte compact : `homegraph/build_viewer_context.py`
 - si Windows rencontre une erreur reelle sur `search` ou `remember`, il faut remonter :

@@ -114,6 +114,7 @@ Graphiti V1 locale :
   - payload viewer pour extraction GPT
   - merge GPT JSON -> SQLite
   - builder contexte viewer compact
+  - endpoint admin local pour recuperer ce contexte
 
 ### Windows
 
@@ -162,6 +163,7 @@ Etat connu :
 - `homegraph/extraction_output_example.json`
 - `homegraph/build_viewer_context.py`
 - `homegraph/viewer_context_contract_v1.md`
+- `GET /admin/homegraph/users/{user_id}/context`
 
 ### Suivi Projet
 

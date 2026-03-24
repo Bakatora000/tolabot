@@ -12,6 +12,7 @@ from admin_service.models import (
     AdminDeleteMemoryResponse,
     AdminExportResponse,
     AdminHealthResponse,
+    AdminHomegraphContextResponse,
     AdminImportRequest,
     AdminImportResponse,
     AdminMemoryResult,
@@ -24,6 +25,7 @@ from admin_service.models import (
     UserListResponse,
     UserSummary,
 )
+from homegraph.context import build_viewer_context_payload
 from memory_service.auth import admin_key_dependency, api_key_dependency
 from memory_service.backend import MemoryBackendError, build_backend
 from memory_service.config import Settings
@@ -290,3 +292,17 @@ async def admin_import_user_memories(user_id: str, payload: AdminImportRequest, 
 async def admin_remember_user_memory(user_id: str, payload: AdminRememberRequest, backend=Depends(backend_dependency)):
     memory_id = backend.remember(user_id, payload.text, metadata=payload.metadata)
     return AdminRememberResponse(id=memory_id)
+
+
+@app.get(
+    "/admin/homegraph/users/{user_id}/context",
+    response_model=AdminHomegraphContextResponse,
+    dependencies=admin_auth_dependencies(settings.admin_key),
+)
+async def admin_homegraph_viewer_context(user_id: str, request: Request):
+    settings_obj = getattr(request.app.state, "settings", settings)
+    payload = build_viewer_context_payload(
+        viewer_id=user_id,
+        db_path=settings_obj.homegraph_db_path,
+    )
+    return AdminHomegraphContextResponse(**payload)

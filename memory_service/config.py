@@ -27,6 +27,7 @@ class Settings:
     admin_export_limit: int = 1000
     backend: str = "file"
     data_dir: Path = Path("./data")
+    homegraph_db_path: Path = Path("./homegraph/data/homegraph.sqlite3")
     file_store_path: Path = Path("./data/memory_store.json")
     user_registry_path: Path = Path("./data/user_registry.json")
     mem0_qdrant_host: str = "127.0.0.1"
@@ -49,6 +50,9 @@ class Settings:
         load_dotenv()
         data_dir = Path(os.getenv("DATA_DIR", "./data")).resolve()
         file_store_path = Path(os.getenv("FILE_STORE_PATH", str(data_dir / "memory_store.json"))).resolve()
+        homegraph_db_path = Path(
+            os.getenv("HOMEGRAPH_DB_PATH", "./homegraph/data/homegraph.sqlite3")
+        ).resolve()
         user_registry_path = Path(os.getenv("USER_REGISTRY_PATH", str(data_dir / "user_registry.json"))).resolve()
         mem0_history_db_path = Path(os.getenv("MEM0_HISTORY_DB_PATH", str(data_dir / "history.db"))).resolve()
         mem0_qdrant_path = Path(os.getenv("MEM0_QDRANT_PATH", str(data_dir / "qdrant"))).resolve()
@@ -66,6 +70,7 @@ class Settings:
             admin_export_limit=max(1, int(os.getenv("MEM0_ADMIN_EXPORT_LIMIT", "1000").strip() or "1000")),
             backend=os.getenv("MEMORY_BACKEND", "file").strip().lower(),
             data_dir=data_dir,
+            homegraph_db_path=homegraph_db_path,
             file_store_path=file_store_path,
             user_registry_path=user_registry_path,
             mem0_qdrant_host=os.getenv("MEM0_QDRANT_HOST", "127.0.0.1").strip(),
@@ -86,6 +91,7 @@ class Settings:
 
     def ensure_directories(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.homegraph_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.file_store_path.parent.mkdir(parents=True, exist_ok=True)
         self.user_registry_path.parent.mkdir(parents=True, exist_ok=True)
         self.mem0_history_db_path.parent.mkdir(parents=True, exist_ok=True)

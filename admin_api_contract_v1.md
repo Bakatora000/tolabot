@@ -136,6 +136,43 @@ Reponse `200` :
 - `POST /admin/users/{user_id}/export`
 - `POST /admin/users/{user_id}/import`
 - `POST /admin/users/{user_id}/remember`
+- `GET /admin/homegraph/users/{user_id}/context`
+
+## Endpoint Homegraph V1
+
+### `GET /admin/homegraph/users/{user_id}/context`
+
+Headers :
+- `X-Admin-Key`
+
+Reponse `200` :
+
+```json
+{
+  "ok": true,
+  "viewer_id": "twitch:streamer:viewer:alice",
+  "generated_at": "2026-03-24T18:30:00Z",
+  "source": "homegraph_v1",
+  "staleness": {
+    "profile_last_updated_at": "2026-03-24T17:10:00Z",
+    "is_stale": false
+  },
+  "context": {
+    "summary_short": "Viewer regulier, parle souvent de jeux de construction et d'optimisation.",
+    "facts_high_confidence": [
+      "joue souvent a Satisfactory",
+      "prefere les builds efficaces"
+    ],
+    "recent_relevant": [],
+    "uncertain_points": []
+  },
+  "text_block": "Contexte viewer:\n- Viewer regulier, parle souvent de jeux de construction et d'optimisation.\n- joue souvent a Satisfactory\n- prefere les builds efficaces"
+}
+```
+
+Notes :
+- acces local uniquement via le meme garde admin que les autres routes `/admin/*`
+- `text_block` est la sortie principale a injecter dans le prompt cote Windows
 
 ## Format d'erreur generique
 

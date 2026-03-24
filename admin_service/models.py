@@ -136,3 +136,25 @@ class AdminRememberRequest(BaseModel):
 class AdminRememberResponse(BaseModel):
     ok: bool = True
     id: str | None = None
+
+
+class HomegraphStaleness(BaseModel):
+    profile_last_updated_at: str | None = None
+    is_stale: bool
+
+
+class HomegraphContextContent(BaseModel):
+    summary_short: str
+    facts_high_confidence: list[str]
+    recent_relevant: list[str]
+    uncertain_points: list[str]
+
+
+class AdminHomegraphContextResponse(BaseModel):
+    ok: bool = True
+    viewer_id: str
+    generated_at: str
+    source: str
+    staleness: HomegraphStaleness
+    context: HomegraphContextContent
+    text_block: str
