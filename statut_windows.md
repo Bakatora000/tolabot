@@ -36,6 +36,17 @@ Taches Windows connues :
 | W5 | DONE | test reel mem0 valide en bout en bout contre l'API publique Linux |
 | W6 | TODO | UI admin Windows locale avec tunnel SSH auto vers une admin API Linux non publique |
 
+Sous-decoupage recommande pour W6 :
+
+| id | status | notes |
+|---|---|---|
+| W6.1 | TODO | definir la config locale admin Windows : `ADMIN_UI_ENABLED`, `ADMIN_API_LOCAL_URL`, `ADMIN_API_KEY`, `ADMIN_SSH_HOST`, `ADMIN_SSH_USER`, `ADMIN_SSH_LOCAL_PORT`, `ADMIN_SSH_REMOTE_PORT` |
+| W6.2 | TODO | creer `windows_bot/admin_tunnel.py` pour ouvrir, surveiller et fermer un tunnel SSH local |
+| W6.3 | TODO | creer `windows_bot/admin_client.py` pour appeler l'admin API Linux via `127.0.0.1` |
+| W6.4 | TODO | creer `windows_bot/admin_ui.py` pour une UI locale minimale : etat tunnel, etat API, liste viewers, recent |
+| W6.5 | TODO | ajouter des tests Windows pour le helper tunnel et le client admin |
+| W6.6 | BLOCKED | integration des operations `recent`, `purge`, `delete`, `export`, `import` depend d'une admin API Linux minimale disponible |
+
 ---
 
 ## Tests Attendus Cote Windows
@@ -94,3 +105,9 @@ Piste validee pour la suite :
 - l'admin ne sera pas exposee publiquement
 - une UI locale Windows ouvrira un tunnel SSH vers une admin API Linux sur `127.0.0.1`
 - reference de design : `admin_interface_v1.md`
+
+Ordre d'implementation cote Windows :
+1. helper tunnel SSH
+2. client HTTP admin
+3. ecran local minimal viewers + recent
+4. actions `purge`, `delete`, `export`, `import` une fois l'API admin Linux disponible
