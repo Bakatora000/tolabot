@@ -31,6 +31,7 @@ Code partage :
 - `admin_interface_v1.md` : design V1 pour l'administration memoire via tunnel SSH
 - `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
+- `graphiti/` : base de travail Graphiti V1 Linux locale/offline
 
 ---
 
@@ -118,6 +119,10 @@ Etat connu :
 - `deploy/systemd/mem0-api.service`
 - `deploy/nginx/memory.example.net.conf`
 - `deploy/DEPLOYMENT.md`
+- `graphiti/README.md`
+- `graphiti/requirements.txt`
+- `graphiti/.env.example`
+- `graphiti/schema_minimal.md`
 
 ### Suivi Projet
 

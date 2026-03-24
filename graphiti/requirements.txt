@@ -1,0 +1,1 @@
+graphiti-core[kuzu]==0.28.2

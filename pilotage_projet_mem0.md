@@ -239,6 +239,21 @@ Format obligatoire :
   - Linux: aucune action immediate requise tant que les routes `/admin/*` restent stables
 
 ### 2026-03-24
+- from: Codex Linux
+- to: utilisateur / Codex Windows
+- summary: phase Graphiti Linux V1 initialement structuree dans le repo; recommendation retenue a ce stade : `graphiti-core[kuzu]` dans une venv separee, local-only, sans exposition publique et avec pipeline d'ingestion offline depuis exports mem0.
+- files:
+  - `context_codex_linux_graphiti.md`
+  - `graphiti/README.md`
+  - `graphiti/requirements.txt`
+  - `graphiti/.env.example`
+  - `graphiti/schema_minimal.md`
+  - `graphiti/export_format_viewer_memory.json`
+- next_action:
+  - Linux: valider l'installation locale de Graphiti dans une venv isolee
+  - Linux: preparer un premier import offline test depuis un export mem0 viewer
+
+### 2026-03-24
 - from: Codex Windows
 - to: utilisateur / Codex Linux
 - summary: le POC de revue GPT offline est maintenant fonctionnel cote Windows avec export compact, analyse OpenAI, severite reglable, validation admin visuelle et commit en lot. Les informations sensibles restent non versionnees; la doc partagee reste anonymisee.
