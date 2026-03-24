@@ -205,6 +205,30 @@ Important :
 
 Si `MEM0_ENABLED=false`, le bot continue d'utiliser uniquement la memoire locale actuelle.
 
+## Memoire ciblee du streamer
+
+Le runtime Windows supporte une voie legere de memoire ciblee reservee au streamer.
+
+But :
+- permettre au streamer d'ajouter un fait durable sur un viewer cible
+- sans attribuer ce souvenir au streamer lui-meme
+
+Exemples :
+
+```text
+@anneaunimouss pour info, @raptormekhong est feru de defis sur Valheim
+@anneaunimouss note que sarahp79 aime Valheim et Enshrouded
+```
+
+Effet :
+- extraction `viewer cible + fait`
+- ecriture directe dans mem0 sur le `user_id` du viewer cible
+- `source=twitch_owner_targeted_memory`
+- pas d'appel Ollama pour cette commande
+
+Contrainte :
+- fonctionnalite reservee au streamer
+
 ## Memoire conversationnelle
 
 Le bot garde une memoire locale courte :

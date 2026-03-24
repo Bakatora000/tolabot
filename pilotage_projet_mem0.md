@@ -52,9 +52,10 @@ Decision produit :
 Etat courant synthetique :
 - Linux : API HTTP validee en backend `file` et `mem0`, TLS/routage OK, service `systemd` actif
 - Windows : client mem0 et branchements runtime en place, validation reelle faite contre l'API Linux, code partage versionne dans `windows_bot/`
-- Linux : Graphiti V1 locale validee jusqu'au premier import reel via Ollama Windows batch; chantier maintenant mis en veille
-- Linux : nouvelle voie prioritaire ouverte pour un graphe metier maison `mem0 + GPT + SQLite`
-- Linux : socle `homegraph/` deja pose avec schema SQLite V1 et payload viewer pour extraction GPT
+- Linux : Graphiti V1 locale validee jusqu'au pipeline offline (`venv`, Kuzu, export mem0, import dry-run)
+- Linux/Windows : Homegraph devient la voie produit principale pour enrichir les prompts avec un contexte viewer compact
+- Windows : integration runtime Homegraph validee en reel via le tunnel admin et fallback `mem0`
+- Windows : memoire ciblee streamer -> viewer cible validee en reel, avec ecriture directe dans mem0
 
 ---
 
@@ -307,5 +308,27 @@ Format obligatoire :
 - next_action:
   - Linux: proposer et documenter le deploiement local de Graphiti, le schema minimal et le pipeline d'ingestion offline depuis mem0
   - Windows: aucune action immediate requise tant que le chantier reste cote Linux
+
+### 2026-03-24
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: integration runtime Homegraph validee cote bot Windows. Le tunnel admin, l'auth `X-Admin-Key`, la route `/admin/homegraph/users/{user_id}/context` et l'injection effective dans le prompt Ollama ont ete verifies. Windows filtre aussi les `text_block` vides, trop courts ou de faible valeur avant injection.
+- files:
+  - `windows_bot/README.md`
+  - `statut_windows.md`
+- next_action:
+  - Linux: continuer l'alimentation `mem0 -> extraction -> merge SQLite -> builder` pour produire des `text_block` utiles sur davantage de viewers
+  - Windows: aucune action immediate requise hors retests ponctuels quand de nouveaux viewers sont alimentes
+
+### 2026-03-24
+- from: Codex Windows
+- to: utilisateur / Codex Linux
+- summary: une voie de memoire ciblee reservee au streamer est maintenant disponible cote bot Windows. Elle permet de stocker un fait durable sur un viewer cible directement dans mem0, sans passer par Ollama. Validation reelle faite avec verification via l'API admin mem0.
+- files:
+  - `statut_windows.md`
+  - `windows_bot/README.md`
+- next_action:
+  - Windows: etendre eventuellement le parseur si de nouveaux patterns utiles emergent
+  - Linux: aucune action immediate requise, ces souvenirs seront naturellement consommables par les pipelines mem0/homegraph
 
 ---

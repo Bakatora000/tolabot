@@ -47,6 +47,8 @@ Sous-decoupage recommande pour W6 :
 | W6.5 | REVIEW | tests Windows ajoutes pour le helper tunnel et le client admin |
 | W6.6 | DONE | validation reelle faite pour tunnel SSH, port local, auth admin, `/admin/health`, viewers, recent et purge viewer |
 | W6.7 | REVIEW | revue GPT offline viewer-par-viewer implemente avec export compact, severite, staging admin et commit en lot |
+| W7 | DONE | integration runtime `homegraph` validee cote bot Windows via tunnel admin existant, avec fallback `mem0` et filtrage des contextes faibles |
+| W8 | DONE | memoire ciblee du streamer implemente, avec ecriture directe mem0 sur le viewer cible et sans appel Ollama |
 
 ---
 
@@ -184,3 +186,68 @@ Configuration Windows utile :
 - `OPENAI_REVIEW_MODEL=gpt-5-mini`
 - `OPENAI_REVIEW_TIMEOUT_SECONDS=90`
 - `OPENAI_REVIEW_MAX_RECORDS=15` a `20` recommande pour l'usage interactif
+
+---
+
+## Homegraph Runtime
+
+Etat actuel :
+- source `homegraph` branchee dans le runtime du bot Windows
+- route Linux consommee via le tunnel admin existant :
+  - `GET /admin/homegraph/users/{user_id}/context`
+- auth admin `X-Admin-Key` : OK
+- fallback `mem0` conserve
+- filtrage Windows ajoute pour ne pas injecter un `text_block` :
+  - vide
+  - trop court
+  - ou de faible valeur (`Contexte viewer:` seul)
+
+Ordre d'injection retenu dans le bot :
+1. fil local specialise
+2. `homegraph`
+3. `mem0`
+4. contexte local general
+
+Validation reelle cote Windows :
+- tunnel admin ouvert : OK
+- endpoint Homegraph joignable : OK
+- injection runtime observee dans les logs du bot :
+  - `Source : homegraph+mem0`
+  - ligne `Homegraph : ...` presente
+- appel Ollama et reponse chat valides avec ce contexte injecte
+
+Point de vigilance :
+- la valeur reelle du contexte depend entierement de l'alimentation Linux (`mem0 -> extraction -> merge SQLite -> builder`)
+- Windows ne doit pas inventer ni forcer le contexte : il ne fait que consommer, filtrer et fallback
+
+---
+
+## Memoire Ciblee Streamer
+
+Etat actuel :
+- le streamer peut injecter un fait durable sur un viewer cible via le chat
+- le souvenir est ecrit dans mem0 pour le viewer cible, pas pour l'auteur
+- la confirmation chat est courte et aucun appel Ollama n'est fait
+
+Triggers supportes :
+- `pour info`
+- `note que`
+- `note bien que`
+- `sache que`
+- `sais tu que`
+- `sais-tu que`
+- `n'oublie pas que`
+
+Exemple valide :
+- `@anneaunimouss pour info, @raptormekhong est feru de defis sur Valheim`
+
+Validation reelle cote Windows :
+- log runtime : `Memoire ciblee : @expevay C'est note pour @raptormekhong.`
+- verification admin/search : souvenir present dans mem0 pour `twitch:streamer:viewer:raptormekhong`
+- metadata attendue :
+  - `source=twitch_owner_targeted_memory`
+  - `source_author=streamer`
+
+Limites :
+- parseur simple, volontairement limite
+- les formulations ambigues ou trop riches peuvent necessiter un nettoyage supplementaire

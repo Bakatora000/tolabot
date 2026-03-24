@@ -32,8 +32,6 @@ Code partage :
 - `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
 - `graphiti/` : base de travail Graphiti V1 Linux locale/offline
-- `graphe_metier_maison_v1.md` : cadrage du graphe metier produit base sur `mem0 + GPT + SQLite`
-- `homegraph/` : implementation Linux du graphe metier maison
 
 ---
 
@@ -97,26 +95,7 @@ Graphiti V1 locale :
 - `graphiti/validate_local_kuzu.py` : OK
 - export mem0 viewer -> JSON : OK
 - import Graphiti `--dry-run` : OK
-- reverse tunnel SSH Windows -> Linux vers Ollama : OK
-- import Graphiti reel declenche via Ollama Windows : OK cote connectique
-- compatibilite locale Graphiti/Kuzu corrigee dans l'importeur
-- performance d'ingestion encore insuffisante avec `gemma:7b`, meme sur `--limit 1`
-- Graphiti passe donc en veille pour la voie produit principale
-- voie prioritaire retenue :
-  - graphe metier maison
-  - memoire source = `mem0`
-  - extraction semantique = GPT
-  - stockage = SQLite structuree
-- premiere brique maison deja posee :
-  - schema SQLite V1
-  - initialisation DB
-  - inspection DB
-  - payload viewer pour extraction GPT
-  - prompt GPT reproductible
-  - merge GPT JSON -> SQLite
-  - builder contexte viewer compact
-  - endpoint admin local pour recuperer ce contexte
-  - durcissement qualite du `text_block` pour reduire les cas `too_short` / `low_value` / `empty`
+- import reel encore bloque faute de provider LLM/embedder joignable depuis Linux
 
 ### Windows
 
@@ -135,6 +114,13 @@ Etat connu :
 - revue GPT offline viewer-par-viewer en place dans l'admin UI
 - chantier futur Graphiti initialise cote documentation, avec deploiement Linux local/offline prevu
 - Ollama Windows reste le meilleur candidat provider pour Graphiti, mais seulement en mode batch/opportuniste car le PC n'est pas allume en permanence
+- Homegraph est maintenant la voie produit prioritaire pour un contexte viewer compact enrichissant le prompt du bot
+- integration runtime Homegraph validee cote Windows via tunnel admin, avec ordre d'injection :
+  - local specialise
+  - homegraph
+  - mem0
+  - local general
+- une voie de memoire ciblee reservee au streamer existe maintenant cote Windows pour injecter un fait durable sur un viewer cible directement dans mem0
 
 ---
 
@@ -157,18 +143,6 @@ Etat connu :
 - `graphiti/validate_local_kuzu.py`
 - `graphiti/export_viewer_memories.py`
 - `graphiti/import_viewer_memories.py`
-- `homegraph/schema.py`
-- `homegraph/init_db.py`
-- `homegraph/inspect_db.py`
-- `homegraph/build_viewer_payload.py`
-- `homegraph/extraction_prompt_v1.md`
-- `homegraph/build_extraction_prompt.py`
-- `homegraph/merge_extraction.py`
-- `homegraph/extraction_output_example.json`
-- `homegraph/build_viewer_context.py`
-- `homegraph/viewer_context_contract_v1.md`
-- `homegraph/workflow_v1.md`
-- `GET /admin/homegraph/users/{user_id}/context`
 
 ### Suivi Projet
 
@@ -238,10 +212,7 @@ Note importante :
 - eventuellement historiser les commits de revue GPT
 - reevaluer plus tard une action `merge` une fois le workflow stable
 - deployer Graphiti localement cote Linux pour experimentation offline a partir des exports mem0
-- benchmarker ensuite un ou plusieurs modeles d'ingestion Graphiti plus adaptes que `gemma:7b`
-- definir le schema du graphe metier maison
-- definir le format d'extraction GPT
-- implementer un premier pipeline `mem0 -> GPT -> SQLite`
+- definir ensuite le mode batch Linux -> Ollama Windows pour permettre un premier import Graphiti reel
 
 ---
 
@@ -254,7 +225,8 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - service Linux durable installe
 - admin UI Windows fonctionnelle via tunnel SSH
 - revue GPT offline avec validation admin et commit en lot disponible dans `windows_bot/`
-- socle Graphiti Linux V1 valide jusqu'au premier import reel batch via Ollama Windows, avec tuning performance encore necessaire
-- nouvelle direction produit prioritaire formalisee pour un graphe metier maison plus simple et plus controlable
+- socle Graphiti Linux V1 valide jusqu'au pipeline offline
+- Homegraph runtime maintenant consomme reellement par le bot Windows quand un `text_block` utile est disponible
+- memoire ciblee streamer -> viewer cible validee en runtime cote Windows et verifiee via l'API admin mem0
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.
