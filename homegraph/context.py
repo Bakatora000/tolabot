@@ -118,6 +118,8 @@ def relation_to_phrase(target_type: str, relation_type: str, target_value: str) 
         return f"joue souvent a {value}"
     if target_type == "game" and relation_type == "likes":
         return f"apprecie {value}"
+    if target_type == "game" and relation_type == "dislikes":
+        return f"n'apprecie pas {value}"
     if target_type == "topic" and relation_type == "likes":
         return f"s'interesse a {normalize_phrase(value)}"
     if target_type == "viewer" and relation_type == "knows":
