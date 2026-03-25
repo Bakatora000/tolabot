@@ -2,9 +2,6 @@
 
 Bot Twitch francophone avec memoire contextuelle, recherche web selective, interface d'administration locale et trajectoire vers une memoire plus structuree.
 
-Le projet ne se resume pas a `mem0`.
-`mem0` est seulement un composant de la memoire longue actuelle.
-
 Aujourd'hui, Tolabot est organise autour de deux ensembles :
 - `windows_bot/` : le runtime principal du bot sur Windows
 - `memory_service/` : le service memoire/admin sur Linux
