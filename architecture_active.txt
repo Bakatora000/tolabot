@@ -1,0 +1,177 @@
+ARCHITECTURE ACTIVE DU PROJET TOLABOT
+
+Vue d'ensemble
+
+Le projet actif est organise autour de 2 ensembles en production :
+
+1. windows_bot
+- bot Twitch lance sur la machine Windows
+- generation de reponse via Ollama avec le modele qwen3.5
+- memoire locale courte pour le contexte conversationnel
+- recherche web selective via SearXNG local
+- acces a la memoire distante mem0 via HTTP
+- interface admin Windows pour consulter et maintenir la memoire
+
+2. services Linux
+- memory_service : API memoire distante utilisee par le bot
+- admin_service : surface admin utilisee via tunnel SSH depuis Windows
+
+
+Flux principal en runtime
+
+1. Un message Twitch mentionne @anneaunimouss.
+2. windows_bot recoit le message et l'ajoute a une file de traitement.
+3. Le runtime reconstruit le contexte utile avec :
+- memoire locale de chat
+- graphe conversationnel local
+- faits locaux structures
+- memoire distante mem0
+- resultat web SearXNG si la question ressemble a une demande externe ou recente
+4. Le prompt est envoye a Ollama sur Windows.
+5. La reponse est renvoyee dans le chat Twitch.
+6. Les memoires locales sont mises a jour.
+7. Les echanges utiles sont aussi envoyes a mem0.
+
+
+Composants actifs cote Windows
+
+manage_bot.py
+- point d'entree principal
+- lancement du bot
+- lancement en background
+- diagnostics
+- verification des APIs
+- lancement de l'UI admin
+
+bot_ollama.py
+- runtime principal Twitch
+- gestion de la file de messages
+- orchestration du contexte
+- appel au modele
+- envoi des reponses dans le chat
+
+bot_logic.py
+- regles de traitement local
+- nettoyage et normalisation des messages
+- construction du prompt
+- memoire locale de chat
+- detection des cas sociaux simples, charades, corrections et fallback
+
+conversation_rules.py
+- liste des patterns metier utilises par la logique locale
+
+conversation_graph.py
+- memoire conversationnelle locale structuree
+- liens entre tours, corrections et suites de conversation
+
+facts_memory.py
+- memoire locale de faits structures
+- gestion de la provenance et de l'incertitude
+- alias et groupes locaux
+
+memory_client.py
+- client HTTP vers l'API mem0 Linux
+
+web_search_client.py
+- client HTTP vers SearXNG local
+- declenchement selectif des recherches web
+- construction du web_context injecte au prompt
+
+ollama_client.py
+- client du modele
+- envoi du prompt a Ollama
+- support OpenAI conserve dans le code, mais non actif dans la configuration actuelle
+
+admin_ui.py
+- interface admin locale Windows
+
+admin_client.py
+- client HTTP pour l'API admin Linux
+
+admin_tunnel.py
+- ouverture du tunnel SSH Windows -> Linux pour l'admin
+
+twitch_auth.py
+- gestion OAuth Twitch
+
+bot_config.py
+- chargement de la configuration depuis .env
+
+
+Stockages locaux actifs cote Windows
+
+chat_memory.json
+- historique local recent par viewer et par chaine
+
+conversation_graph.json
+- graphe conversationnel local recent
+
+facts_memory.json
+- faits locaux structures avec provenance
+
+channel_history.json
+- historique local de la chaine pour les resumes de contenu
+
+logs/
+- logs du bot en mode background
+
+
+Configuration active cote Windows
+
+Mode LLM actif
+- LLM_PROVIDER=ollama
+- OLLAMA_MODEL=qwen3.5:latest
+
+Recherche web active
+- WEB_SEARCH_ENABLED=true
+- WEB_SEARCH_PROVIDER=searxng
+- WEB_SEARCH_MODE=auto
+- SEARXNG_BASE_URL=http://127.0.0.1:8888
+
+Memoire distante active
+- MEM0_ENABLED=true
+- utilisation de l'API memory_service cote Linux
+
+Admin actif
+- ADMIN_UI_ENABLED=true
+- acces a l'API admin via tunnel SSH
+
+
+Composants actifs cote Linux
+
+memory_service
+- API memoire distante principale
+- routes de sante, recherche, memorisation, oubli, historique recent
+- backend memoire utilise par le bot Windows
+
+admin_service
+- API admin dediee
+- utilisee par l'UI admin Windows via tunnel SSH
+
+
+Flux admin
+
+1. L'interface Windows ouvre un tunnel SSH vers le serveur Linux.
+2. admin_ui parle a admin_service via l'URL locale tunnelisee.
+3. L'admin peut exporter, relire, supprimer ou reecrire des souvenirs.
+
+
+Flux recherche web
+
+1. Le bot detecte qu'une question semble demander une information externe ou recente.
+2. windows_bot interroge SearXNG local.
+3. Les meilleurs resultats sont resumes dans un bloc web_context.
+4. Ce web_context est injecte au prompt envoye a Qwen.
+5. Si SearXNG est indisponible, le bot continue sans contexte web.
+
+
+Frontieres fonctionnelles actuelles
+
+Le bot utilise en priorite :
+- la memoire locale pour les fils de discussion recents
+- mem0 pour la memoire plus durable
+- SearXNG pour les questions externes ou recentes
+
+Le modele principal actuellement utilise en production locale est :
+- qwen3.5 via Ollama
+

@@ -6,6 +6,25 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
+from conversation_rules import (
+    CHANNEL_CONTENT_TRIGGERS,
+    CORRECTION_TRIGGERS,
+    GREETING_TRIGGERS,
+    MEMORY_CONTEXT_TRIGGERS,
+    MEMORY_INSTRUCTION_TRIGGERS,
+    NEW_RIDDLE_THREAD_TRIGGERS,
+    NO_REPLY_SIGNALS,
+    PASSIVE_CLOSING_TRIGGERS,
+    PROMPT_INJECTION_PATTERNS,
+    RIDDLE_CLOSE_TRIGGERS,
+    RIDDLE_FINAL_MARKERS,
+    RIDDLE_REFUSAL_PATTERNS,
+    RIDDLE_TRIGGERS,
+    SHORT_ACKNOWLEDGMENT_TRIGGERS,
+    SUSPICIOUS_OUTPUT_PATTERNS,
+    contains_any_pattern,
+)
+
 BOT_USERNAME = "anneaunimouss"
 BOT_TRIGGER = "@anneaunimouss"
 
@@ -19,7 +38,9 @@ MAX_HISTORY_SESSIONS = 60
 CHAT_MEMORY_FILE = "chat_memory.json"
 MAX_GLOBAL_CHAT_TURNS = 12
 MAX_VIEWER_CHAT_TURNS = 6
+MAX_GLOBAL_CONTEXT_LINES = 20
 CHAT_MEMORY_TTL_HOURS = 10
+SOCIAL_REDUNDANCY_WINDOW_MINUTES = 5
 
 
 def utc_now_iso() -> str:
@@ -80,118 +101,34 @@ def strip_trigger(text: str) -> str:
 
 
 def looks_like_prompt_injection(text: str) -> bool:
-    lowered = text.lower()
-    suspicious_patterns = [
-        "ignore previous instructions",
-        "ignore all previous instructions",
-        "ignore tes instructions",
-        "ignore toutes les instructions",
-        "system prompt",
-        "prompt système",
-        "prompt systeme",
-        "reveal your prompt",
-        "révèle ton prompt",
-        "revele ton prompt",
-        "developer mode",
-        "mode développeur",
-        "mode developpeur",
-        "you are now",
-        "tu es maintenant",
-        "from now on",
-        "à partir de maintenant",
-        "a partir de maintenant",
-        "follow these instructions instead",
-        "obéis à ces instructions",
-        "obeis a ces instructions",
-        "jailbreak",
-        "role: system",
-        "<system>",
-        "</system>",
-    ]
-    return any(pattern in lowered for pattern in suspicious_patterns)
+    return contains_any_pattern(text.lower(), PROMPT_INJECTION_PATTERNS)
 
 
 def output_is_suspicious(text: str) -> bool:
-    lowered = text.lower()
-    bad_patterns = [
-        "system prompt",
-        "prompt système",
-        "prompt systeme",
-        "mes instructions internes",
-        "règles internes",
-        "regles internes",
-        "ignore previous instructions",
-        "ignore tes instructions",
-    ]
-    return any(pattern in lowered for pattern in bad_patterns)
+    return contains_any_pattern(text.lower(), SUSPICIOUS_OUTPUT_PATTERNS)
 
 
 def is_no_reply_signal(text: str) -> bool:
     normalized = normalize_spaces((text or "").lower())
-    no_reply_signals = {
-        "no_reply",
-        "no reply",
-        "non répondre",
-        "non repondre",
-        "ne pas répondre",
-        "ne pas repondre",
-        "pas de réponse",
-        "pas de reponse",
-    }
-    return normalized in no_reply_signals
+    normalized = re.sub(r"[.!?…]+$", "", normalized).strip()
+    return normalized in NO_REPLY_SIGNALS
 
 
 def asks_about_channel_content(text: str) -> bool:
     lowered = strip_trigger(text).lower()
-    triggers = [
-        "tu fais quoi sur cette chaîne",
-        "tu fais quoi sur cette chaine",
-        "cette chaîne parle de quoi",
-        "cette chaine parle de quoi",
-        "résume la chaîne",
-        "resume la chaine",
-        "contenu habituel",
-        "quels sont les derniers streams",
-        "quels sont les derniers live",
-        "de quoi parle la chaîne",
-        "de quoi parle la chaine",
-        "les derniers titres",
-        "les derniers lives",
-        "résume le contenu",
-        "resume le contenu",
-        "tu streams quoi",
-        "vous streamez quoi",
-        "joue a quoi",
-        "joues a quoi",
-        "joue à quoi",
-        "joues à quoi",
-        "stream joue a quoi",
-        "stream joue à quoi",
-    ]
-    return any(trigger in lowered for trigger in triggers)
+    return contains_any_pattern(lowered, CHANNEL_CONTENT_TRIGGERS)
 
 
 def looks_like_memory_instruction(text: str) -> bool:
     lowered = strip_trigger(text).lower()
-    triggers = [
-        "note que",
-        "note bien que",
-        "garde en tete que",
-        "garde en tête que",
-        "souviens toi que",
-        "souviens-toi que",
-        "n'oublie pas que",
-        "n oublie pas que",
-        "retiens que",
-        "memorise que",
-        "mémorise que",
-    ]
-    return any(trigger in lowered for trigger in triggers)
+    return contains_any_pattern(lowered, MEMORY_INSTRUCTION_TRIGGERS)
 
 
 def build_no_reply_fallback(text: str, riddle_related: bool = False) -> str:
     if riddle_related:
         return "J'ai lu ton message, mais il me manque encore un peu de contexte pour répondre correctement."
+    if looks_like_passive_closing(text) or looks_like_greeting(text):
+        return ""
     lowered = strip_trigger(text).lower()
     if "pourquoi" in lowered:
         return "J'ai lu ton message. Reformule ou précise un peu si tu veux une réponse plus nette."
@@ -202,81 +139,364 @@ def build_no_reply_fallback(text: str, riddle_related: bool = False) -> str:
 
 def looks_like_riddle_message(text: str) -> bool:
     lowered = sanitize_user_text(strip_trigger(text)).lower()
-    triggers = [
-        "charade",
-        "devinette",
-        "enigme",
-        "énigme",
-        "mon premier",
-        "mon second",
-        "mon troisième",
-        "mon troisieme",
-        "mon tout",
-        "qui suis-je",
-        "qui suis je",
-    ]
-    return any(trigger in lowered for trigger in triggers)
+    return contains_any_pattern(lowered, RIDDLE_TRIGGERS)
 
 
 def likely_needs_memory_context(text: str) -> bool:
     lowered = sanitize_user_text(strip_trigger(text)).lower()
-    triggers = [
-        "tu te rappelles",
-        "te rappelle tu",
-        "tu te souviens",
-        "comme je disais",
-        "comme j'ai dit",
-        "plus haut",
-        "avant",
-        "cette charade",
-        "ce jeu",
-        "cet indice",
-        "la suite",
-        "mon premier",
-        "mon second",
-        "mon troisième",
-        "mon troisieme",
-        "mon tout",
-        "qui suis-je",
-        "qui suis je",
-    ]
-    return any(trigger in lowered for trigger in triggers)
+    return contains_any_pattern(lowered, MEMORY_CONTEXT_TRIGGERS)
+
+
+def looks_like_correction_message(text: str) -> bool:
+    lowered = sanitize_user_text(strip_trigger(text)).lower()
+    return contains_any_pattern(lowered, CORRECTION_TRIGGERS)
+
+
+def looks_like_short_acknowledgment(text: str) -> bool:
+    lowered = sanitize_user_text(strip_trigger(text)).lower()
+    lowered = re.sub(r"[^a-z0-9àâäçéèêëîïôöùûüÿœæ]+", " ", lowered)
+    lowered = normalize_spaces(lowered)
+    if not lowered:
+        return False
+    return lowered in SHORT_ACKNOWLEDGMENT_TRIGGERS
+
+
+def looks_like_passive_closing(text: str) -> bool:
+    lowered = sanitize_user_text(strip_trigger(text)).lower()
+    lowered = re.sub(r"[^a-z0-9àâäçéèêëîïôöùûüÿœæ]+", " ", lowered)
+    lowered = normalize_spaces(lowered)
+    if not lowered:
+        return False
+    return lowered in PASSIVE_CLOSING_TRIGGERS
+
+
+def looks_like_greeting(text: str) -> bool:
+    lowered = sanitize_user_text(strip_trigger(text)).lower()
+    lowered = re.sub(r"[^a-z0-9àâäçéèêëîïôöùûüÿœæ]+", " ", lowered)
+    lowered = normalize_spaces(lowered)
+    if not lowered:
+        return False
+    return lowered in GREETING_TRIGGERS
+
+
+def build_social_reply(text: str, repeated: bool = False) -> str:
+    if looks_like_greeting(text):
+        return "Bonjour, mais tu m'as deja salue je crois." if repeated else "Bonjour !"
+    if looks_like_passive_closing(text):
+        return "" if repeated else "Au revoir !"
+    return ""
+
+
+def normalize_name_token(text: str) -> str:
+    cleaned = normalize_spaces(text).strip().lstrip("@")
+    cleaned = re.sub(r"^[^a-zA-Z0-9_]+|[^a-zA-Z0-9_]+$", "", cleaned)
+    return cleaned
+
+
+def extract_name_candidates(text: str) -> list[str]:
+    cleaned = sanitize_user_text(strip_trigger(text or ""))
+    if not cleaned:
+        return []
+
+    candidates: list[str] = []
+    seen: set[str] = set()
+    stop_words = {
+        "anneaunimouss", "viewer", "bot", "bonjour", "salut", "hello", "bonsoir",
+        "quelle", "quel", "quelles", "quels", "relation", "groupe", "trio", "nom",
+        "partie", "communautaire", "concernant", "toujours", "souvenir", "rappelles",
+        "rappelle", "sais", "sait", "dire", "fait", "faites", "faire", "avec",
+        "quand", "parle", "parlais", "parlait", "parler", "elle", "elles", "lui",
+        "eux", "son", "sa", "ses", "ce", "cet", "cette", "gaby", "dame",
+    }
+
+    def _push(candidate: str) -> None:
+        normalized = normalize_name_token(candidate)
+        lowered = normalized.lower()
+        if not normalized or lowered in stop_words or lowered in seen:
+            return
+        if len(normalized) < 3:
+            return
+        seen.add(lowered)
+        candidates.append(normalized)
+
+    for mention in extract_mentions(cleaned):
+        _push(mention)
+
+    for token in re.findall(r"\b[a-zA-Z0-9]*_[a-zA-Z0-9_]+\b", cleaned):
+        _push(token)
+
+    for token in re.findall(r"\b[A-Z][a-zA-Z0-9_]{2,}\b", cleaned):
+        _push(token)
+
+    return candidates
+
+
+def extract_alias_pairs(text: str) -> list[tuple[str, str]]:
+    cleaned = sanitize_user_text(strip_trigger(text))
+    if not cleaned:
+        return []
+
+    pairs: list[tuple[str, str]] = []
+
+    simple_match = re.search(
+        r"\b([@a-zA-Z0-9_]+)\b\s+est\s+aussi\s+\b([@a-zA-Z0-9_]+)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if simple_match:
+        canonical = normalize_name_token(simple_match.group(1))
+        alias = normalize_name_token(simple_match.group(2))
+        if canonical and alias and canonical.lower() != alias.lower():
+            pairs.append((canonical, alias))
+
+    same_person_match = re.search(
+        r"\b([@a-zA-Z0-9_]+)\b\s+est\s+la\s+m[êe]me\s+personne\s+(?:que|de)\s+\b([@a-zA-Z0-9_]+)\b",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if same_person_match:
+        canonical = normalize_name_token(same_person_match.group(1))
+        alias = normalize_name_token(same_person_match.group(2))
+        if canonical and alias and canonical.lower() != alias.lower():
+            pairs.append((canonical, alias))
+
+    reported_alias_match = re.search(
+        r"quand\s+on\s+te\s+parle\s+de\s+[\"“]?([^\"”]+)[\"”]?\s+il\s+s['’]agit\s+de\s+([@a-zA-Z0-9_ ]+)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if reported_alias_match:
+        alias = normalize_name_token(reported_alias_match.group(1))
+        canonical = normalize_name_token(reported_alias_match.group(2))
+        if canonical and alias and canonical.lower() != alias.lower():
+            pairs.append((canonical, alias))
+
+    called_match = re.search(
+        r"\b([@a-zA-Z0-9_]+)\b\s+est\s+le\s+plus\s+souvent\s+appel\w+\s+(.+)",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    if called_match:
+        canonical = normalize_name_token(called_match.group(1))
+        aliases_part = called_match.group(2)
+        alias_candidates = re.split(r"\b(?:ou|et)\b|,", aliases_part, flags=re.IGNORECASE)
+        for candidate in alias_candidates:
+            alias = normalize_name_token(candidate)
+            if canonical and alias and canonical.lower() != alias.lower():
+                pairs.append((canonical, alias))
+
+    deduped: list[tuple[str, str]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for canonical, alias in pairs:
+        key = (canonical.lower(), alias.lower())
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        deduped.append((canonical, alias))
+    return deduped
+
+
+def build_channel_alias_index(chat_memory: dict, channel_name: str) -> dict[str, str]:
+    normalized_channel = normalize_spaces((channel_name or "").lower())
+    channel_data = chat_memory.get("channels", {}).get(normalized_channel, {})
+    alias_index: dict[str, str] = {}
+
+    for turn in channel_data.get("global_turns", []):
+        for canonical, alias in extract_alias_pairs(turn.get("viewer_message", "")):
+            alias_index.setdefault(canonical.lower(), canonical)
+            alias_index[alias.lower()] = canonical
+
+    return alias_index
+
+
+def infer_recent_focus(chat_memory: dict, channel_name: str, viewer_name: str) -> dict[str, str]:
+    normalized_channel = normalize_spaces((channel_name or "").lower())
+    normalized_viewer = normalize_spaces((viewer_name or "").lower())
+    channel_data = chat_memory.get("channels", {}).get(normalized_channel, {})
+    viewer_turns = list(channel_data.get("viewer_turns", {}).get(normalized_viewer, []))[-MAX_VIEWER_CHAT_TURNS:]
+
+    subject = ""
+    group_name = ""
+
+    for turn in reversed(viewer_turns):
+        if not subject:
+            for source_text in (turn.get("viewer_message", ""), turn.get("bot_reply", "")):
+                candidates = extract_name_candidates(source_text)
+                if candidates:
+                    subject = candidates[0]
+                    break
+        if not group_name:
+            for source_text in (turn.get("viewer_message", ""), turn.get("bot_reply", "")):
+                match = re.search(r"\b(les\s+[A-Z][a-zA-Z0-9_]+)\b", source_text or "")
+                if match:
+                    group_name = sanitize_user_text(match.group(1))
+                    break
+        if subject and group_name:
+            break
+
+    return {
+        "subject": subject,
+        "group_name": group_name,
+    }
+
+
+def resolve_recent_reference_subjects(text: str, focus: dict[str, str] | None = None) -> tuple[str, list[str]]:
+    cleaned = sanitize_user_text(text)
+    if not cleaned:
+        return cleaned, []
+
+    focus = focus or {}
+    subject = normalize_name_token(focus.get("subject", ""))
+    group_name = sanitize_user_text(focus.get("group_name", ""))
+    notes: list[str] = []
+    rewritten = cleaned
+    lowered = cleaned.lower()
+
+    if subject and any(fragment in lowered for fragment in (" elle ", " lui ", " concernant elle", " a propos d'elle")):
+        rewritten = re.sub(r"\belle\b", subject, rewritten, flags=re.IGNORECASE)
+        rewritten = re.sub(r"\blui\b", subject, rewritten, flags=re.IGNORECASE)
+        if rewritten != cleaned:
+            notes.append(f"sujet recent: {subject}")
+            lowered = rewritten.lower()
+
+    if subject and any(fragment in lowered for fragment in ("quel groupe", "ce groupe", "son groupe", "leur groupe")):
+        if subject.lower() not in lowered:
+            rewritten = f"{rewritten.rstrip(' ?.!')} de {subject} ?"
+            notes.append(f"question rattachee a: {subject}")
+            lowered = rewritten.lower()
+
+    if group_name and "ce groupe" in lowered:
+        rewritten = re.sub(r"\bce groupe\b", group_name, rewritten, flags=re.IGNORECASE)
+        if f"groupe recent: {group_name}" not in notes:
+            notes.append(f"groupe recent: {group_name}")
+
+    deduped_notes: list[str] = []
+    seen_notes: set[str] = set()
+    for note in notes:
+        lowered_note = note.lower()
+        if lowered_note in seen_notes:
+            continue
+        seen_notes.add(lowered_note)
+        deduped_notes.append(note)
+    return rewritten, deduped_notes
+
+
+def resolve_known_aliases(text: str, alias_index: dict[str, str]) -> tuple[str, list[tuple[str, str]]]:
+    cleaned = sanitize_user_text(text)
+    if not cleaned or not alias_index:
+        return cleaned, []
+
+    replacements: list[tuple[str, str]] = []
+    resolved = cleaned
+    alias_keys = sorted(alias_index.keys(), key=len, reverse=True)
+
+    for alias_key in alias_keys:
+        canonical = alias_index.get(alias_key, "")
+        if not canonical or alias_key == canonical.lower():
+            continue
+        pattern = re.compile(rf"\b{re.escape(alias_key)}\b", flags=re.IGNORECASE)
+        if not pattern.search(resolved):
+            continue
+        resolved = pattern.sub(canonical, resolved)
+        replacements.append((alias_key, canonical))
+
+    deduped_replacements: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for alias_key, canonical in replacements:
+        key = (alias_key.lower(), canonical.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_replacements.append((alias_key, canonical))
+    return resolved, deduped_replacements
+
+
+def extract_mentions(text: str) -> list[str]:
+    mentions = re.findall(r"@([a-zA-Z0-9_]+)", text or "")
+    normalized = []
+    seen = set()
+    for mention in mentions:
+        clean = normalize_spaces(mention).lower().lstrip("@")
+        if not clean or clean == BOT_USERNAME or clean in seen:
+            continue
+        seen.add(clean)
+        normalized.append(clean)
+    return normalized
+
+
+def detect_referenced_viewers(text: str) -> list[str]:
+    cleaned = sanitize_user_text(strip_trigger(text)).lower()
+    viewers = extract_mentions(cleaned)
+    if viewers:
+        return viewers
+
+    fallback_names = re.findall(r"\b([a-z][a-z0-9_]{2,})\b", cleaned)
+    candidates = []
+    seen = set()
+    stop_words = {
+        "que", "pense", "penses", "parlait", "parlait", "pas", "bot",
+        "dame", "gaby", "streamer", "viewer", "de", "et", "il", "elle",
+        "je", "tu", "as", "confondu", "voulait", "voulais", "dire",
+    }
+    for item in fallback_names:
+        if item in stop_words or item in seen:
+            continue
+        seen.add(item)
+        candidates.append(item)
+    return candidates[:3]
+
+
+def classify_conversation_event(text: str, author_is_owner: bool = False) -> str:
+    if looks_like_correction_message(text):
+        return "owner_correction" if author_is_owner else "correction"
+    if looks_like_memory_instruction(text):
+        return "memory_instruction"
+    if looks_like_riddle_message(text):
+        return "riddle"
+    return "message"
+
+
+def find_related_global_turn(
+    chat_memory: dict,
+    channel_name: str,
+    message_text: str,
+    author_name: str = "",
+) -> dict | None:
+    normalized_channel = normalize_spaces((channel_name or "").lower())
+    normalized_author = normalize_spaces((author_name or "").lower())
+    channel_data = chat_memory.get("channels", {}).get(normalized_channel, {})
+    global_turns = list(channel_data.get("global_turns", []))[-MAX_GLOBAL_CHAT_TURNS:]
+    referenced_viewers = set(detect_referenced_viewers(message_text))
+    lowered_message = sanitize_user_text(strip_trigger(message_text)).lower()
+
+    for turn in reversed(global_turns):
+        turn_viewer = normalize_spaces(turn.get("viewer", "").lower())
+        if not turn_viewer or turn_viewer == normalized_author:
+            continue
+
+        if referenced_viewers and turn_viewer in referenced_viewers:
+            return turn
+
+        turn_message = sanitize_user_text(turn.get("viewer_message", "")).lower()
+        turn_reply = sanitize_user_text(turn.get("bot_reply", "")).lower()
+
+        if any(reference in turn_message or reference in turn_reply for reference in referenced_viewers):
+            return turn
+
+        if turn_reply and any(token in lowered_message for token in turn_reply.split() if len(token) >= 4):
+            return turn
+
+    return None
 
 
 def starts_new_riddle_thread(text: str) -> bool:
     lowered = sanitize_user_text(strip_trigger(text)).lower()
-    triggers = [
-        "une autre charade",
-        "une autre devinette",
-        "une nouvelle charade",
-        "une nouvelle devinette",
-        "voici une autre charade",
-        "voici une nouvelle charade",
-        "je te propose une charade",
-        "je te propose une devinette",
-    ]
-    return any(trigger in lowered for trigger in triggers)
+    return contains_any_pattern(lowered, NEW_RIDDLE_THREAD_TRIGGERS)
 
 
 def closes_riddle_thread(text: str) -> bool:
     lowered = sanitize_user_text(strip_trigger(text)).lower()
-    triggers = [
-        "bravo",
-        "et non",
-        "non!",
-        "non !",
-        "raté",
-        "rate",
-        "c'était",
-        "c etait",
-        "la réponse était",
-        "la reponse etait",
-        "la solution était",
-        "la solution etait",
-        "bien joué",
-        "bien joue",
-    ]
-    return any(trigger in lowered for trigger in triggers)
+    return contains_any_pattern(lowered, RIDDLE_CLOSE_TRIGGERS)
 
 
 def is_partial_riddle_message(text: str) -> bool:
@@ -294,31 +514,12 @@ def is_partial_riddle_message(text: str) -> bool:
 
 def is_final_riddle_message(text: str) -> bool:
     lowered = sanitize_user_text(strip_trigger(text)).lower()
-    final_markers = (
-        "mon tout",
-        "qui suis-je",
-        "qui suis je",
-        "quelle est la reponse",
-        "quelle est la réponse",
-        "alors qui suis-je",
-        "du coup, qui suis-je",
-        "du coup qui suis-je",
-    )
-    return any(marker in lowered for marker in final_markers)
+    return contains_any_pattern(lowered, RIDDLE_FINAL_MARKERS)
 
 
 def is_riddle_refusal_reply(text: str) -> bool:
     lowered = normalize_spaces((text or "").lower())
-    refusal_patterns = [
-        "je ne peux pas participer a des charades",
-        "je ne peux pas participer à des charades",
-        "je ne peux pas participer a des devinettes",
-        "je ne peux pas participer à des devinettes",
-        "je ne participerai pas",
-        "je ne repondrai pas a cet indice",
-        "je ne répondrai pas à cet indice",
-    ]
-    return any(pattern in lowered for pattern in refusal_patterns)
+    return contains_any_pattern(lowered, RIDDLE_REFUSAL_PATTERNS)
 
 
 def load_history(history_file: str = HISTORY_FILE) -> dict:
@@ -448,6 +649,9 @@ def append_chat_turn(
     chat_memory_file: str = CHAT_MEMORY_FILE,
     ttl_hours: int = CHAT_MEMORY_TTL_HOURS,
     thread_boundary: str = "",
+    event_type: str = "",
+    related_viewer: str = "",
+    related_message: str = "",
 ) -> None:
     normalized_channel = normalize_spaces((channel_name or "").lower())
     normalized_viewer = normalize_spaces((viewer_name or "").lower())
@@ -464,6 +668,9 @@ def append_chat_turn(
         "viewer_message": clean_viewer_message,
         "bot_reply": clean_bot_reply,
         "thread_boundary": normalize_spaces(thread_boundary.lower()),
+        "event_type": normalize_spaces(event_type.lower()),
+        "related_viewer": normalize_spaces(related_viewer.lower()),
+        "related_message": sanitize_user_text(related_message)[:MAX_INPUT_CHARS] if related_message else "",
     }
 
     channels = chat_memory.setdefault("channels", {})
@@ -480,12 +687,51 @@ def format_chat_turns(turns: list[dict]) -> str:
         viewer = normalize_spaces(turn.get("viewer", "viewer"))
         viewer_message = sanitize_user_text(turn.get("viewer_message", ""))
         bot_reply = sanitize_user_text(turn.get("bot_reply", ""))
+        event_type = normalize_spaces(turn.get("event_type", ""))
+        related_viewer = normalize_spaces(turn.get("related_viewer", ""))
+        related_message = sanitize_user_text(turn.get("related_message", ""))
         if not viewer_message:
             continue
+        if event_type in {"correction", "owner_correction"}:
+            correction_prefix = "correction"
+            if related_viewer:
+                correction_prefix += f" pour {related_viewer}"
+            if related_message:
+                lines.append(f"{correction_prefix}: {related_message}")
         lines.append(f"{viewer}: {viewer_message}")
         if bot_reply:
             lines.append(f"bot: {bot_reply}")
     return "\n".join(lines) if lines else "aucun"
+
+
+def turn_to_context_lines(turn: dict) -> list[str]:
+    viewer = normalize_spaces(turn.get("viewer", "viewer"))
+    viewer_message = sanitize_user_text(turn.get("viewer_message", ""))
+    bot_reply = sanitize_user_text(turn.get("bot_reply", ""))
+    event_type = normalize_spaces(turn.get("event_type", ""))
+    related_viewer = normalize_spaces(turn.get("related_viewer", ""))
+    related_message = sanitize_user_text(turn.get("related_message", ""))
+    lines: list[str] = []
+    if event_type in {"correction", "owner_correction"}:
+        label = "correction"
+        if related_viewer:
+            label += f" pour {related_viewer}"
+        if related_message:
+            lines.append(f"{label}: {related_message}")
+    if viewer_message:
+        lines.append(f"{viewer}: {viewer_message}")
+    if bot_reply:
+        lines.append(f"bot: {bot_reply}")
+    return lines
+
+
+def format_context_lines(turns: list[dict], max_lines: int) -> str:
+    lines: list[str] = []
+    for turn in turns:
+        lines.extend(turn_to_context_lines(turn))
+    if not lines:
+        return "aucun"
+    return "\n".join(lines[-max(1, max_lines):])
 
 
 def extract_active_viewer_thread(turns: list[dict]) -> list[dict]:
@@ -539,12 +785,36 @@ def build_chat_context(
         if turn.get("viewer", "") != normalized_viewer:
             global_context_turns.append(turn)
 
-    global_context_turns = global_context_turns[-6:]
-
     return {
         "viewer_context": format_chat_turns(viewer_turns),
-        "global_context": format_chat_turns(global_context_turns),
+        "global_context": format_context_lines(global_context_turns, max_lines=MAX_GLOBAL_CONTEXT_LINES),
     }
+
+
+def viewer_recent_social_redundancy(
+    chat_memory: dict,
+    channel_name: str,
+    viewer_name: str,
+    text: str,
+    window_minutes: int = SOCIAL_REDUNDANCY_WINDOW_MINUTES,
+) -> int:
+    normalized_channel = normalize_spaces((channel_name or "").lower())
+    normalized_viewer = normalize_spaces((viewer_name or "").lower())
+    channel_data = chat_memory.get("channels", {}).get(normalized_channel, {})
+    viewer_turns = list(channel_data.get("viewer_turns", {}).get(normalized_viewer, []))[-MAX_VIEWER_CHAT_TURNS:]
+    cutoff = utc_now() - timedelta(minutes=window_minutes)
+
+    match_count = 0
+    for turn in viewer_turns:
+        timestamp = parse_utc_iso(turn.get("timestamp", ""))
+        if not timestamp or timestamp < cutoff:
+            continue
+        viewer_message = turn.get("viewer_message", "")
+        if looks_like_greeting(text) and looks_like_greeting(viewer_message):
+            match_count += 1
+        if looks_like_passive_closing(text) and looks_like_passive_closing(viewer_message):
+            match_count += 1
+    return match_count
 
 
 def clear_chat_memory(chat_memory_file: str = CHAT_MEMORY_FILE) -> None:
@@ -732,10 +1002,12 @@ def build_messages(
     clean_message: str,
     viewer_context: str = "",
     global_context: str = "",
+    web_context: str = "",
     conversation_mode: str = "",
 ) -> list[dict]:
     viewer_context = normalize_spaces(viewer_context) if viewer_context == "aucun" else viewer_context.strip()
     global_context = normalize_spaces(global_context) if global_context == "aucun" else global_context.strip()
+    web_context = normalize_spaces(web_context) if web_context == "aucun" else web_context.strip()
     extra_system_rules = ""
     extra_user_context = ""
 
@@ -754,6 +1026,18 @@ def build_messages(
             "Utilise les indices viewer du contexte recent pour faire la meilleure proposition utile. "
             "Ne reponds pas de facon vague: donne directement un mot ou une expression plausible.\n"
         )
+    elif web_context and web_context != "aucun":
+        extra_system_rules = (
+            "- Cas special: un web_context recent est fourni.\n"
+            "- Si la question du viewer porte sur une information externe, recente ou verifiable sur le web, appuie-toi d'abord sur le web_context.\n"
+            "- Si le web_context contient des indices exploitables, ne reponds pas NO_REPLY.\n"
+            "- Fais une synthese courte et prudente a partir du web_context, sans inventer au-dela.\n"
+            "- Si le web_context est incomplet, dis simplement ce que tu peux en tirer au lieu de refuser en bloc.\n"
+        )
+        extra_user_context = (
+            "Un web_context recent est fourni pour aider sur une question externe. "
+            "Sers-t'en si la question actuelle concerne l'actualite, la meteo, un classement, un programme, une sortie ou une information web recente.\n"
+        )
 
     return [
         {
@@ -770,6 +1054,11 @@ def build_messages(
                 "- Une question normale, une relance simple, une demande d'avis, une demande d'explication ou une remarque conversationnelle merite en general une reponse courte, pas NO_REPLY.\n"
                 "- Si le message est adressé au bot et reste compréhensible, réponds simplement au mieux meme si le contexte est incomplet.\n"
                 "- En cas de doute entre une reponse courte et NO_REPLY, prefere une reponse courte utile.\n"
+                "- Si le viewer envoie seulement un acquiescement bref comme 'ok', 'merci', 'tres bien', 'super' ou equivalent, reponds exactement NO_REPLY.\n"
+                "- Si le viewer pose une question factuelle sur une personne, une relation ou un lien entre deux personnes et que le contexte ne permet pas de repondre clairement, n'invente rien: reponds 'Je ne sais pas.' ou 'Je ne sais pas. Et toi ?'.\n"
+                "- Si le contexte mentionne un 'fait rapporte' ou un 'fait incertain', ne le presente jamais comme confirme.\n"
+                "- Si un fait incertain concerne directement la personne a qui tu parles, privilegie une question de confirmation plutot qu'une affirmation.\n"
+                "- Si tu reparles a la source qui a fourni un fait incertain, tu peux le citer prudemment comme 'd'apres ce que tu m'as dit'.\n"
                 "- Si le viewer annonce une charade, une devinette ou une question en plusieurs messages, mémorise mentalement les indices viewer fournis dans le contexte.\n"
                 "- Pour une charade ou devinette en plusieurs parties, ne critique jamais la forme du jeu et ne corrige pas la méthode du viewer.\n"
                 "- Si le viewer donne seulement un indice partiel de charade sans demander encore la solution finale, réponds exactement NO_REPLY.\n"
@@ -777,6 +1066,9 @@ def build_messages(
                 "- Pour une charade ou devinette, donne seulement la meilleure proposition utile, sans meta-commentaire sur les regles du jeu.\n"
                 "- Si le contexte recent montre qu'une conversation est deja en cours avec ce viewer, ne recommence pas par une salutation ou une formule d'accueil. Reponds directement au sujet.\n"
                 "- N'ecris pas 'bonjour', 'salut', 'hello' ou une formule d'accueil equivalente sauf si le viewer vient clairement d'ouvrir la conversation sans autre sujet.\n"
+                "- N'ecris jamais en anglais sauf si le viewer ecrit lui-meme clairement en anglais.\n"
+                "- Si un bloc web_context est fourni, traite-le comme un contexte externe recent potentiellement utile.\n"
+                "- Utilise le web_context seulement pour les questions externes ou d'actualite, pas pour remplacer la memoire du chat Twitch.\n"
                 "- Si le viewer ecrit 'bravo', 'bien joue', 'bien jouee', 'perdu', 'rate' ou une formule equivalente juste apres une reponse du bot dans un jeu ou une charade, interprete cela comme une reaction a la reponse du bot, pas comme une victoire du viewer.\n"
                 f"{extra_system_rules}"
                 "- Sinon, réponds en français, naturellement, en 1 à 2 phrases maximum.\n"
@@ -794,6 +1086,7 @@ def build_messages(
                 "Certains tours peuvent contenir seulement un message viewer sans reponse du bot: cela peut indiquer une question en plusieurs parties.\n"
                 f"<viewer_context>{viewer_context or 'aucun'}</viewer_context>\n"
                 f"<global_chat_context>{global_context or 'aucun'}</global_chat_context>\n"
+                f"<web_context>{web_context or 'aucun'}</web_context>\n"
                 f"<viewer_message>{clean_message}</viewer_message>"
             ),
         },

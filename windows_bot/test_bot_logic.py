@@ -5,13 +5,23 @@ from pathlib import Path
 from bot_logic import (
     append_channel_update,
     append_chat_turn,
+    build_channel_alias_index,
     asks_about_channel_content,
     build_chat_context,
     build_no_reply_fallback,
+    build_social_reply,
     build_messages,
+    classify_conversation_event,
     clear_chat_memory,
     clear_chat_memory_viewer,
+    extract_name_candidates,
+    find_related_global_turn,
+    infer_recent_focus,
     looks_like_memory_instruction,
+    looks_like_greeting,
+    looks_like_passive_closing,
+    looks_like_short_acknowledgment,
+    looks_like_correction_message,
     end_stream_session,
     extract_channel_profile,
     get_chat_memory_stats,
@@ -27,12 +37,15 @@ from bot_logic import (
     looks_like_prompt_injection,
     looks_like_riddle_message,
     normalize_spaces,
+    resolve_known_aliases,
+    resolve_recent_reference_subjects,
     starts_new_riddle_thread,
     output_is_suspicious,
     sanitize_user_text,
     smart_truncate,
     start_stream_session,
     strip_trigger,
+    viewer_recent_social_redundancy,
 )
 
 
@@ -62,9 +75,125 @@ class BotLogicTextTests(unittest.TestCase):
         self.assertTrue(looks_like_memory_instruction("@anneaunimouss n'oublie pas que j'aime valheim"))
         self.assertFalse(looks_like_memory_instruction("@anneaunimouss tu joues a quoi ?"))
 
+    def test_detects_correction_message(self):
+        self.assertTrue(looks_like_correction_message("@anneaunimouss je pense qu'il parlait de Dame_Gaby et pas Gaby"))
+        self.assertFalse(looks_like_correction_message("@anneaunimouss je ne pense pas"))
+        self.assertEqual(
+            classify_conversation_event("@anneaunimouss je pense qu'il parlait de Dame_Gaby et pas Gaby", author_is_owner=True),
+            "owner_correction",
+        )
+
+    def test_detects_short_acknowledgment(self):
+        self.assertTrue(looks_like_short_acknowledgment("@anneaunimouss très bien!"))
+        self.assertTrue(looks_like_short_acknowledgment("@anneaunimouss merci beaucoup"))
+        self.assertFalse(looks_like_short_acknowledgment("@anneaunimouss explique!"))
+        self.assertTrue(looks_like_passive_closing("@anneaunimouss aurevoir"))
+        self.assertTrue(looks_like_passive_closing("@anneaunimouss bye"))
+        self.assertFalse(looks_like_passive_closing("@anneaunimouss pourquoi tu pars ?"))
+        self.assertTrue(looks_like_greeting("@anneaunimouss bonjour"))
+        self.assertFalse(looks_like_greeting("@anneaunimouss bonjour pourquoi tu pars ?"))
+
+    def test_build_channel_alias_index_and_resolve_known_aliases(self):
+        chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "viewer_message": "MissCouette76 est aussi MissCouette pour information",
+                            "bot_reply": "C'est noté",
+                        },
+                        {
+                            "viewer_message": "MissCouette76 est le plus souvent appelait MissCouette ou Cacaouette ou Caouette",
+                            "bot_reply": "C'est noté",
+                        },
+                    ],
+                    "viewer_turns": {},
+                }
+            }
+        }
+
+        alias_index = build_channel_alias_index(chat_memory, "streamer")
+        self.assertEqual(alias_index["misscouette"], "MissCouette76")
+        self.assertEqual(alias_index["caouette"], "MissCouette76")
+
+        resolved, replacements = resolve_known_aliases(
+            "@anneaunimouss que peux tu me dire sur Caouette ?",
+            alias_index,
+        )
+
+        self.assertIn("MissCouette76", resolved)
+        self.assertIn(("caouette", "MissCouette76"), replacements)
+
+    def test_extracts_reported_alias_phrase(self):
+        chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "viewer_message": 'quand on te parle de "dame gaby" il s\'agit de Dame_Gaby',
+                            "bot_reply": "C'est noté",
+                        }
+                    ],
+                    "viewer_turns": {},
+                }
+            }
+        }
+
+        alias_index = build_channel_alias_index(chat_memory, "streamer")
+        self.assertEqual(alias_index["dame gaby"], "Dame_Gaby")
+
+        resolved, replacements = resolve_known_aliases(
+            "@anneaunimouss que sais tu de dame gaby ?",
+            alias_index,
+        )
+
+        self.assertIn("Dame_Gaby", resolved)
+        self.assertIn(("dame gaby", "Dame_Gaby"), replacements)
+
+    def test_infers_recent_focus_and_rewrites_implicit_subject(self):
+        chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [],
+                    "viewer_turns": {
+                        "expevay": [
+                            {
+                                "timestamp": "2026-03-25T12:00:00+00:00",
+                                "viewer": "expevay",
+                                "viewer_message": "qui est Dame_Gaby ?",
+                                "bot_reply": "Dame_Gaby joue à Valheim.",
+                                "thread_boundary": "",
+                                "event_type": "message",
+                                "related_viewer": "",
+                                "related_message": "",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+
+        focus = infer_recent_focus(chat_memory, "streamer", "expevay")
+        rewritten, notes = resolve_recent_reference_subjects(
+            "@anneaunimouss elle fait partie de quel groupe avec 2 autres personnes ?",
+            focus,
+        )
+
+        self.assertEqual(focus["subject"], "Dame_Gaby")
+        self.assertIn("Dame_Gaby", rewritten)
+        self.assertTrue(any("sujet recent" in note for note in notes))
+
+    def test_extract_name_candidates_prefers_real_names(self):
+        candidates = extract_name_candidates("D'après ce que tu m'as dit, Dame_Gaby et MissCouette76 jouent avec Dae_3_7.")
+
+        self.assertIn("Dame_Gaby", candidates)
+        self.assertIn("MissCouette76", candidates)
+        self.assertIn("Dae_3_7", candidates)
+
     def test_detects_riddle_messages(self):
         self.assertTrue(looks_like_riddle_message('@anneaunimouss "Mon premier n\'est pas haut"'))
         self.assertTrue(likely_needs_memory_context("@anneaunimouss te rappelle tu quel etait mon second ?"))
+        self.assertTrue(likely_needs_memory_context("@anneaunimouss je pense qu'il parlait de Dame_Gaby et pas Gaby"))
         self.assertTrue(is_partial_riddle_message('@anneaunimouss "Mon second est absent"'))
         self.assertTrue(is_final_riddle_message('@anneaunimouss "Mon tout..." Qui suis-je ?'))
         self.assertFalse(is_partial_riddle_message('@anneaunimouss "Mon tout..." Qui suis-je ?'))
@@ -79,6 +208,7 @@ class BotLogicTextTests(unittest.TestCase):
 
     def test_detects_no_reply_signal_variants(self):
         self.assertTrue(is_no_reply_signal("NO_REPLY"))
+        self.assertTrue(is_no_reply_signal("NO_REPLY."))
         self.assertTrue(is_no_reply_signal("Non répondre"))
         self.assertTrue(is_no_reply_signal("non repondre"))
         self.assertTrue(is_no_reply_signal("Ne pas répondre"))
@@ -91,15 +221,41 @@ class BotLogicTextTests(unittest.TestCase):
         self.assertIn("charade", messages[0]["content"])
         self.assertIn("<viewer_message>bonjour</viewer_message>", messages[1]["content"])
         self.assertIn("<viewer_context>aucun</viewer_context>", messages[1]["content"])
+        self.assertIn("<web_context>aucun</web_context>", messages[1]["content"])
 
     def test_build_messages_prefers_short_reply_over_no_reply_for_normal_questions(self):
         messages = build_messages("alice", "tu joues a quoi ?")
         self.assertIn("prefere une reponse courte utile", messages[0]["content"].lower())
         self.assertIn("demande d'avis", messages[0]["content"].lower())
+        self.assertIn("acquiescement bref", messages[0]["content"].lower())
+        self.assertIn("jamais en anglais", messages[0]["content"].lower())
+        self.assertIn("je ne sais pas.", messages[0]["content"].lower())
+        self.assertIn("n'invente rien", messages[0]["content"].lower())
+        self.assertIn("fait rapporte", messages[0]["content"].lower())
+        self.assertIn("question de confirmation", messages[0]["content"].lower())
+
+    def test_build_messages_uses_web_context_specific_guidance(self):
+        messages = build_messages(
+            "alice",
+            "quelle est la meteo aujourd'hui a Lyon ?",
+            web_context="[1] Meteo Lyon - Temps nuageux.",
+        )
+
+        self.assertIn("web_context recent", messages[0]["content"].lower())
+        self.assertIn("ne reponds pas no_reply", messages[0]["content"].lower())
+        self.assertIn("<web_context>[1] Meteo Lyon - Temps nuageux.</web_context>", messages[1]["content"])
 
     def test_build_no_reply_fallback_returns_short_ack(self):
         self.assertIn("J'ai lu ton message", build_no_reply_fallback("@anneaunimouss pourquoi tu ne réponds pas ?"))
         self.assertIn("il me manque", build_no_reply_fallback("@anneaunimouss qui suis-je ?", riddle_related=True))
+        self.assertEqual(build_no_reply_fallback("@anneaunimouss aurevoir"), "")
+        self.assertEqual(build_no_reply_fallback("@anneaunimouss bonjour"), "")
+
+    def test_build_social_reply_handles_greeting_and_closing(self):
+        self.assertEqual(build_social_reply("@anneaunimouss bonjour"), "Bonjour !")
+        self.assertEqual(build_social_reply("@anneaunimouss bonjour", repeated=True), "Bonjour, mais tu m'as deja salue je crois.")
+        self.assertEqual(build_social_reply("@anneaunimouss aurevoir"), "Au revoir !")
+        self.assertEqual(build_social_reply("@anneaunimouss aurevoir", repeated=True), "")
 
     def test_smart_truncate_prefers_word_or_sentence_boundaries(self):
         text = "Bonjour tout le monde. Ceci est une longue reponse qui doit etre coupee proprement sans casser un mot au milieu."
@@ -211,6 +367,88 @@ class BotLogicChatMemoryTests(unittest.TestCase):
             self.assertIn("bot: Je tiens la route.", context["viewer_context"])
             self.assertIn("bob: Une blague ?", context["global_context"])
             self.assertNotIn("alice: Tu vas bien ?", context["global_context"])
+
+    def test_find_related_global_turn_matches_recent_cross_viewer_turn(self):
+        chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-23T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "viewer1",
+                            "viewer_message": "que penses tu de @Dame_Gaby ?",
+                            "bot_reply": "Gaby est une présentatrice TV.",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {},
+                }
+            }
+        }
+
+        related_turn = find_related_global_turn(
+            chat_memory,
+            channel_name="streamer",
+            message_text="@anneaunimouss je pense qu'il parlait de Dame_Gaby et pas Gaby",
+            author_name="streamer",
+        )
+
+        self.assertIsNotNone(related_turn)
+        self.assertEqual(related_turn["viewer"], "viewer1")
+
+    def test_build_chat_context_global_context_keeps_recent_lines_across_speakers(self):
+        chat_memory = {"channels": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
+
+            for idx in range(14):
+                append_chat_turn(
+                    chat_memory,
+                    "streamer",
+                    f"viewer{idx}",
+                    f"message {idx}",
+                    f"reponse {idx}",
+                    chat_memory_file=chat_memory_file,
+                )
+
+            context = build_chat_context(chat_memory, "streamer", "alice")
+
+            global_lines = context["global_context"].splitlines()
+            self.assertEqual(len(global_lines), 20)
+            self.assertIn("viewer4: message 4", context["global_context"])
+            self.assertIn("bot: reponse 13", context["global_context"])
+            self.assertNotIn("viewer0: message 0", context["global_context"])
+
+    def test_build_chat_context_formats_correction_annotations(self):
+        chat_memory = {"channels": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
+
+            append_chat_turn(
+                chat_memory,
+                "streamer",
+                "viewer1",
+                "que penses tu de @Dame_Gaby ?",
+                "Gaby est une présentatrice TV.",
+                chat_memory_file=chat_memory_file,
+            )
+            append_chat_turn(
+                chat_memory,
+                "streamer",
+                "streamer",
+                "je pense qu'il parlait de Dame_Gaby et pas Gaby",
+                "Bien vu, il parlait sans doute de Dame_Gaby.",
+                chat_memory_file=chat_memory_file,
+                event_type="owner_correction",
+                related_viewer="viewer1",
+                related_message="que penses tu de @Dame_Gaby ?",
+            )
+
+            context = build_chat_context(chat_memory, "streamer", "alice")
+
+            self.assertIn("correction pour viewer1: que penses tu de @Dame_Gaby ?", context["global_context"])
+            self.assertIn("streamer: je pense qu'il parlait de Dame_Gaby et pas Gaby", context["global_context"])
 
     def test_build_chat_context_can_focus_on_active_thread(self):
         chat_memory = {"channels": {}}
@@ -349,6 +587,14 @@ class BotLogicChatMemoryTests(unittest.TestCase):
             self.assertEqual(stats["total_turns"], 3)
             self.assertEqual(stats["channels"][0]["channel"], "autrechaine")
             self.assertIn("alice", stats["channels"][1]["per_viewer_counts"])
+
+    def test_viewer_recent_social_redundancy_counts_recent_greetings(self):
+        chat_memory = {"channels": {}}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            chat_memory_file = str(Path(tmpdir) / "chat_memory.json")
+            append_chat_turn(chat_memory, "streamer", "alice", "bonjour", "Bonjour !", chat_memory_file=chat_memory_file)
+            redundancy = viewer_recent_social_redundancy(chat_memory, "streamer", "alice", "salut")
+            self.assertEqual(redundancy, 1)
 
     def test_increment_chat_memory_counter_updates_meta(self):
         with tempfile.TemporaryDirectory() as tmpdir:

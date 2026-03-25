@@ -3,6 +3,7 @@ import subprocess
 import requests
 
 from bot_logic import MAX_INPUT_CHARS, build_messages, normalize_spaces, strip_trigger, sanitize_user_text
+from web_search_client import should_enable_web_search
 
 
 def get_installed_models() -> list[str]:
@@ -49,7 +50,28 @@ def install_model(model_name: str) -> bool:
         return False
 
 
-def choose_model(default_ollama_model: str) -> str:
+def _extract_openai_output_text(payload: dict) -> str:
+    output_text = payload.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    for item in payload.get("output", []):
+        for content in item.get("content", []):
+            if content.get("type") == "output_text":
+                text = content.get("text", "")
+                if isinstance(text, str) and text.strip():
+                    return text.strip()
+    return ""
+
+
+def choose_model(default_ollama_model: str, provider: str = "ollama", openai_chat_model: str = "gpt-5-mini") -> str:
+    if provider == "openai":
+        print("==================================================", flush=True)
+        print("Choix du modèle OpenAI", flush=True)
+        print(f"Modèle configuré (.env) : {openai_chat_model}", flush=True)
+        print("==================================================", flush=True)
+        return openai_chat_model
+
     while True:
         installed_models = get_installed_models()
 
@@ -86,7 +108,14 @@ def choose_model(default_ollama_model: str) -> str:
         print("↪️ On recommence.", flush=True)
 
 
-def summarize_channel_profile(profile: dict, ollama_url: str, ollama_model: str, request_timeout_seconds: int) -> str:
+def summarize_channel_profile(
+    profile: dict,
+    ollama_url: str,
+    ollama_model: str,
+    request_timeout_seconds: int,
+    provider: str = "ollama",
+    openai_api_key: str = "",
+) -> str:
     top_categories = profile.get("top_categories", [])
     recent_titles = profile.get("recent_titles", [])
 
@@ -96,30 +125,49 @@ def summarize_channel_profile(profile: dict, ollama_url: str, ollama_model: str,
     categories_text = "\n".join([f"- {name}: {count} fois" for name, count in top_categories]) or "- aucune"
     titles_text = "\n".join([f"- {title}" for title in recent_titles]) or "- aucun"
 
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Tu es anneaunimouss, un bot Twitch francophone. "
+                "Tu reçois un historique local de la chaîne, avec des catégories de stream et des titres récents. "
+                "Tu dois résumer le contenu habituel de la chaîne en 2 phrases maximum, de façon simple, factuelle et naturelle. "
+                "Appuie-toi d'abord sur les catégories dominantes, puis sur les titres. "
+                "N'invente rien au-delà de ce que suggèrent clairement les données."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Catégories dominantes observées :\n"
+                f"{categories_text}\n\n"
+                "Titres récents observés :\n"
+                f"{titles_text}\n\n"
+                "Résume le contenu habituel de cette chaîne."
+            ),
+        },
+    ]
+
+    if provider == "openai":
+        response = requests.post(
+            "https://api.openai.com/v1/responses",
+            headers={
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": ollama_model,
+                "input": messages,
+            },
+            timeout=request_timeout_seconds,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return normalize_spaces(_extract_openai_output_text(data))
+
     payload = {
         "model": ollama_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Tu es anneaunimouss, un bot Twitch francophone. "
-                    "Tu reçois un historique local de la chaîne, avec des catégories de stream et des titres récents. "
-                    "Tu dois résumer le contenu habituel de la chaîne en 2 phrases maximum, de façon simple, factuelle et naturelle. "
-                    "Appuie-toi d'abord sur les catégories dominantes, puis sur les titres. "
-                    "N'invente rien au-delà de ce que suggèrent clairement les données."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Catégories dominantes observées :\n"
-                    f"{categories_text}\n\n"
-                    "Titres récents observés :\n"
-                    f"{titles_text}\n\n"
-                    "Résume le contenu habituel de cette chaîne."
-                ),
-            },
-        ],
+        "messages": messages,
         "stream": False,
         "think": False,
     }
@@ -138,20 +186,60 @@ def ask_ollama(
     request_timeout_seconds: int,
     viewer_context: str = "",
     global_context: str = "",
+    web_context: str = "",
     conversation_mode: str = "",
+    provider: str = "ollama",
+    openai_api_key: str = "",
+    openai_web_search_enabled: bool = False,
+    openai_web_search_mode: str = "auto",
 ) -> str:
     clean_message = sanitize_user_text(strip_trigger(message))
     clean_message = clean_message[:MAX_INPUT_CHARS]
 
-    payload = {
-        "model": ollama_model,
-        "messages": build_messages(
-            user_name,
+    messages = build_messages(
+        user_name,
+        clean_message,
+        viewer_context=viewer_context,
+        global_context=global_context,
+        web_context=web_context,
+        conversation_mode=conversation_mode,
+    )
+
+    if provider == "openai":
+        print(f"DEBUG OPENAI_MODEL = {ollama_model!r}", flush=True)
+        use_web_search = openai_web_search_enabled and should_enable_web_search(
             clean_message,
             viewer_context=viewer_context,
             global_context=global_context,
-            conversation_mode=conversation_mode,
-        ),
+            mode=openai_web_search_mode,
+        )
+        print(f"DEBUG OPENAI_WEB_SEARCH = {use_web_search!r}", flush=True)
+        payload = {
+            "model": ollama_model,
+            "input": messages,
+        }
+        if use_web_search:
+            payload["tools"] = [{"type": "web_search"}]
+            payload["tool_choice"] = "auto"
+        response = requests.post(
+            "https://api.openai.com/v1/responses",
+            headers={
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=request_timeout_seconds,
+        )
+        print(f"DEBUG STATUS = {response.status_code}", flush=True)
+        if response.status_code >= 400:
+            print(f"DEBUG BODY   = {response.text}", flush=True)
+        response.raise_for_status()
+        data = response.json()
+        return normalize_spaces(_extract_openai_output_text(data))
+
+    payload = {
+        "model": ollama_model,
+        "messages": messages,
         "stream": False,
         "think": False,
     }

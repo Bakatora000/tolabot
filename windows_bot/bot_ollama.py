@@ -17,17 +17,27 @@ from bot_logic import (
     MAX_VIEWER_CHAT_TURNS,
     append_channel_update,
     append_chat_turn,
+    build_social_reply,
+    build_channel_alias_index,
     asks_about_channel_content,
     build_chat_context,
     build_no_reply_fallback,
+    classify_conversation_event,
     closes_riddle_thread,
+    find_related_global_turn,
     increment_chat_memory_counter,
     is_final_riddle_message,
     is_partial_riddle_message,
     is_riddle_refusal_reply,
     likely_needs_memory_context,
+    looks_like_greeting,
+    looks_like_passive_closing,
+    looks_like_short_acknowledgment,
     looks_like_riddle_message,
     prune_chat_memory,
+    infer_recent_focus,
+    resolve_known_aliases,
+    resolve_recent_reference_subjects,
     starts_new_riddle_thread,
     end_stream_session,
     extract_active_viewer_thread,
@@ -45,10 +55,26 @@ from bot_logic import (
     smart_truncate,
     start_stream_session,
     strip_trigger,
+    viewer_recent_social_redundancy,
+)
+from conversation_graph import (
+    append_conversation_turn,
+    build_conversation_graph_context,
+    find_related_conversation_turn,
+    find_reply_target_turn,
+    load_conversation_graph,
+    prune_conversation_graph,
+)
+from facts_memory import (
+    append_reported_facts,
+    build_facts_context,
+    load_facts_memory,
+    prune_facts_memory,
 )
 from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, store_memory_turn
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from twitch_auth import run_oauth_flow
+from web_search_client import build_web_search_context, build_web_search_query, search_searxng, should_enable_web_search
 
 CONFIG = load_config()
 OLLAMA_MODEL = None
@@ -62,6 +88,20 @@ class QueuedMessage:
     author: str
     msg_id: str | None
     received_at: float
+
+
+def merge_context_text(*parts: str) -> str:
+    cleaned_parts: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        cleaned = (part or "").strip()
+        if not cleaned or cleaned == "aucun":
+            continue
+        if cleaned in seen:
+            continue
+        seen.add(cleaned)
+        cleaned_parts.append(cleaned)
+    return "\n".join(cleaned_parts) if cleaned_parts else "aucun"
 
 
 class Bot(commands.Bot):
@@ -83,6 +123,14 @@ class Bot(commands.Bot):
         self.history = load_history()
         self.chat_memory = prune_chat_memory(
             load_chat_memory(),
+            ttl_hours=CONFIG.chat_memory_ttl_hours,
+        )
+        self.conversation_graph = prune_conversation_graph(
+            load_conversation_graph(),
+            ttl_hours=CONFIG.chat_memory_ttl_hours,
+        )
+        self.facts_memory = prune_facts_memory(
+            load_facts_memory(),
             ttl_hours=CONFIG.chat_memory_ttl_hours,
         )
 
@@ -108,7 +156,11 @@ class Bot(commands.Bot):
 
         return {
             "viewer_context": format_chat_turns(viewer_turns),
-            "global_context": "aucun",
+            "global_context": build_conversation_graph_context(
+                self.conversation_graph,
+                normalized_channel,
+                normalized_author,
+            ),
             "items": [],
         }
 
@@ -123,14 +175,57 @@ class Bot(commands.Bot):
         use_remote_memory: bool,
     ) -> tuple[dict, str]:
         if use_remote_memory:
+            local_context = build_chat_context(
+                self.chat_memory,
+                channel_name,
+                author,
+                prefer_active_thread=prefer_active_thread and not riddle_thread_reset and not riddle_thread_close,
+            )
+            graph_context = build_conversation_graph_context(
+                self.conversation_graph,
+                channel_name,
+                author,
+                current_message=text,
+            )
+            local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
+            if (
+                local_context["viewer_context"] == "aucun"
+                and prefer_active_thread
+                and not riddle_thread_reset
+            ):
+                local_context = build_chat_context(
+                    self.chat_memory,
+                    channel_name,
+                    author,
+                    prefer_active_thread=False,
+                )
+                local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
             try:
                 remote_context = get_memory_context(
                     CONFIG,
-                    channel=CONFIG.channel_name,
+                    channel=channel_name,
                     viewer=author,
                     message=text,
                 )
-                return remote_context, "mem0"
+                favor_local_context = local_context.get("global_context", "aucun") != "aucun"
+                merged_viewer_context = merge_context_text(
+                    local_context.get("viewer_context", "aucun"),
+                    remote_context.get("viewer_context", "aucun"),
+                )
+                merged_global_context = local_context.get("global_context", "aucun")
+                if not favor_local_context:
+                    merged_global_context = merge_context_text(
+                        local_context.get("global_context", "aucun"),
+                        remote_context.get("global_context", "aucun"),
+                    )
+                elif merged_global_context == "aucun":
+                    merged_global_context = remote_context.get("global_context", "aucun")
+                merged_context = {
+                    "viewer_context": merged_viewer_context,
+                    "global_context": merged_global_context,
+                    "items": list(remote_context.get("items", [])),
+                }
+                return merged_context, "local-priority+mem0" if favor_local_context else "local+mem0"
             except MemoryApiError as exc:
                 print(f"⚠️ Mémoire distante indisponible, fallback local : {exc}", flush=True)
                 if not CONFIG.mem0_fallback_local:
@@ -138,10 +233,17 @@ class Bot(commands.Bot):
 
         local_context = build_chat_context(
             self.chat_memory,
-            CONFIG.channel_name,
+            channel_name,
             author,
             prefer_active_thread=prefer_active_thread and not riddle_thread_reset and not riddle_thread_close,
         )
+        graph_context = build_conversation_graph_context(
+            self.conversation_graph,
+            channel_name,
+            author,
+            current_message=text,
+        )
+        local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
         if (
             local_context["viewer_context"] == "aucun"
             and prefer_active_thread
@@ -149,14 +251,16 @@ class Bot(commands.Bot):
         ):
             local_context = build_chat_context(
                 self.chat_memory,
-                CONFIG.channel_name,
+                channel_name,
                 author,
                 prefer_active_thread=False,
             )
+            local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
         return local_context, "local"
 
     def remember_remote_turn(
         self,
+        channel_name: str,
         author: str,
         user_message: str,
         bot_reply: str = "",
@@ -169,7 +273,7 @@ class Bot(commands.Bot):
 
         metadata = {
             "source": "twitch_chat",
-            "channel": CONFIG.channel_name,
+            "channel": channel_name,
             "viewer": author,
         }
         if message_id:
@@ -178,7 +282,7 @@ class Bot(commands.Bot):
         try:
             store_memory_turn(
                 CONFIG,
-                channel=CONFIG.channel_name,
+                channel=channel_name,
                 viewer=author,
                 user_message=user_message,
                 bot_reply=bot_reply,
@@ -272,7 +376,11 @@ class Bot(commands.Bot):
         return normalize_spaces(author).lower() == normalize_spaces(CONFIG.channel_name).lower()
 
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
-        is_owner_message = self.is_owner_author(queued_message.author)
+        broadcaster_name = normalize_spaces(getattr(queued_message.payload.broadcaster, "name", "")).lower()
+        is_owner_message = (
+            normalize_spaces(queued_message.author).lower() == broadcaster_name
+            or self.is_owner_author(queued_message.author)
+        )
 
         if self.message_queue.full():
             try:
@@ -319,11 +427,61 @@ class Bot(commands.Bot):
         clean_viewer_message = queued_message.clean_viewer_message
         author = queued_message.author
         msg_id = queued_message.msg_id
-        author_is_owner = author == normalize_spaces(CONFIG.channel_name).lower()
+        channel_name = normalize_spaces(payload.broadcaster.name).lower()
+        alias_index = build_channel_alias_index(self.chat_memory, channel_name)
+        resolved_text, alias_replacements = resolve_known_aliases(text, alias_index)
+        alias_context = "aucun"
+        if alias_replacements:
+            alias_lines = [f"alias local: {alias} = {canonical}" for alias, canonical in alias_replacements]
+            alias_context = "\n".join(alias_lines)
+        focus = infer_recent_focus(self.chat_memory, channel_name, author)
+        resolved_text, focus_notes = resolve_recent_reference_subjects(resolved_text, focus)
+        focus_context = "aucun"
+        if focus_notes:
+            focus_context = "\n".join(focus_notes)
+        facts_context = build_facts_context(
+            self.facts_memory,
+            channel_name,
+            author,
+            resolved_text,
+        )
+        author_is_owner = author == channel_name
+        event_type = classify_conversation_event(resolved_text, author_is_owner=author_is_owner)
+        related_turn = None
+        related_viewer = ""
+        related_message = ""
+        related_turn_id = ""
+        reply_to_turn_id = ""
+        if likely_needs_memory_context(resolved_text):
+            reply_target_turn = find_reply_target_turn(
+                self.conversation_graph,
+                channel_name=channel_name,
+                author_name=author,
+            )
+            if reply_target_turn:
+                reply_to_turn_id = normalize_spaces(reply_target_turn.get("turn_id", ""))
+        if event_type in {"correction", "owner_correction"}:
+            related_turn = find_related_conversation_turn(
+                self.conversation_graph,
+                channel_name=channel_name,
+                author_name=author,
+                message_text=resolved_text,
+            )
+            if related_turn is None:
+                related_turn = find_related_global_turn(
+                    self.chat_memory,
+                    channel_name=channel_name,
+                    message_text=resolved_text,
+                    author_name=author,
+                )
+            if related_turn:
+                related_viewer = normalize_spaces(related_turn.get("viewer", related_turn.get("speaker", "")))
+                related_message = sanitize_user_text(related_turn.get("viewer_message", related_turn.get("message_text", "")))
+                related_turn_id = normalize_spaces(related_turn.get("turn_id", ""))
 
-        riddle_related = looks_like_riddle_message(text)
-        riddle_thread_reset = starts_new_riddle_thread(text)
-        riddle_thread_close = closes_riddle_thread(text)
+        riddle_related = looks_like_riddle_message(resolved_text)
+        riddle_thread_reset = starts_new_riddle_thread(resolved_text)
+        riddle_thread_close = closes_riddle_thread(resolved_text)
         specialized_local_thread = riddle_related or riddle_thread_reset or riddle_thread_close
         if specialized_local_thread:
             print("🧩 Charade/devinette détectée", flush=True)
@@ -337,11 +495,11 @@ class Bot(commands.Bot):
                 print("✅ Clôture de charade détectée", flush=True)
 
         async with self.generation_lock:
-            if asks_about_channel_content(text):
+            if asks_about_channel_content(resolved_text):
                 await self.reply_about_channel_content(payload, author)
                 return
 
-            if looks_like_memory_instruction(text) and not author_is_owner:
+            if looks_like_memory_instruction(resolved_text) and not author_is_owner:
                 refusal_reply = "Je ne prends ce type de note mémoire que d'Expevay."
                 outgoing_refusal_reply = self.format_chat_reply(author, refusal_reply)
                 print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
@@ -353,17 +511,40 @@ class Bot(commands.Bot):
                 )
                 append_chat_turn(
                     self.chat_memory,
-                    CONFIG.channel_name,
+                    channel_name,
                     author,
                     clean_viewer_message,
                     refusal_reply,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    event_type=event_type,
+                    related_viewer=related_viewer,
+                    related_message=related_message,
+                )
+                append_conversation_turn(
+                    self.conversation_graph,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    refusal_reply,
+                    event_type=event_type,
+                    reply_to_turn_id=reply_to_turn_id,
+                    corrects_turn_id=related_turn_id,
+                    target_viewers=[related_viewer] if related_viewer else [],
                     ttl_hours=CONFIG.chat_memory_ttl_hours,
                 )
                 self.mark_replied(author)
                 return
 
-            if riddle_related and is_partial_riddle_message(text):
+            if riddle_related and is_partial_riddle_message(resolved_text):
+                append_reported_facts(
+                    self.facts_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
                 self.remember_remote_turn(
+                    channel_name,
                     author,
                     clean_viewer_message,
                     message_id=msg_id,
@@ -372,18 +553,115 @@ class Bot(commands.Bot):
                 )
                 append_chat_turn(
                     self.chat_memory,
-                    CONFIG.channel_name,
+                    channel_name,
                     author,
                     clean_viewer_message,
                     ttl_hours=CONFIG.chat_memory_ttl_hours,
                     thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                    event_type=event_type,
+                    related_viewer=related_viewer,
+                    related_message=related_message,
+                )
+                append_conversation_turn(
+                    self.conversation_graph,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    event_type=event_type,
+                    reply_to_turn_id=reply_to_turn_id,
+                    corrects_turn_id=related_turn_id,
+                    target_viewers=[related_viewer] if related_viewer else [],
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
                 )
                 print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
                 return
 
+            if looks_like_greeting(resolved_text) or looks_like_passive_closing(resolved_text):
+                repeated_social_count = viewer_recent_social_redundancy(
+                    self.chat_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                )
+                social_reply = build_social_reply(clean_viewer_message, repeated=repeated_social_count >= 1)
+                append_reported_facts(
+                    self.facts_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
+                if social_reply:
+                    outgoing_social_reply = self.format_chat_reply(author, social_reply)
+                    print(f"📤 Réponse sociale : {outgoing_social_reply}", flush=True)
+                    await payload.broadcaster.send_message(
+                        outgoing_social_reply,
+                        sender=self.bot_id,
+                        token_for=self.bot_id,
+                    )
+                append_chat_turn(
+                    self.chat_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    social_reply,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    event_type=event_type,
+                    related_viewer=related_viewer,
+                    related_message=related_message,
+                )
+                append_conversation_turn(
+                    self.conversation_graph,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    social_reply,
+                    event_type=event_type,
+                    reply_to_turn_id=reply_to_turn_id,
+                    corrects_turn_id=related_turn_id,
+                    target_viewers=[related_viewer] if related_viewer else [],
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
+                if social_reply:
+                    self.mark_replied(author)
+                print("↪️ Salutation/clôture traitée localement, sans appel au modèle", flush=True)
+                return
+
+            if looks_like_short_acknowledgment(resolved_text):
+                append_reported_facts(
+                    self.facts_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
+                append_chat_turn(
+                    self.chat_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    event_type=event_type,
+                    related_viewer=related_viewer,
+                    related_message=related_message,
+                )
+                append_conversation_turn(
+                    self.conversation_graph,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    event_type=event_type,
+                    reply_to_turn_id=reply_to_turn_id,
+                    corrects_turn_id=related_turn_id,
+                    target_viewers=[related_viewer] if related_viewer else [],
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
+                print("↪️ Acquiescement bref détecté, sans appel au modèle", flush=True)
+                return
+
             print("🤖 Mention détectée, appel à Ollama...", flush=True)
-            prefer_active_thread = specialized_local_thread or likely_needs_memory_context(text)
-            conversation_mode = "riddle_final" if riddle_related and is_final_riddle_message(text) else ""
+            prefer_active_thread = specialized_local_thread or likely_needs_memory_context(resolved_text)
+            conversation_mode = "riddle_final" if riddle_related and is_final_riddle_message(resolved_text) else ""
             if specialized_local_thread:
                 chat_context = self.get_specialized_local_context(
                     payload.broadcaster.name,
@@ -400,16 +678,48 @@ class Bot(commands.Bot):
             else:
                 use_remote_memory = self.should_use_remote_memory_for_message(False)
                 chat_context, context_source = self.get_context_with_fallback(
-                    text=text,
-                    channel_name=payload.broadcaster.name,
+                    text=resolved_text,
+                    channel_name=channel_name,
                     author=author,
                     prefer_active_thread=prefer_active_thread,
                     riddle_thread_reset=riddle_thread_reset,
                     riddle_thread_close=riddle_thread_close,
                     use_remote_memory=use_remote_memory,
                 )
+            chat_context["global_context"] = merge_context_text(
+                alias_context,
+                focus_context,
+                facts_context,
+                chat_context.get("global_context", "aucun"),
+            )
+            web_context = "aucun"
+            if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
+                use_web_search = should_enable_web_search(
+                    resolved_text,
+                    viewer_context=chat_context.get("viewer_context", "aucun"),
+                    global_context=chat_context.get("global_context", "aucun"),
+                    mode=CONFIG.web_search_mode,
+                )
+                if use_web_search:
+                    try:
+                        web_query = build_web_search_query(
+                            resolved_text,
+                            viewer_context=chat_context.get("viewer_context", "aucun"),
+                            global_context=chat_context.get("global_context", "aucun"),
+                        )
+                        web_results = search_searxng(
+                            query=web_query,
+                            base_url=CONFIG.searxng_base_url,
+                            timeout_seconds=CONFIG.web_search_timeout_seconds,
+                            max_results=CONFIG.web_search_max_results,
+                        )
+                        web_context = build_web_search_context(web_results)
+                        if web_context != "aucun":
+                            print("🌐 Contexte web injecté via SearXNG", flush=True)
+                    except Exception as exc:
+                        print(f"⚠️ Recherche web SearXNG indisponible : {exc}", flush=True)
             if CONFIG.debug_chat_memory and (
-                chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun"
+                chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun" or web_context != "aucun"
             ):
                 print("🧠 Contexte mémoire injecté", flush=True)
                 if context_source == "local" and prefer_active_thread and not riddle_thread_reset:
@@ -419,24 +729,39 @@ class Bot(commands.Bot):
                     print(f"   Viewer : {chat_context['viewer_context']}", flush=True)
                 if chat_context["global_context"] != "aucun":
                     print(f"   Global : {chat_context['global_context']}", flush=True)
+                if web_context != "aucun":
+                    print(f"   Web    : {web_context}", flush=True)
             reply = await asyncio.to_thread(
                 ask_ollama,
                 payload.chatter.name,
-                text,
+                resolved_text,
                 CONFIG.ollama_url,
                 OLLAMA_MODEL,
                 CONFIG.request_timeout_seconds,
                 chat_context["viewer_context"],
                 chat_context["global_context"],
+                web_context,
                 conversation_mode,
+                CONFIG.llm_provider,
+                CONFIG.openai_api_key,
+                CONFIG.openai_web_search_enabled,
+                CONFIG.openai_web_search_mode,
             )
 
             print(f"🧠 Réponse Ollama : {reply}", flush=True)
 
             if not reply or is_no_reply_signal(reply):
-                fallback_reply = build_no_reply_fallback(text, riddle_related=riddle_related)
+                fallback_reply = build_no_reply_fallback(resolved_text, riddle_related=riddle_related)
                 if not fallback_reply:
+                    append_reported_facts(
+                        self.facts_memory,
+                        channel_name,
+                        author,
+                        clean_viewer_message,
+                        ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    )
                     self.remember_remote_turn(
+                        channel_name,
                         author,
                         clean_viewer_message,
                         message_id=msg_id,
@@ -445,11 +770,25 @@ class Bot(commands.Bot):
                     )
                     append_chat_turn(
                         self.chat_memory,
-                        CONFIG.channel_name,
+                        channel_name,
                         author,
                         clean_viewer_message,
                         ttl_hours=CONFIG.chat_memory_ttl_hours,
                         thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                        event_type=event_type,
+                        related_viewer=related_viewer,
+                        related_message=related_message,
+                    )
+                    append_conversation_turn(
+                        self.conversation_graph,
+                        channel_name,
+                        author,
+                        clean_viewer_message,
+                        event_type=event_type,
+                        reply_to_turn_id=reply_to_turn_id,
+                        corrects_turn_id=related_turn_id,
+                        target_viewers=[related_viewer] if related_viewer else [],
+                        ttl_hours=CONFIG.chat_memory_ttl_hours,
                     )
                     print("↪️ Pas de réponse envoyée", flush=True)
                     return
@@ -461,22 +800,52 @@ class Bot(commands.Bot):
                     sender=self.bot_id,
                     token_for=self.bot_id,
                 )
+                append_reported_facts(
+                    self.facts_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
                 append_chat_turn(
                     self.chat_memory,
-                    CONFIG.channel_name,
+                    channel_name,
                     author,
                     clean_viewer_message,
                     fallback_reply,
                     ttl_hours=CONFIG.chat_memory_ttl_hours,
                     thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                    event_type=event_type,
+                    related_viewer=related_viewer,
+                    related_message=related_message,
+                )
+                append_conversation_turn(
+                    self.conversation_graph,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    fallback_reply,
+                    event_type=event_type,
+                    reply_to_turn_id=reply_to_turn_id,
+                    corrects_turn_id=related_turn_id,
+                    target_viewers=[related_viewer] if related_viewer else [],
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
                 )
                 self.mark_replied(author)
                 return
 
             if riddle_related and (
-                is_partial_riddle_message(text) or is_riddle_refusal_reply(reply)
+                is_partial_riddle_message(resolved_text) or is_riddle_refusal_reply(reply)
             ):
+                append_reported_facts(
+                    self.facts_memory,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                )
                 self.remember_remote_turn(
+                    channel_name,
                     author,
                     clean_viewer_message,
                     message_id=msg_id,
@@ -485,11 +854,25 @@ class Bot(commands.Bot):
                 )
                 append_chat_turn(
                     self.chat_memory,
-                    CONFIG.channel_name,
+                    channel_name,
                     author,
                     clean_viewer_message,
                     ttl_hours=CONFIG.chat_memory_ttl_hours,
                     thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                    event_type=event_type,
+                    related_viewer=related_viewer,
+                    related_message=related_message,
+                )
+                append_conversation_turn(
+                    self.conversation_graph,
+                    channel_name,
+                    author,
+                    clean_viewer_message,
+                    event_type=event_type,
+                    reply_to_turn_id=reply_to_turn_id,
+                    corrects_turn_id=related_turn_id,
+                    target_viewers=[related_viewer] if related_viewer else [],
+                    ttl_hours=CONFIG.chat_memory_ttl_hours,
                 )
                 print("↪️ Réponse de refus/indice partiel supprimée pour la charade", flush=True)
                 return
@@ -512,16 +895,39 @@ class Bot(commands.Bot):
                 token_for=self.bot_id,
             )
 
+            append_reported_facts(
+                self.facts_memory,
+                channel_name,
+                author,
+                clean_viewer_message,
+                ttl_hours=CONFIG.chat_memory_ttl_hours,
+            )
             append_chat_turn(
                 self.chat_memory,
-                CONFIG.channel_name,
+                channel_name,
                 author,
                 clean_viewer_message,
                 final_reply,
                 ttl_hours=CONFIG.chat_memory_ttl_hours,
                 thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+            )
+            append_conversation_turn(
+                self.conversation_graph,
+                channel_name,
+                author,
+                clean_viewer_message,
+                final_reply,
+                event_type=event_type,
+                reply_to_turn_id=reply_to_turn_id,
+                corrects_turn_id=related_turn_id,
+                target_viewers=[related_viewer] if related_viewer else [],
+                ttl_hours=CONFIG.chat_memory_ttl_hours,
             )
             self.remember_remote_turn(
+                channel_name,
                 author,
                 clean_viewer_message,
                 final_reply,
@@ -529,7 +935,7 @@ class Bot(commands.Bot):
                 allow_remote=not specialized_local_thread,
                 author_is_owner=author_is_owner,
             )
-            if chat_context["viewer_context"] != "aucun" and likely_needs_memory_context(text):
+            if chat_context["viewer_context"] != "aucun" and likely_needs_memory_context(resolved_text):
                 increment_chat_memory_counter(
                     self.chat_memory,
                     "memory_helpful_replies",
@@ -548,6 +954,8 @@ class Bot(commands.Bot):
             CONFIG.ollama_url,
             OLLAMA_MODEL,
             CONFIG.request_timeout_seconds,
+            CONFIG.llm_provider,
+            CONFIG.openai_api_key,
         )
 
         summary = smart_truncate(summary, MAX_OUTPUT_CHARS)
@@ -642,7 +1050,11 @@ class Bot(commands.Bot):
 async def main():
     global OLLAMA_MODEL
 
-    OLLAMA_MODEL = choose_model(CONFIG.default_ollama_model)
+    OLLAMA_MODEL = choose_model(
+        CONFIG.default_ollama_model,
+        provider=CONFIG.llm_provider,
+        openai_chat_model=CONFIG.openai_chat_model,
+    )
     await run_with_model(OLLAMA_MODEL)
 
 
@@ -652,7 +1064,7 @@ async def run_with_model(model_name: str):
     OLLAMA_MODEL = model_name
 
     print("==================================================", flush=True)
-    print("🚀 DÉMARRAGE BOT TWITCH + OLLAMA", flush=True)
+    print("🚀 DÉMARRAGE BOT TWITCH + LLM", flush=True)
     print("==================================================", flush=True)
     print(f"CLIENT_ID OK      : {bool(CONFIG.client_id)}", flush=True)
     print(f"CLIENT_SECRET OK  : {bool(CONFIG.client_secret)}", flush=True)
@@ -660,7 +1072,8 @@ async def run_with_model(model_name: str):
     print(f"OWNER_ID          : {CONFIG.owner_id}", flush=True)
     print(f"CHANNEL           : {CONFIG.channel_name}", flush=True)
     print(f"BOT_TOKEN OK      : {bool(CONFIG.bot_token)}", flush=True)
-    print(f"OLLAMA_MODEL      : {OLLAMA_MODEL}", flush=True)
+    print(f"LLM_PROVIDER      : {CONFIG.llm_provider}", flush=True)
+    print(f"LLM_MODEL         : {OLLAMA_MODEL}", flush=True)
     print(f"GLOBAL_COOLDOWN   : {CONFIG.global_cooldown_seconds}s", flush=True)
     print(f"USER_COOLDOWN     : {CONFIG.user_cooldown_seconds}s", flush=True)
     print(f"QUEUE_SIZE        : {CONFIG.message_queue_max_size}", flush=True)

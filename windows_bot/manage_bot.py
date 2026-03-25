@@ -21,9 +21,87 @@ LOG_FILE = LOGS_DIR / "bot.log"
 CHAT_MEMORY_PATH = BASE_DIR / CHAT_MEMORY_FILE
 ENV_PATH = BASE_DIR / ".env"
 
+COMMAND_HELP = {
+    "status": "Affiche l'etat de la configuration chargee depuis le .env.",
+    "diagnose": "Verifie Twitch, Ollama, mem0 et l'API admin.",
+    "validate-token": "Valide le token Twitch courant et tente un refresh si besoin.",
+    "ollama-models": "Liste les modeles Ollama installes localement.",
+    "get-token": "Lance le flux OAuth Twitch pour ecrire/mettre a jour le token.",
+    "memory-health": "Teste l'API mem0 publique.",
+    "admin-health": "Teste l'API admin mem0 via l'URL locale/tunnelisee.",
+    "run-admin-ui": "Lance l'interface web admin Windows.",
+    "run-ollama": "Lance le bot au premier plan avec Ollama.",
+    "run-bg-ollama": "Lance le bot en arriere-plan avec logs dans logs/bot.log.",
+    "status-bg": "Affiche l'etat du bot lance en arriere-plan.",
+    "stop-bg": "Arrete le bot en arriere-plan.",
+    "restart-bg": "Redemarre le bot en arriere-plan.",
+    "clean-bg": "Nettoie un PID stale si le bot de fond n'existe plus.",
+    "chat-memory-status": "Affiche l'etat de la memoire locale de chat.",
+    "clear-chat-memory": "Vide toute la memoire locale ou celle d'un viewer.",
+}
+
+HELP_GROUPS = [
+    (
+        "Lancement",
+        [
+            ("run-ollama", COMMAND_HELP["run-ollama"]),
+            ("run-bg-ollama", COMMAND_HELP["run-bg-ollama"]),
+            ("status-bg", COMMAND_HELP["status-bg"]),
+            ("stop-bg", COMMAND_HELP["stop-bg"]),
+            ("restart-bg", COMMAND_HELP["restart-bg"]),
+            ("clean-bg", COMMAND_HELP["clean-bg"]),
+        ],
+    ),
+    (
+        "Diagnostic",
+        [
+            ("status", COMMAND_HELP["status"]),
+            ("diagnose", COMMAND_HELP["diagnose"]),
+            ("validate-token", COMMAND_HELP["validate-token"]),
+            ("ollama-models", COMMAND_HELP["ollama-models"]),
+            ("memory-health", COMMAND_HELP["memory-health"]),
+            ("admin-health", COMMAND_HELP["admin-health"]),
+        ],
+    ),
+    (
+        "Admin",
+        [
+            ("run-admin-ui", COMMAND_HELP["run-admin-ui"]),
+            ("get-token", COMMAND_HELP["get-token"]),
+        ],
+    ),
+    (
+        "Memoire",
+        [
+            ("chat-memory-status", COMMAND_HELP["chat-memory-status"]),
+            ("clear-chat-memory", COMMAND_HELP["clear-chat-memory"]),
+        ],
+    ),
+]
+
 
 def bool_label(value: bool) -> str:
     return "OK" if value else "MANQUANT"
+
+
+def print_cli_help() -> None:
+    print("Bot Twitch/Ollama")
+    print()
+    print("Usage")
+    print("  py .\\manage_bot.py <commande>")
+    print()
+    for title, items in HELP_GROUPS:
+        print(title)
+        for command, description in items:
+            print(f"  {command:<18} {description}")
+        print()
+    print("Exemples")
+    print("  py .\\manage_bot.py run-ollama")
+    print("  py .\\manage_bot.py run-bg-ollama")
+    print("  py .\\manage_bot.py status-bg")
+    print("  py .\\manage_bot.py diagnose")
+    print("  py .\\manage_bot.py run-admin-ui")
+    print("  py .\\manage_bot.py clear-chat-memory --viewer alice")
 
 
 def print_config_status(config: AppConfig) -> None:
@@ -35,8 +113,18 @@ def print_config_status(config: AppConfig) -> None:
     print(f"TWITCH_CHANNEL       : {config.channel_name or '(vide)'}")
     print(f"TWITCH_TOKEN         : {bool_label(bool(config.bot_token))}")
     print(f"TWITCH_REFRESH_TOKEN : {bool_label(bool(config.refresh_token))}")
+    print(f"LLM_PROVIDER         : {config.llm_provider}")
     print(f"OLLAMA_URL           : {config.ollama_url}")
     print(f"OLLAMA_MODEL défaut  : {config.default_ollama_model}")
+    print(f"OPENAI_CHAT_MODEL    : {config.openai_chat_model}")
+    print(f"OPENAI_WEB_SEARCH    : {bool_label(config.openai_web_search_enabled)}")
+    print(f"OPENAI_WEB_MODE      : {config.openai_web_search_mode}")
+    print(f"WEB_SEARCH_ENABLED   : {bool_label(config.web_search_enabled)}")
+    print(f"WEB_SEARCH_PROVIDER  : {config.web_search_provider}")
+    print(f"WEB_SEARCH_MODE      : {config.web_search_mode}")
+    print(f"SEARXNG_BASE_URL     : {config.searxng_base_url}")
+    print(f"WEB_SEARCH_TIMEOUT   : {config.web_search_timeout_seconds}s")
+    print(f"WEB_SEARCH_MAXRESULTS: {config.web_search_max_results}")
     print(f"GLOBAL_COOLDOWN      : {config.global_cooldown_seconds}s")
     print(f"USER_COOLDOWN        : {config.user_cooldown_seconds}s")
     print(f"CHAT_MEMORY_TTL_HOURS: {config.chat_memory_ttl_hours}")
@@ -120,6 +208,9 @@ def validate_twitch_token(config: AppConfig, timeout: int = 15, allow_refresh: b
 
 def check_ollama_api(config: AppConfig, timeout: int = 5) -> int:
     print("=== Ollama API ===")
+    if config.llm_provider != "ollama":
+        print("ℹ️ Provider LLM != ollama, check Ollama ignoré")
+        return 0
     tags_url = config.ollama_url.rsplit("/api/chat", 1)[0] + "/api/tags"
 
     try:
@@ -142,6 +233,9 @@ def check_ollama_api(config: AppConfig, timeout: int = 5) -> int:
 
 def print_local_models() -> int:
     print("=== Modèles Ollama locaux ===")
+    if load_config().llm_provider != "ollama":
+        print("ℹ️ Provider LLM != ollama, liste des modèles locaux non pertinente")
+        return 0
     models = get_installed_models()
     if not models:
         print("⚠️ Aucun modèle détecté via 'ollama list'")
@@ -216,7 +310,8 @@ async def run_bot() -> int:
 async def run_bot_ollama_only(config: AppConfig) -> int:
     from bot_ollama import run_with_model
 
-    await run_with_model(config.default_ollama_model)
+    model_name = config.openai_chat_model if config.llm_provider == "openai" else config.default_ollama_model
+    await run_with_model(model_name)
     return 0
 
 
@@ -227,6 +322,18 @@ def run_admin_ui_command(config: AppConfig) -> int:
 
 
 def ensure_runtime_config(config: AppConfig) -> AppConfig | None:
+    if config.llm_provider == "openai" and not config.openai_api_key:
+        print("❌ OPENAI_API_KEY manquante alors que LLM_PROVIDER=openai")
+        return None
+    if config.openai_web_search_mode not in {"auto", "always", "off"}:
+        print("❌ OPENAI_WEB_SEARCH_MODE doit valoir auto, always ou off")
+        return None
+    if config.web_search_provider not in {"searxng"}:
+        print("❌ WEB_SEARCH_PROVIDER doit valoir searxng")
+        return None
+    if config.web_search_mode not in {"auto", "always", "off"}:
+        print("❌ WEB_SEARCH_MODE doit valoir auto, always ou off")
+        return None
     validation_code = validate_twitch_token(config)
     if validation_code != 0:
         return None
@@ -297,7 +404,8 @@ def run_ollama_in_background(config: AppConfig) -> int:
 
     PID_FILE.write_text(str(process.pid), encoding="utf-8")
     print(f"✅ Bot Ollama lancé en arrière-plan (PID {process.pid})")
-    print(f"Provider/modèle utilisés sans prompt : ollama / {config.default_ollama_model}")
+    provider_model = config.openai_chat_model if config.llm_provider == "openai" else config.default_ollama_model
+    print(f"Provider/modèle utilisés sans prompt : {config.llm_provider} / {provider_model}")
     print(f"Logs : {LOG_FILE}")
     print(f"PID  : {PID_FILE}")
     return 0
@@ -458,9 +566,23 @@ def confirm_cleanup_stale_pid(pid: int) -> bool:
     return answer in {"o", "oui", "y", "yes"}
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Outils de lancement et de diagnostic du bot Twitch/Ollama.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Outils de lancement et de diagnostic du bot Twitch/Ollama.",
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog=(
+            "Commandes courantes :\n"
+            "  py .\\manage_bot.py run-ollama         Lance le bot au premier plan\n"
+            "  py .\\manage_bot.py run-bg-ollama      Lance le bot en arriere-plan\n"
+            "  py .\\manage_bot.py status-bg          Verifie le bot en arriere-plan\n"
+            "  py .\\manage_bot.py diagnose           Verifie toute la stack\n"
+            "  py .\\manage_bot.py run-admin-ui       Lance l'interface admin\n"
+            "  py .\\manage_bot.py chat-memory-status Affiche l'etat de la memoire locale\n"
+            "  py .\\manage_bot.py clear-chat-memory --viewer alice\n"
+            "                                        Efface la memoire locale d'un viewer\n"
+        ),
+    )
+    subparsers = parser.add_subparsers(dest="command")
 
     for name in (
         "status",
@@ -479,16 +601,28 @@ def parse_args() -> argparse.Namespace:
         "clean-bg",
         "chat-memory-status",
     ):
-        subparsers.add_parser(name)
+        subparsers.add_parser(name, help=COMMAND_HELP[name], description=COMMAND_HELP[name])
 
-    clear_chat_memory_parser = subparsers.add_parser("clear-chat-memory")
+    clear_chat_memory_parser = subparsers.add_parser(
+        "clear-chat-memory",
+        help=COMMAND_HELP["clear-chat-memory"],
+        description=COMMAND_HELP["clear-chat-memory"],
+    )
     clear_chat_memory_parser.add_argument("--viewer", dest="viewer_name", default=None)
 
-    return parser.parse_args()
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    return build_parser().parse_args()
 
 
 def main() -> int:
-    args = parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if not args.command:
+        print_cli_help()
+        return 0
     config = load_config()
     try:
         if args.command == "status":

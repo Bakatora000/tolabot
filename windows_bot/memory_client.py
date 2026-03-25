@@ -182,7 +182,7 @@ def should_store_in_mem0(user_message: str, bot_reply: str = "", author_is_owner
     if any(marker in combined for marker in question_markers):
         return False
 
-    return len(user_text) >= 40 and bool(reply_text)
+    return len(user_text) >= 8 and bool(reply_text)
 
 
 def _request(

@@ -1,9 +1,11 @@
 import asyncio
 import unittest
 from collections import deque
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import bot_ollama
 from bot_ollama import Bot, QueuedMessage
 
 
@@ -18,6 +20,8 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bot.recent_ids = deque(maxlen=200)
         bot.history = {"sessions": [], "current_session": None}
         bot.chat_memory = {"channels": {}}
+        bot.conversation_graph = {"channels": {}}
+        bot.facts_memory = {"channels": {}}
         bot._bot_id = "bot-id"
         return bot
 
@@ -182,12 +186,14 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
     @patch("bot_ollama.is_mem0_enabled", return_value=True)
     @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "alice: ancien contexte", "global_context": "aucun", "items": []})
     @patch("bot_ollama.ask_ollama", return_value="Salut Alice")
+    @patch("bot_ollama.search_searxng")
     @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
     @patch("bot_ollama.asks_about_channel_content", return_value=False)
     async def test_event_message_uses_remote_memory_context_when_enabled(
         self,
         mock_channel_content,
         mock_injection,
+        mock_search_searxng,
         mock_ask_ollama,
         mock_get_memory_context,
         mock_mem0_enabled,
@@ -205,8 +211,369 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
         await bot.event_message(payload)
 
+        mock_search_searxng.assert_not_called()
         mock_get_memory_context.assert_called_once()
         self.assertEqual(mock_ask_ollama.call_args.args[5], "alice: ancien contexte")
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=False)
+    @patch("bot_ollama.build_web_search_context", return_value="[1] Météo Paris - Temps doux.")
+    @patch("bot_ollama.search_searxng", return_value=[{"title": "Météo Paris", "content": "Temps doux.", "url": "https://example.com"}])
+    @patch("bot_ollama.ask_ollama", return_value="Il fait doux aujourd'hui.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_ollama_can_receive_web_context_from_searxng(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_search_searxng,
+        mock_build_web_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss quelle est la météo aujourd'hui ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-web-1",
+        )
+
+        web_config = replace(
+            bot_ollama.CONFIG,
+            web_search_enabled=True,
+            web_search_provider="searxng",
+            web_search_mode="auto",
+            searxng_base_url="http://127.0.0.1:8888",
+            web_search_timeout_seconds=8,
+            web_search_max_results=5,
+        )
+        with patch("bot_ollama.CONFIG", web_config):
+            await bot.event_message(payload)
+
+        mock_search_searxng.assert_called_once()
+        self.assertEqual(mock_ask_ollama.call_args.args[7], "[1] Météo Paris - Temps doux.")
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_not_called()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "aucun", "global_context": "aucun", "items": []})
+    @patch("bot_ollama.ask_ollama", return_value="MissCouette76 joue à Valheim.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_alias_is_resolved_before_memory_lookup_and_model_call(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-25T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "dame_gaby",
+                            "viewer_message": "MissCouette76 est le plus souvent appelait MissCouette ou Caouette",
+                            "bot_reply": "C'est noté !",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {},
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="dame_gaby")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss que peux tu me dire sur Caouette ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-alias-1",
+        )
+
+        await bot.event_message(payload)
+
+        self.assertIn("MissCouette76", mock_get_memory_context.call_args.kwargs["message"])
+        self.assertIn("MissCouette76", mock_ask_ollama.call_args.args[1])
+        self.assertIn("alias local: caouette = MissCouette76", mock_ask_ollama.call_args.args[6])
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "aucun", "global_context": "aucun", "items": []})
+    @patch("bot_ollama.ask_ollama", return_value="Dame_Gaby fait partie des Valkyrottes.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_recent_subject_is_resolved_before_memory_lookup_and_model_call(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-25T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "expevay",
+                            "viewer_message": "qui est Dame_Gaby ?",
+                            "bot_reply": "Dame_Gaby joue à Valheim.",
+                            "thread_boundary": "",
+                            "event_type": "message",
+                            "related_viewer": "",
+                            "related_message": "",
+                        }
+                    ],
+                    "viewer_turns": {
+                        "expevay": [
+                            {
+                                "timestamp": "2026-03-25T12:00:00+00:00",
+                                "channel": "streamer",
+                                "viewer": "expevay",
+                                "viewer_message": "qui est Dame_Gaby ?",
+                                "bot_reply": "Dame_Gaby joue à Valheim.",
+                                "thread_boundary": "",
+                                "event_type": "message",
+                                "related_viewer": "",
+                                "related_message": "",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="expevay")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss elle fait partie de quel groupe avec 2 autres personnes ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-focus-1",
+        )
+
+        await bot.event_message(payload)
+
+        self.assertIn("Dame_Gaby", mock_get_memory_context.call_args.kwargs["message"])
+        self.assertIn("Dame_Gaby", mock_ask_ollama.call_args.args[1])
+        self.assertIn("sujet recent: Dame_Gaby", mock_ask_ollama.call_args.args[6])
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "aucun", "global_context": "aucun", "items": []})
+    @patch("bot_ollama.ask_ollama", return_value="Je ne sais pas. Tu confirmes ?")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_uncertain_third_party_fact_is_flagged_when_talking_to_subject(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.facts_memory = {
+            "channels": {
+                "streamer": {
+                    "facts": [
+                        {
+                            "timestamp": "2026-03-25T12:00:00+00:00",
+                            "subject": "misscouette76",
+                            "predicate": "description",
+                            "value": "aussi appelée MissCouette",
+                            "source_speaker": "dame_gaby",
+                            "verification_state": "third_party_reported",
+                        }
+                    ]
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="misscouette76")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss que sais tu sur moi ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-fact-1",
+        )
+
+        await bot.event_message(payload)
+
+        self.assertIn("fait incertain rapporte par dame_gaby sur toi", mock_ask_ollama.call_args.args[6].lower())
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch(
+        "bot_ollama.get_memory_context",
+        return_value={
+            "viewer_context": "aucun",
+            "global_context": "bob: hors sujet\nbot: réponse hors sujet",
+            "items": [],
+        },
+    )
+    @patch("bot_ollama.ask_ollama", return_value="Bien vu, on reste sur MissCouette.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_local_graph_context_is_prioritized_over_remote_global_context(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-23T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "viewer1",
+                            "viewer_message": "que penses tu de MissCouette ?",
+                            "bot_reply": "Elle joue à Enshrouded.",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {},
+                }
+            }
+        }
+        bot.conversation_graph = {
+            "channels": {
+                "streamer": {
+                    "turns": [
+                        {
+                            "turn_id": "t1",
+                            "timestamp": "2026-03-23T12:00:00+00:00",
+                            "channel": "streamer",
+                            "speaker": "viewer1",
+                            "message_text": "que penses tu de MissCouette ?",
+                            "bot_reply": "Elle joue à Enshrouded.",
+                            "event_type": "message",
+                            "target_viewers": [],
+                            "reply_to_turn_id": "",
+                            "corrects_turn_id": "",
+                        },
+                        {
+                            "turn_id": "t2",
+                            "timestamp": "2026-03-23T12:01:00+00:00",
+                            "channel": "streamer",
+                            "speaker": "streamer",
+                            "message_text": "je parlais effectivement de MissCouette. MrAdel779 est hors sujet",
+                            "bot_reply": "Tu as raison, on reste sur MissCouette.",
+                            "event_type": "owner_correction",
+                            "target_viewers": ["viewer1"],
+                            "reply_to_turn_id": "",
+                            "corrects_turn_id": "t1",
+                        },
+                    ]
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="streamer")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss du coup que penses tu d'elle ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-local-priority-1",
+        )
+
+        await bot.event_message(payload)
+
+        mock_get_memory_context.assert_called_once()
+        global_context = mock_ask_ollama.call_args.args[6]
+        self.assertIn("MissCouette", global_context)
+        self.assertNotIn("bob: hors sujet", global_context.lower())
+        self.assertNotIn("réponse hors sujet", global_context.lower())
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "aucun", "global_context": "aucun", "items": []})
+    @patch("bot_ollama.ask_ollama", return_value="Bien vu, il parlait sans doute de Dame_Gaby.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_owner_correction_keeps_recent_local_global_context_when_mem0_enabled(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-23T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "viewer1",
+                            "viewer_message": "que penses tu de @Dame_Gaby ?",
+                            "bot_reply": "Gaby est une présentatrice TV.",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {
+                        "viewer1": [
+                            {
+                                "timestamp": "2026-03-23T12:00:00+00:00",
+                                "channel": "streamer",
+                                "viewer": "viewer1",
+                                "viewer_message": "que penses tu de @Dame_Gaby ?",
+                                "bot_reply": "Gaby est une présentatrice TV.",
+                                "thread_boundary": "",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="streamer")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss je pense qu'il parlait de Dame_Gaby et pas Gaby",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-correction-1",
+        )
+
+        await bot.event_message(payload)
+
+        mock_get_memory_context.assert_called_once()
+        self.assertIn("viewer1: que penses tu de @Dame_Gaby ?", mock_ask_ollama.call_args.args[6])
+        self.assertIn("bot: Gaby est une présentatrice TV.", mock_ask_ollama.call_args.args[6])
         broadcaster.send_message.assert_awaited_once()
         mock_store_memory_turn.assert_called_once()
 
@@ -229,7 +596,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
         chatter = SimpleNamespace(name="alice")
         payload = SimpleNamespace(
-            text="@AnneAuNimouss salut",
+            text="@AnneAuNimouss tu es la ?",
             chatter=chatter,
             broadcaster=broadcaster,
             id="msg-3",
@@ -331,7 +698,7 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         await bot.event_message(payload)
 
         mock_get_memory_context.assert_not_called()
-        self.assertEqual(mock_ask_ollama.call_args.args[7], "riddle_final")
+        self.assertEqual(mock_ask_ollama.call_args.args[8], "riddle_final")
         broadcaster.send_message.assert_awaited_once()
         mock_store_memory_turn.assert_not_called()
 
@@ -384,6 +751,122 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         mock_get_memory_context.assert_not_called()
         broadcaster.send_message.assert_awaited_once()
         mock_store_memory_turn.assert_not_called()
+
+    @patch("bot_ollama.ask_ollama")
+    async def test_short_acknowledgment_skips_model_and_chat_reply(self, mock_ask_ollama):
+        bot = self.make_bot()
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="streamer")
+        payload = SimpleNamespace(
+            text='@AnneAuNimouss très bien!',
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-ack-1",
+        )
+
+        await bot.event_message(payload)
+
+        mock_ask_ollama.assert_not_called()
+        broadcaster.send_message.assert_not_awaited()
+        channel_data = bot.chat_memory["channels"]["streamer"]
+        self.assertEqual(channel_data["global_turns"][-1]["viewer_message"], "très bien!")
+        self.assertEqual(channel_data["global_turns"][-1]["bot_reply"], "")
+
+    @patch("bot_ollama.ask_ollama")
+    async def test_passive_closing_gets_local_goodbye_reply(self, mock_ask_ollama):
+        bot = self.make_bot()
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="dame_gaby")
+        payload = SimpleNamespace(
+            text='@AnneAuNimouss aurevoir',
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-bye-1",
+        )
+
+        await bot.event_message(payload)
+
+        mock_ask_ollama.assert_not_called()
+        broadcaster.send_message.assert_awaited_once_with(
+            "@dame_gaby Au revoir !",
+            sender="bot-id",
+            token_for="bot-id",
+        )
+        channel_data = bot.chat_memory["channels"]["streamer"]
+        self.assertEqual(channel_data["global_turns"][-1]["viewer_message"], "aurevoir")
+        self.assertEqual(channel_data["global_turns"][-1]["bot_reply"], "Au revoir !")
+
+    @patch("bot_ollama.ask_ollama")
+    async def test_greeting_gets_local_hello_reply(self, mock_ask_ollama):
+        bot = self.make_bot()
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text='@AnneAuNimouss bonjour',
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-hello-1",
+        )
+
+        await bot.event_message(payload)
+
+        mock_ask_ollama.assert_not_called()
+        broadcaster.send_message.assert_awaited_once_with(
+            "@alice Bonjour !",
+            sender="bot-id",
+            token_for="bot-id",
+        )
+
+    @patch("bot_ollama.viewer_recent_social_redundancy", return_value=1)
+    @patch("bot_ollama.ask_ollama")
+    async def test_repeated_greeting_gets_redundancy_reply(self, mock_ask_ollama, mock_redundancy):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-25T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "alice",
+                            "viewer_message": "bonjour",
+                            "bot_reply": "Bonjour !",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {
+                        "alice": [
+                            {
+                                "timestamp": "2026-03-25T12:00:00+00:00",
+                                "channel": "streamer",
+                                "viewer": "alice",
+                                "viewer_message": "bonjour",
+                                "bot_reply": "Bonjour !",
+                                "thread_boundary": "",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text='@AnneAuNimouss salut',
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-hello-2",
+        )
+
+        await bot.event_message(payload)
+
+        mock_ask_ollama.assert_not_called()
+        mock_redundancy.assert_called_once()
+        broadcaster.send_message.assert_awaited_once_with(
+            "@alice Bonjour, mais tu m'as deja salue je crois.",
+            sender="bot-id",
+            token_for="bot-id",
+        )
 
 
 if __name__ == "__main__":

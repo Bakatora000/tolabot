@@ -1,8 +1,8 @@
-# Bot Twitch + Ollama
+# Bot Twitch + LLM
 
 Bot Twitch francophone qui :
 - lit les messages mentionnant `@anneaunimouss`
-- envoie la demande a Ollama
+- envoie la demande a Ollama ou OpenAI
 - renvoie la reponse dans le chat
 - garde une memoire locale courte des echanges recents
 - peut preparer une integration memoire distante via mem0
@@ -11,8 +11,8 @@ Bot Twitch francophone qui :
 
 - Windows
 - Python 3.11+
-- Ollama installe localement
-- un modele Ollama deja disponible, par exemple `qwen3.5:latest`
+- soit Ollama installe localement avec un modele disponible, par exemple `qwen3.5:latest`
+- soit une cle API OpenAI pour utiliser un modele mini
 - une application Twitch avec `client_id` et `client_secret`
 
 ## Installation
@@ -35,8 +35,18 @@ TWITCH_OWNER_ID=
 TWITCH_TOKEN=oauth:
 TWITCH_CHANNEL=
 
+LLM_PROVIDER=ollama
 OLLAMA_URL=http://localhost:11434/api/chat
 OLLAMA_MODEL=qwen3.5:latest
+OPENAI_CHAT_MODEL=gpt-5-mini
+OPENAI_WEB_SEARCH_ENABLED=false
+OPENAI_WEB_SEARCH_MODE=auto
+WEB_SEARCH_ENABLED=false
+WEB_SEARCH_PROVIDER=searxng
+WEB_SEARCH_MODE=auto
+SEARXNG_BASE_URL=http://127.0.0.1:8888
+WEB_SEARCH_TIMEOUT_SECONDS=8
+WEB_SEARCH_MAX_RESULTS=5
 MEM0_ENABLED=false
 MEM0_API_BASE_URL=https://your-mem0-api.example.com/api/memory
 MEM0_API_KEY=
@@ -57,6 +67,16 @@ Notes :
 - `TWITCH_OWNER_ID` est l'identifiant Twitch de cette chaine
 - `TWITCH_BOT_ID` est l'identifiant Twitch du compte bot
 - `TWITCH_TOKEN` est le token OAuth du bot
+- `LLM_PROVIDER=ollama` garde le mode local actuel
+- `LLM_PROVIDER=openai` fait passer le bot par l'API OpenAI
+- `OPENAI_WEB_SEARCH_ENABLED=true` autorise l'outil web search quand `LLM_PROVIDER=openai`
+- `OPENAI_WEB_SEARCH_MODE=auto` l'active seulement sur les questions qui semblent demander de l'info recente ou web
+- `OPENAI_WEB_SEARCH_MODE=always` le force sur toutes les requetes OpenAI
+- `OPENAI_WEB_SEARCH_MODE=off` le coupe meme si `OPENAI_WEB_SEARCH_ENABLED=true`
+- `WEB_SEARCH_ENABLED=true` active une recherche web externe pour enrichir surtout Ollama/Qwen
+- `WEB_SEARCH_PROVIDER=searxng` utilise une instance SearXNG locale ou auto-hebergee
+- `WEB_SEARCH_MODE=auto` ne cherche que pour des questions externes du type actualite, meteo, prix, president, date de sortie
+- `SEARXNG_BASE_URL` pointe vers ton instance locale, par exemple `http://127.0.0.1:8888`
 - `CHAT_MEMORY_TTL_HOURS` controle la duree de conservation de la memoire de chat
 - `DEBUG_CHAT_MEMORY=true` affiche le contexte reinjecte dans les logs
 - `MEM0_ENABLED=true` active le client HTTP vers l'API memoire distante
@@ -70,6 +90,9 @@ Notes :
 - le tunnel V1 attendu est `localhost:9000 -> SSH -> 127.0.0.1:8000`
 - `OPENAI_REVIEW_ENABLED=true` active l'analyse de souvenirs via OpenAI
 - `OPENAI_API_KEY` est la cle API OpenAI
+- `OPENAI_CHAT_MODEL=gpt-5-mini` est un bon choix pour remplacer Ollama a cout modere
+- `OPENAI_WEB_SEARCH_ENABLED=true` peut aider sur les questions d'actualite ou d'information externe, mais ajoute de la latence et du cout
+- `WEB_SEARCH_ENABLED=true` avec `WEB_SEARCH_PROVIDER=searxng` permet d'ajouter un contexte web a Qwen sans cout API par requete LLM
 - `OPENAI_REVIEW_MODEL=gpt-5-mini` est un bon choix pour une revue structuree a cout modere
 - `OPENAI_REVIEW_MAX_RECORDS` limite le nombre de souvenirs envoyes a l'analyse pour reduire les tokens
 - `OPENAI_REVIEW_TIMEOUT_SECONDS=90` laisse plus de marge pour les exports plus gros
@@ -203,6 +226,27 @@ Important :
 - les charades/devinettes et autres fils multi-messages immediats restent geres prioritairement par la memoire locale
 - mem0 ne remplace pas la logique locale de fil actif pour ces cas
 
+## Recherche web locale avec SearXNG
+
+Le bot peut maintenant enrichir le prompt avec un `web_context` externe, utile surtout avec `LLM_PROVIDER=ollama`.
+
+Configuration type :
+
+```env
+LLM_PROVIDER=ollama
+WEB_SEARCH_ENABLED=true
+WEB_SEARCH_PROVIDER=searxng
+WEB_SEARCH_MODE=auto
+SEARXNG_BASE_URL=http://127.0.0.1:8888
+WEB_SEARCH_TIMEOUT_SECONDS=8
+WEB_SEARCH_MAX_RESULTS=5
+```
+
+Comportement :
+- pas de recherche web sur les questions purement conversationnelles du chat
+- recherche web seulement sur certaines requetes externes ou recentes en mode `auto`
+- si SearXNG ne repond pas, le bot continue normalement sans contexte web
+
 Si `MEM0_ENABLED=false`, le bot continue d'utiliser uniquement la memoire locale actuelle.
 
 ## Memoire ciblee du streamer
@@ -283,6 +327,19 @@ Lancer les tests :
 ```powershell
 python -m unittest test_bot_logic.py test_ollama_client.py test_bot_runtime.py
 ```
+
+Tests d'integration Windows/Linux en reel :
+
+```powershell
+$env:RUN_WINDOWS_LINUX_INTEGRATION="1"
+python -m unittest test_windows_linux_integration.py
+```
+
+Notes :
+- cette suite ouvre le tunnel SSH admin configure dans `.env`
+- elle teste l'API admin Linux via `127.0.0.1:9000`
+- les checks mem0 publics ne tournent que si `MEM0_ENABLED`, `MEM0_API_BASE_URL` et `MEM0_API_KEY` sont configures
+- elle nettoie les souvenirs de test crees pendant l'execution
 
 ## Fichiers principaux
 

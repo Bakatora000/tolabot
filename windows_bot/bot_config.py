@@ -15,6 +15,16 @@ class AppConfig:
     channel_name: str
     ollama_url: str
     default_ollama_model: str
+    llm_provider: str = "ollama"
+    openai_chat_model: str = "gpt-5-mini"
+    openai_web_search_enabled: bool = False
+    openai_web_search_mode: str = "auto"
+    web_search_enabled: bool = False
+    web_search_provider: str = "searxng"
+    web_search_mode: str = "auto"
+    web_search_timeout_seconds: int = 8
+    web_search_max_results: int = 5
+    searxng_base_url: str = "http://127.0.0.1:8888"
     request_timeout_seconds: int = 90
     chat_memory_ttl_hours: int = 10
     debug_chat_memory: bool = False
@@ -57,8 +67,18 @@ def load_config() -> AppConfig:
         bot_token=os.getenv("TWITCH_TOKEN", "").strip().replace("oauth:", "", 1),
         refresh_token=os.getenv("TWITCH_REFRESH_TOKEN", "").strip(),
         channel_name=os.getenv("TWITCH_CHANNEL", "").strip().lower(),
+        llm_provider=os.getenv("LLM_PROVIDER", "ollama").strip().lower() or "ollama",
         ollama_url=os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat").strip(),
         default_ollama_model=os.getenv("OLLAMA_MODEL", "qwen3.5:latest").strip(),
+        openai_chat_model=os.getenv("OPENAI_CHAT_MODEL", "gpt-5-mini").strip(),
+        openai_web_search_enabled=os.getenv("OPENAI_WEB_SEARCH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
+        openai_web_search_mode=os.getenv("OPENAI_WEB_SEARCH_MODE", "auto").strip().lower() or "auto",
+        web_search_enabled=os.getenv("WEB_SEARCH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
+        web_search_provider=os.getenv("WEB_SEARCH_PROVIDER", "searxng").strip().lower() or "searxng",
+        web_search_mode=os.getenv("WEB_SEARCH_MODE", "auto").strip().lower() or "auto",
+        web_search_timeout_seconds=max(1, int(os.getenv("WEB_SEARCH_TIMEOUT_SECONDS", "8").strip() or "8")),
+        web_search_max_results=max(1, int(os.getenv("WEB_SEARCH_MAX_RESULTS", "5").strip() or "5")),
+        searxng_base_url=os.getenv("SEARXNG_BASE_URL", "http://127.0.0.1:8888").strip().rstrip("/"),
         chat_memory_ttl_hours=max(1, int(os.getenv("CHAT_MEMORY_TTL_HOURS", "10").strip() or "10")),
         debug_chat_memory=os.getenv("DEBUG_CHAT_MEMORY", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
         global_cooldown_seconds=max(0, int(os.getenv("GLOBAL_COOLDOWN_SECONDS", "2").strip() or "2")),

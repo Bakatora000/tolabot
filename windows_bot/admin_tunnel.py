@@ -111,11 +111,17 @@ class AdminTunnelManager:
     def stop(self) -> None:
         if self.process is None:
             return
-        if self.process.poll() is None:
-            self.process.terminate()
+        process = self.process
+        if process.poll() is None:
+            process.terminate()
             try:
-                self.process.wait(timeout=3)
+                process.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=3)
+                process.kill()
+                process.wait(timeout=3)
+        if process.stderr is not None:
+            try:
+                process.stderr.close()
+            except OSError:
+                pass
         self.process = None
