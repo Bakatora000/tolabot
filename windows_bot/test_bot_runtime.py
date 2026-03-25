@@ -284,8 +284,17 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 "streamer": {
                     "viewer_turns": {
                         "alice": [
-                            {"role": "viewer", "text": "quel temps fera t il demain sur Lyon ?", "ts": "2026-03-25T10:00:00Z"},
-                            {"role": "bot", "text": "Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.", "ts": "2026-03-25T10:00:01Z"},
+                            {
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "channel": "streamer",
+                                "viewer": "alice",
+                                "viewer_message": "quel temps fera t il demain sur Lyon ?",
+                                "bot_reply": "Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.",
+                                "thread_boundary": "",
+                                "event_type": "",
+                                "related_viewer": "",
+                                "related_message": "",
+                            },
                         ]
                     },
                     "global_turns": [],
@@ -388,10 +397,11 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         with patch("bot_ollama.CONFIG", web_config), patch("bot_ollama.build_web_search_decision", side_effect=decision_side_effects):
             await bot.event_message(payload)
 
-        self.assertEqual(mock_ask_ollama.call_args.args[5], "alice: quel temps fera t il demain sur Lyon ?\nbot: Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.")
         self.assertNotIn("vieux souvenir mem0", mock_ask_ollama.call_args.args[5])
+        self.assertNotIn("vieux souvenir mem0", mock_ask_ollama.call_args.args[6])
+        self.assertEqual(mock_ask_ollama.call_args.args[7], "[1] Météo Lyon - Vendredi éclaircies.")
         mock_search_searxng.assert_called_once()
-        mock_store_memory_turn.assert_not_called()
+        mock_store_memory_turn.assert_called_once()
 
     @patch("bot_ollama.store_memory_turn")
     @patch("bot_ollama.is_mem0_enabled", return_value=True)

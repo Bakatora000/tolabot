@@ -411,6 +411,301 @@ class Bot(commands.Bot):
     def is_owner_author(self, author: str) -> bool:
         return normalize_spaces(author).lower() == normalize_spaces(CONFIG.channel_name).lower()
 
+    async def send_chat_reply(self, broadcaster, author: str, message: str, log_prefix: str = "📤 Envoi dans le chat") -> None:
+        outgoing_reply = self.format_chat_reply(author, message)
+        print(f"{log_prefix} : {outgoing_reply}", flush=True)
+        await broadcaster.send_message(
+            outgoing_reply,
+            sender=self.bot_id,
+            token_for=self.bot_id,
+        )
+
+    def persist_local_turn(
+        self,
+        *,
+        channel_name: str,
+        author: str,
+        clean_viewer_message: str,
+        bot_reply: str = "",
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool = False,
+        riddle_thread_close: bool = False,
+        store_reported_facts: bool = True,
+    ) -> None:
+        if store_reported_facts:
+            append_reported_facts(
+                self.facts_memory,
+                channel_name,
+                author,
+                clean_viewer_message,
+                ttl_hours=CONFIG.chat_memory_ttl_hours,
+            )
+        append_chat_turn(
+            self.chat_memory,
+            channel_name,
+            author,
+            clean_viewer_message,
+            bot_reply,
+            ttl_hours=CONFIG.chat_memory_ttl_hours,
+            thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+        )
+        append_conversation_turn(
+            self.conversation_graph,
+            channel_name,
+            author,
+            clean_viewer_message,
+            bot_reply,
+            event_type=event_type,
+            reply_to_turn_id=reply_to_turn_id,
+            corrects_turn_id=related_turn_id,
+            target_viewers=[related_viewer] if related_viewer else [],
+            ttl_hours=CONFIG.chat_memory_ttl_hours,
+        )
+
+    async def handle_non_model_decision(
+        self,
+        *,
+        payload: twitchio.ChatMessage,
+        author: str,
+        channel_name: str,
+        msg_id: str | None,
+        decision,
+        clean_viewer_message: str,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+        author_is_owner: bool,
+    ) -> bool:
+        if decision.decision == "channel_summary":
+            await self.reply_about_channel_content(payload, author)
+            return True
+
+        if decision.decision == "refuse_memory_instruction":
+            refusal_reply = str(decision.meta.get("reply", "Je ne prends ce type de note mémoire que d'Expevay."))
+            print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
+            await self.send_chat_reply(payload.broadcaster, author, refusal_reply)
+            self.persist_local_turn(
+                channel_name=channel_name,
+                author=author,
+                clean_viewer_message=clean_viewer_message,
+                bot_reply=refusal_reply,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+                store_reported_facts=False,
+            )
+            self.mark_replied(author)
+            return True
+
+        if decision.decision == "store_only":
+            self.persist_local_turn(
+                channel_name=channel_name,
+                author=author,
+                clean_viewer_message=clean_viewer_message,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+            )
+            self.remember_remote_turn(
+                channel_name,
+                author,
+                clean_viewer_message,
+                message_id=msg_id,
+                allow_remote=False,
+                author_is_owner=author_is_owner,
+            )
+            print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
+            return True
+
+        if decision.decision == "social_reply":
+            social_reply = str(decision.meta.get("reply", ""))
+            if social_reply:
+                await self.send_chat_reply(payload.broadcaster, author, social_reply, log_prefix="📤 Réponse sociale")
+            self.persist_local_turn(
+                channel_name=channel_name,
+                author=author,
+                clean_viewer_message=clean_viewer_message,
+                bot_reply=social_reply,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+            )
+            if social_reply:
+                self.mark_replied(author)
+            print("↪️ Salutation/clôture traitée localement, sans appel au modèle", flush=True)
+            return True
+
+        if decision.decision == "skip_reply":
+            self.persist_local_turn(
+                channel_name=channel_name,
+                author=author,
+                clean_viewer_message=clean_viewer_message,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+            )
+            print("↪️ Acquiescement bref détecté, sans appel au modèle", flush=True)
+            return True
+
+        return False
+
+    def persist_local_and_remote_turn(
+        self,
+        *,
+        channel_name: str,
+        author: str,
+        clean_viewer_message: str,
+        bot_reply: str = "",
+        msg_id: str | None,
+        allow_remote: bool,
+        author_is_owner: bool,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool = False,
+        riddle_thread_close: bool = False,
+        store_reported_facts: bool = True,
+    ) -> None:
+        self.persist_local_turn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            bot_reply=bot_reply,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            store_reported_facts=store_reported_facts,
+        )
+        self.remember_remote_turn(
+            channel_name,
+            author,
+            clean_viewer_message,
+            bot_reply,
+            message_id=msg_id,
+            allow_remote=allow_remote,
+            author_is_owner=author_is_owner,
+        )
+
+    async def handle_model_no_reply(
+        self,
+        *,
+        payload: twitchio.ChatMessage,
+        author: str,
+        channel_name: str,
+        clean_viewer_message: str,
+        fallback_reply: str,
+        msg_id: str | None,
+        allow_remote: bool,
+        author_is_owner: bool,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+    ) -> bool:
+        if not fallback_reply:
+            self.persist_local_and_remote_turn(
+                channel_name=channel_name,
+                author=author,
+                clean_viewer_message=clean_viewer_message,
+                msg_id=msg_id,
+                allow_remote=allow_remote,
+                author_is_owner=author_is_owner,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+            )
+            print("↪️ Pas de réponse envoyée", flush=True)
+            return True
+
+        await self.send_chat_reply(payload.broadcaster, author, fallback_reply, log_prefix="📤 Fallback NO_REPLY")
+        self.persist_local_turn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            bot_reply=fallback_reply,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+        )
+        self.mark_replied(author)
+        return True
+
+    async def handle_model_reply_result(
+        self,
+        *,
+        payload: twitchio.ChatMessage,
+        author: str,
+        channel_name: str,
+        clean_viewer_message: str,
+        final_reply: str,
+        msg_id: str | None,
+        allow_remote: bool,
+        author_is_owner: bool,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+    ) -> None:
+        await self.send_chat_reply(payload.broadcaster, author, final_reply)
+        self.persist_local_and_remote_turn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            bot_reply=final_reply,
+            msg_id=msg_id,
+            allow_remote=allow_remote,
+            author_is_owner=author_is_owner,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+        )
+        self.mark_replied(author)
+
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
         broadcaster_name = normalize_spaces(getattr(queued_message.payload.broadcaster, "name", "")).lower()
         is_owner_message = (
@@ -558,162 +853,22 @@ class Bot(commands.Bot):
         async with self.generation_lock:
             print(f"🧭 Décision : {decision.decision} [{decision.rule_id}]", flush=True)
 
-            if decision.decision == "channel_summary":
-                await self.reply_about_channel_content(payload, author)
-                return
-
-            if decision.decision == "refuse_memory_instruction":
-                refusal_reply = str(decision.meta.get("reply", "Je ne prends ce type de note mémoire que d'Expevay."))
-                outgoing_refusal_reply = self.format_chat_reply(author, refusal_reply)
-                print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
-                print(f"📤 Envoi dans le chat : {outgoing_refusal_reply}", flush=True)
-                await payload.broadcaster.send_message(
-                    outgoing_refusal_reply,
-                    sender=self.bot_id,
-                    token_for=self.bot_id,
-                )
-                append_chat_turn(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    refusal_reply,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    event_type=event_type,
-                    related_viewer=related_viewer,
-                    related_message=related_message,
-                )
-                append_conversation_turn(
-                    self.conversation_graph,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    refusal_reply,
-                    event_type=event_type,
-                    reply_to_turn_id=reply_to_turn_id,
-                    corrects_turn_id=related_turn_id,
-                    target_viewers=[related_viewer] if related_viewer else [],
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                self.mark_replied(author)
-                return
-
-            if decision.decision == "store_only":
-                append_reported_facts(
-                    self.facts_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                self.remember_remote_turn(
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    message_id=msg_id,
-                    allow_remote=False,
-                    author_is_owner=author_is_owner,
-                )
-                append_chat_turn(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
-                    event_type=event_type,
-                    related_viewer=related_viewer,
-                    related_message=related_message,
-                )
-                append_conversation_turn(
-                    self.conversation_graph,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    event_type=event_type,
-                    reply_to_turn_id=reply_to_turn_id,
-                    corrects_turn_id=related_turn_id,
-                    target_viewers=[related_viewer] if related_viewer else [],
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
-                return
-
-            if decision.decision == "social_reply":
-                social_reply = str(decision.meta.get("reply", ""))
-                append_reported_facts(
-                    self.facts_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                if social_reply:
-                    outgoing_social_reply = self.format_chat_reply(author, social_reply)
-                    print(f"📤 Réponse sociale : {outgoing_social_reply}", flush=True)
-                    await payload.broadcaster.send_message(
-                        outgoing_social_reply,
-                        sender=self.bot_id,
-                        token_for=self.bot_id,
-                    )
-                append_chat_turn(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    social_reply,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    event_type=event_type,
-                    related_viewer=related_viewer,
-                    related_message=related_message,
-                )
-                append_conversation_turn(
-                    self.conversation_graph,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    social_reply,
-                    event_type=event_type,
-                    reply_to_turn_id=reply_to_turn_id,
-                    corrects_turn_id=related_turn_id,
-                    target_viewers=[related_viewer] if related_viewer else [],
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                if social_reply:
-                    self.mark_replied(author)
-                print("↪️ Salutation/clôture traitée localement, sans appel au modèle", flush=True)
-                return
-
-            if decision.decision == "skip_reply":
-                append_reported_facts(
-                    self.facts_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                append_chat_turn(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    event_type=event_type,
-                    related_viewer=related_viewer,
-                    related_message=related_message,
-                )
-                append_conversation_turn(
-                    self.conversation_graph,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    event_type=event_type,
-                    reply_to_turn_id=reply_to_turn_id,
-                    corrects_turn_id=related_turn_id,
-                    target_viewers=[related_viewer] if related_viewer else [],
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                print("↪️ Acquiescement bref détecté, sans appel au modèle", flush=True)
+            if await self.handle_non_model_decision(
+                payload=payload,
+                author=author,
+                channel_name=channel_name,
+                msg_id=msg_id,
+                decision=decision,
+                clean_viewer_message=clean_viewer_message,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+                author_is_owner=author_is_owner,
+            ):
                 return
 
             print("🤖 Mention détectée, appel à Ollama...", flush=True)
@@ -883,127 +1038,42 @@ class Bot(commands.Bot):
 
             if not reply or is_no_reply_signal(reply):
                 fallback_reply = build_no_reply_fallback(resolved_text, riddle_related=riddle_related)
-                if not fallback_reply:
-                    append_reported_facts(
-                        self.facts_memory,
-                        channel_name,
-                        author,
-                        clean_viewer_message,
-                        ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    )
-                    self.remember_remote_turn(
-                        channel_name,
-                        author,
-                        clean_viewer_message,
-                        message_id=msg_id,
-                        allow_remote=not specialized_local_thread,
-                        author_is_owner=author_is_owner,
-                    )
-                    append_chat_turn(
-                        self.chat_memory,
-                        channel_name,
-                        author,
-                        clean_viewer_message,
-                        ttl_hours=CONFIG.chat_memory_ttl_hours,
-                        thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
-                        event_type=event_type,
-                        related_viewer=related_viewer,
-                        related_message=related_message,
-                    )
-                    append_conversation_turn(
-                        self.conversation_graph,
-                        channel_name,
-                        author,
-                        clean_viewer_message,
-                        event_type=event_type,
-                        reply_to_turn_id=reply_to_turn_id,
-                        corrects_turn_id=related_turn_id,
-                        target_viewers=[related_viewer] if related_viewer else [],
-                        ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    )
-                    print("↪️ Pas de réponse envoyée", flush=True)
-                    return
-
-                outgoing_fallback = self.format_chat_reply(author, fallback_reply)
-                print(f"📤 Fallback NO_REPLY : {outgoing_fallback}", flush=True)
-                await payload.broadcaster.send_message(
-                    outgoing_fallback,
-                    sender=self.bot_id,
-                    token_for=self.bot_id,
-                )
-                append_reported_facts(
-                    self.facts_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                append_chat_turn(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    fallback_reply,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+                await self.handle_model_no_reply(
+                    payload=payload,
+                    author=author,
+                    channel_name=channel_name,
+                    clean_viewer_message=clean_viewer_message,
+                    fallback_reply=fallback_reply,
+                    msg_id=msg_id,
+                    allow_remote=not specialized_local_thread,
+                    author_is_owner=author_is_owner,
                     event_type=event_type,
                     related_viewer=related_viewer,
                     related_message=related_message,
-                )
-                append_conversation_turn(
-                    self.conversation_graph,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    fallback_reply,
-                    event_type=event_type,
                     reply_to_turn_id=reply_to_turn_id,
-                    corrects_turn_id=related_turn_id,
-                    target_viewers=[related_viewer] if related_viewer else [],
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    related_turn_id=related_turn_id,
+                    riddle_thread_reset=riddle_thread_reset,
+                    riddle_thread_close=riddle_thread_close,
                 )
-                self.mark_replied(author)
                 return
 
             if riddle_related and (
                 is_partial_riddle_message(resolved_text) or is_riddle_refusal_reply(reply)
             ):
-                append_reported_facts(
-                    self.facts_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                )
-                self.remember_remote_turn(
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    message_id=msg_id,
+                self.persist_local_and_remote_turn(
+                    channel_name=channel_name,
+                    author=author,
+                    clean_viewer_message=clean_viewer_message,
+                    msg_id=msg_id,
                     allow_remote=False,
                     author_is_owner=author_is_owner,
-                )
-                append_chat_turn(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
-                    thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
                     event_type=event_type,
                     related_viewer=related_viewer,
                     related_message=related_message,
-                )
-                append_conversation_turn(
-                    self.conversation_graph,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                    event_type=event_type,
                     reply_to_turn_id=reply_to_turn_id,
-                    corrects_turn_id=related_turn_id,
-                    target_viewers=[related_viewer] if related_viewer else [],
-                    ttl_hours=CONFIG.chat_memory_ttl_hours,
+                    related_turn_id=related_turn_id,
+                    riddle_thread_reset=riddle_thread_reset,
+                    riddle_thread_close=riddle_thread_close,
                 )
                 print("↪️ Réponse de refus/indice partiel supprimée pour la charade", flush=True)
                 return
@@ -1018,53 +1088,22 @@ class Bot(commands.Bot):
                 print("↪️ Réponse suspecte bloquée", flush=True)
                 return
 
-            outgoing_reply = self.format_chat_reply(author, final_reply)
-            print(f"📤 Envoi dans le chat : {outgoing_reply}", flush=True)
-            await payload.broadcaster.send_message(
-                outgoing_reply,
-                sender=self.bot_id,
-                token_for=self.bot_id,
-            )
-
-            append_reported_facts(
-                self.facts_memory,
-                channel_name,
-                author,
-                clean_viewer_message,
-                ttl_hours=CONFIG.chat_memory_ttl_hours,
-            )
-            append_chat_turn(
-                self.chat_memory,
-                channel_name,
-                author,
-                clean_viewer_message,
-                final_reply,
-                ttl_hours=CONFIG.chat_memory_ttl_hours,
-                thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+            await self.handle_model_reply_result(
+                payload=payload,
+                author=author,
+                channel_name=channel_name,
+                clean_viewer_message=clean_viewer_message,
+                final_reply=final_reply,
+                msg_id=msg_id,
+                allow_remote=not specialized_local_thread,
+                author_is_owner=author_is_owner,
                 event_type=event_type,
                 related_viewer=related_viewer,
                 related_message=related_message,
-            )
-            append_conversation_turn(
-                self.conversation_graph,
-                channel_name,
-                author,
-                clean_viewer_message,
-                final_reply,
-                event_type=event_type,
                 reply_to_turn_id=reply_to_turn_id,
-                corrects_turn_id=related_turn_id,
-                target_viewers=[related_viewer] if related_viewer else [],
-                ttl_hours=CONFIG.chat_memory_ttl_hours,
-            )
-            self.remember_remote_turn(
-                channel_name,
-                author,
-                clean_viewer_message,
-                final_reply,
-                message_id=msg_id,
-                allow_remote=not specialized_local_thread,
-                author_is_owner=author_is_owner,
+                related_turn_id=related_turn_id,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
             )
             if chat_context["viewer_context"] != "aucun" and likely_needs_memory_context(resolved_text):
                 increment_chat_memory_counter(
@@ -1073,7 +1112,6 @@ class Bot(commands.Bot):
                 )
                 if CONFIG.debug_chat_memory:
                     print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
-            self.mark_replied(author)
 
     async def reply_about_channel_content(self, payload: twitchio.ChatMessage, author: str) -> None:
         print("📺 Question sur le contenu de la chaîne", flush=True)
