@@ -105,13 +105,13 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
                 continue
             return {
                 "enabled": True,
-                "reason": "direct_trigger",
+                "reason": "structured_rule",
                 "rule_id": str(rule.get("rule_id", "structured_rule")),
                 "query": query_value.format(location=location_match.group(1)),
             }
         return {
             "enabled": True,
-            "reason": "direct_trigger",
+            "reason": "structured_rule",
             "rule_id": str(rule.get("rule_id", "structured_rule")),
             "query": query_value,
         }

@@ -56,6 +56,7 @@ class DecisionTreeTests(unittest.TestCase):
         )
 
         self.assertTrue(decision["enabled"])
+        self.assertEqual(decision["reason"], "structured_rule")
         self.assertEqual(decision["rule_id"], "reuters_front_page")
         self.assertEqual(decision["query"], "Reuters actualité première page")
 
