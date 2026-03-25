@@ -10,6 +10,7 @@ from twitchio import eventsub
 from twitchio.ext import commands
 
 from bot_config import load_config
+from arbitrator import arbitrate_chat_message, build_normalized_event
 from bot_logic import (
     BOT_TRIGGER,
     BOT_USERNAME,
@@ -17,7 +18,6 @@ from bot_logic import (
     MAX_VIEWER_CHAT_TURNS,
     append_channel_update,
     append_chat_turn,
-    build_social_reply,
     build_channel_alias_index,
     asks_about_channel_content,
     build_chat_context,
@@ -26,13 +26,9 @@ from bot_logic import (
     closes_riddle_thread,
     find_related_global_turn,
     increment_chat_memory_counter,
-    is_final_riddle_message,
     is_partial_riddle_message,
     is_riddle_refusal_reply,
     likely_needs_memory_context,
-    looks_like_greeting,
-    looks_like_passive_closing,
-    looks_like_short_acknowledgment,
     looks_like_riddle_message,
     prune_chat_memory,
     infer_recent_focus,
@@ -497,13 +493,40 @@ class Bot(commands.Bot):
             elif riddle_thread_close:
                 print("✅ Clôture de charade détectée", flush=True)
 
+        repeated_social_count = viewer_recent_social_redundancy(
+            self.chat_memory,
+            channel_name,
+            author,
+            clean_viewer_message,
+        )
+        normalized_event = build_normalized_event(
+            event_id=msg_id or "",
+            channel=channel_name,
+            author=author,
+            timestamp="",
+            text=resolved_text,
+            metadata={"message_id": msg_id or ""},
+        )
+        decision = arbitrate_chat_message(
+            event=normalized_event,
+            clean_viewer_message=clean_viewer_message,
+            author_is_owner=author_is_owner,
+            riddle_related=riddle_related,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            asks_channel_content=asks_about_channel_content(resolved_text),
+            repeated_social_count=repeated_social_count,
+        )
+
         async with self.generation_lock:
-            if asks_about_channel_content(resolved_text):
+            print(f"🧭 Décision : {decision.decision} [{decision.rule_id}]", flush=True)
+
+            if decision.decision == "channel_summary":
                 await self.reply_about_channel_content(payload, author)
                 return
 
-            if looks_like_memory_instruction(resolved_text) and not author_is_owner:
-                refusal_reply = "Je ne prends ce type de note mémoire que d'Expevay."
+            if decision.decision == "refuse_memory_instruction":
+                refusal_reply = str(decision.meta.get("reply", "Je ne prends ce type de note mémoire que d'Expevay."))
                 outgoing_refusal_reply = self.format_chat_reply(author, refusal_reply)
                 print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
                 print(f"📤 Envoi dans le chat : {outgoing_refusal_reply}", flush=True)
@@ -538,7 +561,7 @@ class Bot(commands.Bot):
                 self.mark_replied(author)
                 return
 
-            if riddle_related and is_partial_riddle_message(resolved_text):
+            if decision.decision == "store_only":
                 append_reported_facts(
                     self.facts_memory,
                     channel_name,
@@ -579,14 +602,8 @@ class Bot(commands.Bot):
                 print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
                 return
 
-            if looks_like_greeting(resolved_text) or looks_like_passive_closing(resolved_text):
-                repeated_social_count = viewer_recent_social_redundancy(
-                    self.chat_memory,
-                    channel_name,
-                    author,
-                    clean_viewer_message,
-                )
-                social_reply = build_social_reply(clean_viewer_message, repeated=repeated_social_count >= 1)
+            if decision.decision == "social_reply":
+                social_reply = str(decision.meta.get("reply", ""))
                 append_reported_facts(
                     self.facts_memory,
                     channel_name,
@@ -630,7 +647,7 @@ class Bot(commands.Bot):
                 print("↪️ Salutation/clôture traitée localement, sans appel au modèle", flush=True)
                 return
 
-            if looks_like_short_acknowledgment(resolved_text):
+            if decision.decision == "skip_reply":
                 append_reported_facts(
                     self.facts_memory,
                     channel_name,
@@ -663,8 +680,8 @@ class Bot(commands.Bot):
                 return
 
             print("🤖 Mention détectée, appel à Ollama...", flush=True)
-            prefer_active_thread = specialized_local_thread or likely_needs_memory_context(resolved_text)
-            conversation_mode = "riddle_final" if riddle_related and is_final_riddle_message(resolved_text) else ""
+            prefer_active_thread = bool(decision.meta.get("prefer_active_thread", specialized_local_thread or likely_needs_memory_context(resolved_text)))
+            conversation_mode = str(decision.meta.get("conversation_mode", ""))
             if specialized_local_thread:
                 chat_context = self.get_specialized_local_context(
                     payload.broadcaster.name,
