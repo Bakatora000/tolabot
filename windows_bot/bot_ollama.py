@@ -51,6 +51,7 @@ from bot_logic import (
     normalize_spaces,
     now_ts,
     output_is_suspicious,
+    normalize_web_sourced_reply,
     sanitize_user_text,
     smart_truncate,
     start_stream_session,
@@ -747,6 +748,7 @@ class Bot(commands.Bot):
                 CONFIG.openai_web_search_enabled,
                 CONFIG.openai_web_search_mode,
             )
+            reply = normalize_web_sourced_reply(reply, web_context=web_context)
 
             print(f"🧠 Réponse Ollama : {reply}", flush=True)
 

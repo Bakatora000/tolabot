@@ -30,6 +30,7 @@ from bot_logic import (
     is_partial_riddle_message,
     is_riddle_refusal_reply,
     is_no_reply_signal,
+    normalize_web_sourced_reply,
     likely_needs_memory_context,
     closes_riddle_thread,
     load_chat_memory,
@@ -243,7 +244,16 @@ class BotLogicTextTests(unittest.TestCase):
 
         self.assertIn("web_context recent", messages[0]["content"].lower())
         self.assertIn("ne reponds pas no_reply", messages[0]["content"].lower())
+        self.assertIn("n'attribue jamais l'information au viewer", messages[0]["content"].lower())
         self.assertIn("<web_context>[1] Meteo Lyon - Temps nuageux.</web_context>", messages[1]["content"])
+
+    def test_normalize_web_sourced_reply_rewrites_wrong_user_attribution(self):
+        reply = normalize_web_sourced_reply(
+            "D'après ce que tu m'as dit dans le contexte, le temps devrait être froid demain.",
+            web_context="[1] Meteo Villeurbanne - Demain 8C.",
+        )
+
+        self.assertEqual(reply, "Selon les sources web, le temps devrait être froid demain.")
 
     def test_build_no_reply_fallback_returns_short_ack(self):
         self.assertIn("J'ai lu ton message", build_no_reply_fallback("@anneaunimouss pourquoi tu ne réponds pas ?"))
