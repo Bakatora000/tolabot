@@ -53,6 +53,15 @@ class WebSearchClientTests(unittest.TestCase):
 
         self.assertEqual(query, "température actuelle à Villeurbanne")
 
+    def test_build_web_search_query_uses_recent_weather_location_for_weekday_followup(self):
+        query = build_web_search_query(
+            "et pour vendredi, il fera beau?",
+            viewer_context="alice: que dit la météo pour demain soir à Lyon?\nbot: Selon les sources web, la température à Lyon ce soir devrait être d'environ 13°C.",
+            global_context="aucun",
+        )
+
+        self.assertEqual(query, "météo vendredi à Lyon")
+
     def test_build_web_search_query_normalizes_reuters_front_page_request(self):
         query = build_web_search_query(
             "dans l'actualité de la semaine, que dit l'agence de press Reuters en première page?",

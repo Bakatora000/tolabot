@@ -13,6 +13,15 @@ from bot_logic import (
 from runtime_types import DecisionResult, NormalizedEvent
 
 
+def looks_like_reaction_followup(text: str) -> bool:
+    lowered = (text or "").lower()
+    if "?" not in lowered:
+        return False
+    reaction_markers = ("déjà", "deja", "vraiment", "sérieux", "serieux")
+    weather_reaction_terms = ("froid", "chaud", "pluie", "pleut", "neige", "température", "temperature")
+    return any(marker in lowered for marker in reaction_markers) and any(term in lowered for term in weather_reaction_terms)
+
+
 def build_normalized_event(
     *,
     event_id: str,
@@ -83,6 +92,20 @@ def arbitrate_chat_message(
             needs_short_memory=True,
         )
 
+    if looks_like_reaction_followup(event.text):
+        return DecisionResult(
+            decision="model_reply",
+            rule_id="reaction_followup_local",
+            reason="reaction to previous answer should stay on recent local context",
+            needs_short_memory=True,
+            needs_long_memory=False,
+            meta={
+                "prefer_active_thread": True,
+                "conversation_mode": "",
+                "specialized_local_thread": False,
+            },
+        )
+
     conversation_mode = "riddle_final" if riddle_related and is_final_riddle_message(event.text) else ""
     prefer_active_thread = riddle_related or riddle_thread_reset or riddle_thread_close or likely_needs_memory_context(event.text)
 
@@ -98,4 +121,3 @@ def arbitrate_chat_message(
             "specialized_local_thread": riddle_related or riddle_thread_reset or riddle_thread_close,
         },
     )
-

@@ -30,6 +30,14 @@ def get_web_search_fragments(kind: str) -> tuple[str, ...]:
     return tuple(str(item) for item in values)
 
 
+def _extract_weekday(text: str) -> str:
+    lowered = str(text).lower()
+    for day in get_web_search_fragments("weekday_terms"):
+        if day in lowered:
+            return day
+    return ""
+
+
 def get_web_rules() -> tuple[dict[str, Any], ...]:
     rules = load_decision_tree().get("web_rules", [])
     return tuple(rule for rule in rules if isinstance(rule, dict))
@@ -77,10 +85,15 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
     followup_fragments = get_web_search_fragments("followup_fragments")
     context_indicators = get_web_search_fragments("context_indicators")
     weather_terms = get_web_search_fragments("weather_followup_terms")
+    weekday_terms = get_web_search_fragments("weekday_terms")
     temperature_terms = get_web_search_fragments("temperature_followup_terms")
     actions = load_decision_tree().get("web_search_actions", {})
+    weekday = _extract_weekday(message)
 
-    if any(fragment in lowered for fragment in followup_fragments) and any(indicator in context_lower for indicator in context_indicators):
+    if (
+        any(fragment in lowered for fragment in followup_fragments)
+        or (weekday and lowered.startswith("et pour"))
+    ) and any(indicator in context_lower for indicator in context_indicators):
         query = message
         location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", context_text)
         if any(fragment in lowered for fragment in weather_terms) and ("météo" in context_lower or "meteo" in context_lower):
@@ -88,6 +101,14 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
                 query = str(actions.get("weather_followup_template", "météo demain à {location}")).format(location=location_match.group(1))
             else:
                 query = str(actions.get("weather_default_query", "météo demain"))
+        elif weekday and ("météo" in context_lower or "meteo" in context_lower or "quel temps fait" in context_lower):
+            if location_match:
+                query = str(actions.get("weekday_followup_template", "météo {day} à {location}")).format(
+                    day=weekday,
+                    location=location_match.group(1),
+                )
+            else:
+                query = str(actions.get("weekday_default_query", "météo {day}")).format(day=weekday)
         elif any(fragment in lowered for fragment in temperature_terms) and (
             "météo" in context_lower or "meteo" in context_lower or "quel temps fait" in context_lower
         ):
@@ -99,6 +120,23 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
             decision="web_search",
             rule_id="context_followup",
             reason="context_followup",
+            needs_web=True,
+            query=query,
+        )
+
+    if weekday and ("météo" in lowered or "meteo" in lowered or "temps" in lowered):
+        location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", message)
+        if location_match:
+            query = str(actions.get("weekday_followup_template", "météo {day} à {location}")).format(
+                day=weekday,
+                location=location_match.group(1),
+            )
+        else:
+            query = str(actions.get("weekday_default_query", "météo {day}")).format(day=weekday)
+        return DecisionResult(
+            decision="web_search",
+            rule_id="weekday_weather_query",
+            reason="structured_rule",
             needs_web=True,
             query=query,
         )

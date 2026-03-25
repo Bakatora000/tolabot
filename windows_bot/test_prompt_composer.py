@@ -32,6 +32,7 @@ class PromptComposerTests(unittest.TestCase):
 
         self.assertIn("web_context recent", messages[0]["content"].lower())
         self.assertIn("<web_context>[1] Meteo Lyon - Temps nuageux.</web_context>", messages[1]["content"])
+        self.assertIn("n'ajoute jamais de commentaire saisonnier", messages[0]["content"].lower())
 
 
 if __name__ == "__main__":

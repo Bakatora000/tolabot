@@ -232,10 +232,9 @@ class Bot(commands.Bot):
                     message=text,
                 )
                 favor_local_context = local_context.get("global_context", "aucun") != "aucun"
-                merged_viewer_context = merge_context_text(
-                    local_context.get("viewer_context", "aucun"),
-                    remote_context.get("viewer_context", "aucun"),
-                )
+                merged_viewer_context = local_context.get("viewer_context", "aucun")
+                if merged_viewer_context == "aucun":
+                    merged_viewer_context = remote_context.get("viewer_context", "aucun")
                 merged_global_context = local_context.get("global_context", "aucun")
                 if not favor_local_context:
                     merged_global_context = merge_context_text(
@@ -720,6 +719,13 @@ class Bot(commands.Bot):
             print("🤖 Mention détectée, appel à Ollama...", flush=True)
             prefer_active_thread = bool(decision.meta.get("prefer_active_thread", specialized_local_thread or likely_needs_memory_context(resolved_text)))
             conversation_mode = str(decision.meta.get("conversation_mode", ""))
+            prefetch_web_decision = None
+            if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
+                prefetch_web_decision = build_web_search_decision(
+                    sanitize_user_text(strip_trigger(resolved_text)),
+                    f"{alias_context}\n{focus_context}\n{facts_context}",
+                    mode=CONFIG.web_search_mode,
+                )
             if specialized_local_thread:
                 chat_context, context_sources = self.get_specialized_local_context(
                     payload.broadcaster.name,
@@ -734,7 +740,9 @@ class Bot(commands.Bot):
                     )
                 context_source = "local-specialized"
             else:
-                use_remote_memory = self.should_use_remote_memory_for_message(False)
+                use_remote_memory = self.should_use_remote_memory_for_message(False) and decision.needs_long_memory
+                if prefetch_web_decision and prefetch_web_decision.needs_web:
+                    use_remote_memory = False
                 chat_context, context_source, context_sources = self.get_context_with_fallback(
                     text=resolved_text,
                     channel_name=channel_name,
@@ -780,7 +788,7 @@ class Bot(commands.Bot):
                 extra_context_sources.append(facts_source)
             web_context = "aucun"
             if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
-                web_decision = build_web_search_decision(
+                web_decision = prefetch_web_decision or build_web_search_decision(
                     sanitize_user_text(strip_trigger(resolved_text)),
                     f"{chat_context.get('viewer_context', 'aucun')}\n{chat_context.get('global_context', 'aucun')}",
                     mode=CONFIG.web_search_mode,

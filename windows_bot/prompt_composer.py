@@ -34,7 +34,9 @@ def _build_extra_prompt_rules(conversation_mode: str, web_block: str) -> tuple[s
             "- Si le web_context est incomplet, dis simplement ce que tu peux en tirer au lieu de refuser en bloc.\n"
             "- Quand tu utilises le web_context, n'attribue jamais l'information au viewer.\n"
             "- N'ecris pas 'd'apres ce que tu m'as dit' ni 'dans le contexte' pour une information venant du web_context.\n"
-            "- Prefere des formulations comme 'selon les sources web', 'selon les sources météo' ou 'd'apres les resultats trouves'.\n",
+            "- Prefere des formulations comme 'selon les sources web', 'selon les sources météo' ou 'd'apres les resultats trouves'.\n"
+            "- N'ajoute jamais de commentaire saisonnier, de jugement de valeur ou d'interpretation non presente explicitement dans les sources web.\n"
+            "- Pour la météo, donne seulement les elements factuels visibles dans les sources: temperature, pluie, vent, horaires, tendance.\n",
             "Un web_context recent est fourni pour aider sur une question externe. "
             "Sers-t'en si la question actuelle concerne l'actualite, la meteo, un classement, un programme, une sortie ou une information web recente.\n",
         )

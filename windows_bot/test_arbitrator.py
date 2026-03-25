@@ -71,6 +71,22 @@ class ArbitratorTests(unittest.TestCase):
         self.assertEqual(decision.decision, "model_reply")
         self.assertTrue(decision.needs_short_memory)
 
+    def test_arbitrator_detects_reaction_followup_as_local_context_reply(self):
+        decision = arbitrate_chat_message(
+            event=self.make_event("@AnneAuNimouss il fait deja froid des ce soir??"),
+            clean_viewer_message="il fait deja froid des ce soir??",
+            author_is_owner=False,
+            riddle_related=False,
+            riddle_thread_reset=False,
+            riddle_thread_close=False,
+            asks_channel_content=False,
+        )
+
+        self.assertEqual(decision.decision, "model_reply")
+        self.assertEqual(decision.rule_id, "reaction_followup_local")
+        self.assertFalse(decision.needs_long_memory)
+        self.assertTrue(decision.meta["prefer_active_thread"])
+
 
 if __name__ == "__main__":
     unittest.main()

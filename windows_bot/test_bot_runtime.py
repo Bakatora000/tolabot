@@ -263,6 +263,112 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     @patch("bot_ollama.store_memory_turn")
     @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context")
+    @patch("bot_ollama.build_web_search_context", return_value="[1] Météo Paris - Temps doux.")
+    @patch("bot_ollama.search_searxng", return_value=[{"title": "Météo Paris", "content": "Temps doux.", "url": "https://example.com"}])
+    @patch("bot_ollama.ask_ollama", return_value="Il fait doux aujourd'hui.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_external_web_query_skips_mem0_context_lookup(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_search_searxng,
+        mock_build_web_context,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss quelle est la météo aujourd'hui à Paris ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-web-no-mem0-1",
+        )
+
+        web_config = replace(
+            bot_ollama.CONFIG,
+            web_search_enabled=True,
+            web_search_provider="searxng",
+            web_search_mode="auto",
+            searxng_base_url="http://127.0.0.1:8888",
+            web_search_timeout_seconds=8,
+            web_search_max_results=5,
+        )
+        with patch("bot_ollama.CONFIG", web_config):
+            await bot.event_message(payload)
+
+        mock_get_memory_context.assert_not_called()
+        mock_search_searxng.assert_called_once()
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context")
+    @patch("bot_ollama.ask_ollama", return_value="Oui, ca se rafraichit deja ce soir.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_reaction_followup_skips_mem0_lookup(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-25T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "alice",
+                            "viewer_message": "que dit la météo pour demain soir à Lyon?",
+                            "bot_reply": "Selon les prévisions disponibles, la température à Lyon ce soir devrait être d'environ 13°C.",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {
+                        "alice": [
+                            {
+                                "timestamp": "2026-03-25T12:00:00+00:00",
+                                "channel": "streamer",
+                                "viewer": "alice",
+                                "viewer_message": "que dit la météo pour demain soir à Lyon?",
+                                "bot_reply": "Selon les prévisions disponibles, la température à Lyon ce soir devrait être d'environ 13°C.",
+                                "thread_boundary": "",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss il fait deja froid des ce soir??",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-reaction-followup-1",
+        )
+
+        await bot.event_message(payload)
+
+        mock_get_memory_context.assert_not_called()
+        self.assertIn("13°C", mock_ask_ollama.call_args.args[5])
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
     @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "aucun", "global_context": "aucun", "items": []})
     @patch("bot_ollama.ask_ollama", return_value="MissCouette76 joue à Valheim.")
     @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
@@ -513,6 +619,73 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("MissCouette", global_context)
         self.assertNotIn("bob: hors sujet", global_context.lower())
         self.assertNotIn("réponse hors sujet", global_context.lower())
+        broadcaster.send_message.assert_awaited_once()
+        mock_store_memory_turn.assert_called_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch(
+        "bot_ollama.get_memory_context",
+        return_value={
+            "viewer_context": "alice: vieux souvenir distant",
+            "global_context": "aucun",
+            "items": [],
+        },
+    )
+    @patch("bot_ollama.ask_ollama", return_value="Salut Alice")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_local_viewer_thread_is_not_merged_with_mem0_viewer_context(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-25T12:00:00+00:00",
+                            "channel": "streamer",
+                            "viewer": "alice",
+                            "viewer_message": "tu te souviens de notre discussion ?",
+                            "bot_reply": "On parlait de Valheim.",
+                            "thread_boundary": "",
+                        }
+                    ],
+                    "viewer_turns": {
+                        "alice": [
+                            {
+                                "timestamp": "2026-03-25T12:00:00+00:00",
+                                "channel": "streamer",
+                                "viewer": "alice",
+                                "viewer_message": "tu te souviens de notre discussion ?",
+                                "bot_reply": "On parlait de Valheim.",
+                                "thread_boundary": "",
+                            }
+                        ]
+                    },
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss tu te souviens de notre discussion ?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-local-viewer-priority-1",
+        )
+
+        await bot.event_message(payload)
+
+        self.assertNotIn("vieux souvenir distant", mock_ask_ollama.call_args.args[5])
+        self.assertIn("On parlait de Valheim.", mock_ask_ollama.call_args.args[5])
         broadcaster.send_message.assert_awaited_once()
         mock_store_memory_turn.assert_called_once()
 

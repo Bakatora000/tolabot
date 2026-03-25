@@ -71,6 +71,17 @@ class DecisionTreeTests(unittest.TestCase):
         self.assertEqual(decision.rule_id, "movies_this_week_city")
         self.assertEqual(decision.query, "films à l'affiche cette semaine Lyon")
 
+    def test_web_search_decision_routes_named_weekday_weather_query(self):
+        decision = build_web_search_decision(
+            "quelle est la météo vendredi à Lyon ?",
+            "aucun",
+            mode="auto",
+        )
+
+        self.assertTrue(decision.needs_web)
+        self.assertEqual(decision.rule_id, "weekday_weather_query")
+        self.assertEqual(decision.query, "météo vendredi à Lyon")
+
     def test_web_search_decision_avoids_false_positive_on_chat_subject(self):
         decision = build_web_search_decision(
             "que peux tu me dire sur Dame_Gaby ?",

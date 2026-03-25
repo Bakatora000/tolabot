@@ -60,6 +60,8 @@
   "web_search_actions": {
     "weather_followup_template": "météo demain à {location}",
     "weather_default_query": "météo demain",
+    "weekday_followup_template": "météo {day} à {location}",
+    "weekday_default_query": "météo {day}",
     "temperature_followup_template": "température actuelle à {location}",
     "temperature_default_query": "température actuelle",
     "reuters_front_page_query": "Reuters actualité première page",
@@ -186,6 +188,15 @@
       "et pour demain",
       "et demain",
       "pour demain"
+    ],
+    "weekday_terms": [
+      "lundi",
+      "mardi",
+      "mercredi",
+      "jeudi",
+      "vendredi",
+      "samedi",
+      "dimanche"
     ],
     "temperature_followup_terms": [
       "température",
