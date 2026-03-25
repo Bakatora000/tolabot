@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 import bot_ollama
 from bot_ollama import Bot, QueuedMessage
+from runtime_types import DecisionResult
 
 
 class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
@@ -259,6 +260,137 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         mock_search_searxng.assert_called_once()
         self.assertEqual(mock_ask_ollama.call_args.args[7], "[1] Météo Paris - Temps doux.")
         broadcaster.send_message.assert_awaited_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=False)
+    @patch("bot_ollama.build_web_search_context", return_value="[1] Météo Lyon - Vendredi éclaircies.")
+    @patch("bot_ollama.search_searxng", return_value=[{"title": "Météo Lyon", "content": "Vendredi éclaircies.", "url": "https://example.com"}])
+    @patch("bot_ollama.ask_ollama", return_value="Selon les sources web, vendredi à Lyon il devrait y avoir des éclaircies.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_runtime_recomputes_web_decision_when_prefetch_does_not_match(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_search_searxng,
+        mock_build_web_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "viewer_turns": {
+                        "alice": [
+                            {"role": "viewer", "text": "quel temps fera t il demain sur Lyon ?", "ts": "2026-03-25T10:00:00Z"},
+                            {"role": "bot", "text": "Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.", "ts": "2026-03-25T10:00:01Z"},
+                        ]
+                    },
+                    "global_turns": [],
+                    "counters": {},
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss et vendredi?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-web-followup-1",
+        )
+
+        decision_side_effects = [
+            DecisionResult(decision="skip", rule_id="no_match", reason="no_match", needs_web=False),
+            DecisionResult(decision="web_search", rule_id="context_followup", reason="context_followup", needs_web=True, query="météo vendredi à Lyon"),
+        ]
+
+        web_config = replace(
+            bot_ollama.CONFIG,
+            web_search_enabled=True,
+            web_search_provider="searxng",
+            web_search_mode="auto",
+            searxng_base_url="http://127.0.0.1:8888",
+            web_search_timeout_seconds=8,
+            web_search_max_results=5,
+        )
+        with patch("bot_ollama.CONFIG", web_config), patch("bot_ollama.build_web_search_decision", side_effect=decision_side_effects) as mock_decision:
+            await bot.event_message(payload)
+
+        self.assertEqual(mock_decision.call_count, 2)
+        mock_search_searxng.assert_called_once_with(
+            query="météo vendredi à Lyon",
+            base_url="http://127.0.0.1:8888",
+            timeout_seconds=8,
+            max_results=5,
+        )
+        broadcaster.send_message.assert_awaited_once()
+
+    @patch("bot_ollama.store_memory_turn")
+    @patch("bot_ollama.is_mem0_enabled", return_value=True)
+    @patch("bot_ollama.get_memory_context", return_value={"viewer_context": "alice: vieux souvenir mem0", "global_context": "aucun", "items": []})
+    @patch("bot_ollama.build_web_search_context", return_value="[1] Météo Lyon - Vendredi éclaircies.")
+    @patch("bot_ollama.search_searxng", return_value=[{"title": "Météo Lyon", "content": "Vendredi éclaircies.", "url": "https://example.com"}])
+    @patch("bot_ollama.ask_ollama", return_value="Selon les sources web, vendredi à Lyon il devrait y avoir des éclaircies.")
+    @patch("bot_ollama.looks_like_prompt_injection", return_value=False)
+    @patch("bot_ollama.asks_about_channel_content", return_value=False)
+    async def test_runtime_drops_mem0_from_model_context_when_web_search_is_used(
+        self,
+        mock_channel_content,
+        mock_injection,
+        mock_ask_ollama,
+        mock_search_searxng,
+        mock_build_web_context,
+        mock_get_memory_context,
+        mock_mem0_enabled,
+        mock_store_memory_turn,
+    ):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "viewer_turns": {
+                        "alice": [
+                            {"role": "viewer", "text": "quel temps fera t il demain sur Lyon ?", "ts": "2026-03-25T10:00:00Z"},
+                            {"role": "bot", "text": "Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.", "ts": "2026-03-25T10:00:01Z"},
+                        ]
+                    },
+                    "global_turns": [],
+                    "counters": {},
+                }
+            }
+        }
+        broadcaster = SimpleNamespace(name="streamer", send_message=AsyncMock())
+        chatter = SimpleNamespace(name="alice")
+        payload = SimpleNamespace(
+            text="@AnneAuNimouss et vendredi?",
+            chatter=chatter,
+            broadcaster=broadcaster,
+            id="msg-web-followup-2",
+        )
+
+        decision_side_effects = [
+            DecisionResult(decision="skip", rule_id="no_match", reason="no_match", needs_web=False),
+            DecisionResult(decision="web_search", rule_id="context_followup", reason="context_followup", needs_web=True, query="météo vendredi à Lyon"),
+        ]
+
+        web_config = replace(
+            bot_ollama.CONFIG,
+            web_search_enabled=True,
+            web_search_provider="searxng",
+            web_search_mode="auto",
+            searxng_base_url="http://127.0.0.1:8888",
+            web_search_timeout_seconds=8,
+            web_search_max_results=5,
+        )
+        with patch("bot_ollama.CONFIG", web_config), patch("bot_ollama.build_web_search_decision", side_effect=decision_side_effects):
+            await bot.event_message(payload)
+
+        self.assertEqual(mock_ask_ollama.call_args.args[5], "alice: quel temps fera t il demain sur Lyon ?\nbot: Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.")
+        self.assertNotIn("vieux souvenir mem0", mock_ask_ollama.call_args.args[5])
+        mock_search_searxng.assert_called_once()
         mock_store_memory_turn.assert_not_called()
 
     @patch("bot_ollama.store_memory_turn")

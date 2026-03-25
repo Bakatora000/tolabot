@@ -82,6 +82,17 @@ class DecisionTreeTests(unittest.TestCase):
         self.assertEqual(decision.rule_id, "weekday_weather_query")
         self.assertEqual(decision.query, "météo vendredi à Lyon")
 
+    def test_web_search_decision_routes_bare_weekday_followup_with_leading_spaces(self):
+        decision = build_web_search_decision(
+            "  et samedi?",
+            "alice: quelle est la météo vendredi à Lyon ?\nbot: Selon les sources web, il devrait y avoir des éclaircies à Lyon le vendredi 27 mars.",
+            mode="auto",
+        )
+
+        self.assertTrue(decision.needs_web)
+        self.assertEqual(decision.rule_id, "context_followup")
+        self.assertEqual(decision.query, "météo samedi à Lyon")
+
     def test_web_search_decision_avoids_false_positive_on_chat_subject(self):
         decision = build_web_search_decision(
             "que peux tu me dire sur Dame_Gaby ?",

@@ -788,12 +788,30 @@ class Bot(commands.Bot):
                 extra_context_sources.append(facts_source)
             web_context = "aucun"
             if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
-                web_decision = prefetch_web_decision or build_web_search_decision(
-                    sanitize_user_text(strip_trigger(resolved_text)),
-                    f"{chat_context.get('viewer_context', 'aucun')}\n{chat_context.get('global_context', 'aucun')}",
-                    mode=CONFIG.web_search_mode,
-                )
+                web_decision = prefetch_web_decision
+                if not web_decision or not web_decision.needs_web:
+                    web_decision = build_web_search_decision(
+                        sanitize_user_text(strip_trigger(resolved_text)),
+                        f"{chat_context.get('viewer_context', 'aucun')}\n{chat_context.get('global_context', 'aucun')}",
+                        mode=CONFIG.web_search_mode,
+                    )
                 if web_decision.needs_web:
+                    if not specialized_local_thread and any(source.source_id == "mem0" for source in context_sources):
+                        chat_context, context_source, context_sources = self.get_context_with_fallback(
+                            text=resolved_text,
+                            channel_name=channel_name,
+                            author=author,
+                            prefer_active_thread=prefer_active_thread,
+                            riddle_thread_reset=riddle_thread_reset,
+                            riddle_thread_close=riddle_thread_close,
+                            use_remote_memory=False,
+                        )
+                        chat_context["global_context"] = merge_context_text(
+                            alias_context,
+                            focus_context,
+                            facts_context,
+                            chat_context.get("global_context", "aucun"),
+                        )
                     print(
                         f"🌐 Règle web matchée : {web_decision.rule_id} ({web_decision.reason})",
                         flush=True,

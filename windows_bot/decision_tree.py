@@ -31,7 +31,7 @@ def get_web_search_fragments(kind: str) -> tuple[str, ...]:
 
 
 def _extract_weekday(text: str) -> str:
-    lowered = str(text).lower()
+    lowered = str(text).strip().lower()
     for day in get_web_search_fragments("weekday_terms"):
         if day in lowered:
             return day
@@ -79,22 +79,28 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
             needs_web=False,
         )
 
-    lowered = str(message).lower()
+    normalized_message = str(message).strip()
+    lowered = normalized_message.lower()
     context_lower = str(context_text).lower()
     trigger_fragments = get_web_search_fragments("trigger_fragments")
     followup_fragments = get_web_search_fragments("followup_fragments")
     context_indicators = get_web_search_fragments("context_indicators")
+    weather_result_indicators = get_web_search_fragments("weather_result_indicators")
     weather_terms = get_web_search_fragments("weather_followup_terms")
     weekday_terms = get_web_search_fragments("weekday_terms")
     temperature_terms = get_web_search_fragments("temperature_followup_terms")
     actions = load_decision_tree().get("web_search_actions", {})
     weekday = _extract_weekday(message)
 
+    has_weatherish_context = any(indicator in context_lower for indicator in context_indicators) or any(
+        indicator in context_lower for indicator in weather_result_indicators
+    )
+
     if (
         any(fragment in lowered for fragment in followup_fragments)
-        or (weekday and lowered.startswith("et pour"))
-    ) and any(indicator in context_lower for indicator in context_indicators):
-        query = message
+        or (weekday and (lowered.startswith("et pour") or lowered.startswith("et ")))
+    ) and has_weatherish_context:
+        query = normalized_message
         location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", context_text)
         if any(fragment in lowered for fragment in weather_terms) and ("météo" in context_lower or "meteo" in context_lower):
             if location_match:

@@ -62,6 +62,15 @@ class WebSearchClientTests(unittest.TestCase):
 
         self.assertEqual(query, "météo vendredi à Lyon")
 
+    def test_build_web_search_query_uses_recent_weather_location_for_bare_weekday_followup(self):
+        query = build_web_search_query(
+            "  et samedi?",
+            viewer_context="alice: quelle est la météo vendredi à Lyon ?\nbot: Selon les sources web, il devrait y avoir des éclaircies à Lyon le vendredi 27 mars.",
+            global_context="aucun",
+        )
+
+        self.assertEqual(query, "météo samedi à Lyon")
+
     def test_build_web_search_query_normalizes_reuters_front_page_request(self):
         query = build_web_search_query(
             "dans l'actualité de la semaine, que dit l'agence de press Reuters en première page?",

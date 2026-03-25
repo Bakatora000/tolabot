@@ -184,6 +184,17 @@
       "selon les données",
       "selon les donnees"
     ],
+    "weather_result_indicators": [
+      "selon les sources web",
+      "selon les prévisions",
+      "selon les previsions",
+      "éclaircies",
+      "eclaircies",
+      "pluie",
+      "nuageux",
+      "vent",
+      "rafales"
+    ],
     "weather_followup_terms": [
       "et pour demain",
       "et demain",
