@@ -77,8 +77,12 @@ from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, s
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from runtime_pipeline import (
     build_incoming_message_data,
+    generate_model_reply,
     log_incoming_message,
+    log_runtime_context,
+    send_channel_summary_reply,
     should_ignore_incoming_message,
+    should_mark_memory_helpful,
 )
 from runtime_types import MessagePreparation, RuntimeContextBundle
 from twitch_auth import run_oauth_flow
@@ -415,16 +419,6 @@ class Bot(commands.Bot):
             token_for=self.bot_id,
         )
 
-    async def send_channel_summary_reply(self, payload: twitchio.ChatMessage, author: str, summary: str) -> None:
-        outgoing_summary = self.format_chat_reply(author, summary)
-        print(f"📤 Envoi résumé chaîne : {outgoing_summary}", flush=True)
-        await payload.broadcaster.send_message(
-            outgoing_summary,
-            sender=self.bot_id,
-            token_for=self.bot_id,
-        )
-        self.mark_replied(author)
-
     def persist_local_turn(
         self,
         *,
@@ -711,14 +705,6 @@ class Bot(commands.Bot):
         )
         self.mark_replied(author)
 
-    def should_mark_memory_helpful(
-        self,
-        *,
-        context_bundle: RuntimeContextBundle,
-        resolved_text: str,
-    ) -> bool:
-        return context_bundle.viewer_context != "aucun" and likely_needs_memory_context(resolved_text)
-
     async def finalize_model_reply(
         self,
         *,
@@ -809,9 +795,10 @@ class Bot(commands.Bot):
             riddle_thread_reset=riddle_thread_reset,
             riddle_thread_close=riddle_thread_close,
         )
-        if self.should_mark_memory_helpful(
+        if should_mark_memory_helpful(
             context_bundle=context_bundle,
             resolved_text=resolved_text,
+            memory_context_checker=likely_needs_memory_context,
         ):
             increment_chat_memory_counter(
                 self.chat_memory,
@@ -868,15 +855,19 @@ class Bot(commands.Bot):
             facts_context=facts_context,
             conversation_mode=conversation_mode,
         )
-        self.log_runtime_context(
+        log_runtime_context(
+            config=CONFIG,
             context_bundle=context_bundle,
             prefer_active_thread=prefer_active_thread,
             riddle_thread_reset=riddle_thread_reset,
         )
-        reply = await self.generate_model_reply(
+        reply = await generate_model_reply(
             payload=payload,
             resolved_text=resolved_text,
             context_bundle=context_bundle,
+            config=CONFIG,
+            model=OLLAMA_MODEL,
+            ask_fn=ask_ollama,
         )
         reply = normalize_web_sourced_reply(reply, web_context=context_bundle.web_context)
 
@@ -1137,61 +1128,6 @@ class Bot(commands.Bot):
             context_source=context_source,
             sources=context_sources,
             conversation_mode=conversation_mode,
-        )
-
-    def log_runtime_context(
-        self,
-        *,
-        context_bundle: RuntimeContextBundle,
-        prefer_active_thread: bool,
-        riddle_thread_reset: bool,
-    ) -> None:
-        if not CONFIG.debug_chat_memory:
-            return
-        if (
-            context_bundle.viewer_context == "aucun"
-            and context_bundle.global_context == "aucun"
-            and context_bundle.web_context == "aucun"
-        ):
-            return
-        print("🧠 Contexte mémoire injecté", flush=True)
-        if context_bundle.context_source == "local" and prefer_active_thread and not riddle_thread_reset:
-            print("   Mode   : fil actif", flush=True)
-        print(f"   Source : {context_bundle.context_source}", flush=True)
-        if context_bundle.sources:
-            print(
-                f"   Trace  : {', '.join(source.source_id for source in context_bundle.sources)}",
-                flush=True,
-            )
-        if context_bundle.viewer_context != "aucun":
-            print(f"   Viewer : {context_bundle.viewer_context}", flush=True)
-        if context_bundle.global_context != "aucun":
-            print(f"   Global : {context_bundle.global_context}", flush=True)
-        if context_bundle.web_context != "aucun":
-            print(f"   Web    : {context_bundle.web_context}", flush=True)
-
-    async def generate_model_reply(
-        self,
-        *,
-        payload: twitchio.ChatMessage,
-        resolved_text: str,
-        context_bundle: RuntimeContextBundle,
-    ) -> str:
-        return await asyncio.to_thread(
-            ask_ollama,
-            payload.chatter.name,
-            resolved_text,
-            CONFIG.ollama_url,
-            OLLAMA_MODEL,
-            CONFIG.request_timeout_seconds,
-            context_bundle.viewer_context,
-            context_bundle.global_context,
-            context_bundle.web_context,
-            context_bundle.conversation_mode,
-            CONFIG.llm_provider,
-            CONFIG.openai_api_key,
-            CONFIG.openai_web_search_enabled,
-            CONFIG.openai_web_search_mode,
         )
 
     def prepare_message(
@@ -1473,7 +1409,7 @@ class Bot(commands.Bot):
             print("↪️ Résumé suspect bloqué", flush=True)
             return
 
-        await self.send_channel_summary_reply(payload, author, summary)
+        await send_channel_summary_reply(self, payload, author, summary)
 
     async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
