@@ -94,33 +94,38 @@ def analyze_review_export(
 
     severity_rules = {
         "conservative": (
-            "Severity mode: conservative. Be reluctant to delete. "
-            "When uncertain, prefer keep or review. "
-            "Only delete clearly ephemeral, trivial, hostile, duplicated, or non-durable memories."
+            "Mode de severite : conservateur. Supprime avec retenue. "
+            "En cas de doute, prefere keep ou review. "
+            "Supprime seulement les souvenirs clairement ephemeres, triviaux, hostiles, dupliques ou non durables."
         ),
         "balanced": (
-            "Severity mode: balanced. Prefer review when uncertain. "
-            "Delete obvious noise, but keep or rewrite plausible durable facts."
+            "Mode de severite : equilibre. En cas de doute, prefere review. "
+            "Supprime le bruit evident, mais conserve ou reecris les faits plausiblement durables."
         ),
         "aggressive": (
-            "Severity mode: aggressive. Prefer delete for weak, contextual, conversational, or low-signal memories. "
-            "Keep only clearly durable, reusable facts."
+            "Mode de severite : agressif. Prefere delete pour les souvenirs faibles, contextuels, conversationnels ou peu informatifs. "
+            "Conserve seulement les faits clairement durables et reutilisables."
         ),
     }
 
     system_prompt = (
-        "You review long-term memory records for a livestream chat bot. "
-        "Your job is to propose safe cleanup actions for one viewer at a time. "
-        "Rules: keep durable useful facts, delete greetings/emotions/jokes/ephemeral questions, "
-        "rewrite only when a shorter neutral factual wording preserves the original meaning, "
-        "never invent facts, choose review when uncertain. "
-        "Do not use merge in this task. "
+        "Tu analyses des souvenirs de long terme pour un bot de chat de livestream. "
+        "Ton travail est de proposer des actions de nettoyage sures pour un viewer a la fois. "
+        "Regles : conserve les faits durables et utiles, supprime les salutations, emotions, blagues, questions ephemeres et bruit conversationnel, "
+        "reecris seulement quand une formulation plus courte, neutre et factuelle preserve bien le sens d'origine, "
+        "n'invente jamais de faits, choisis review en cas d'incertitude. "
+        "N'utilise pas merge dans cette tache. "
+        "Ecris obligatoirement en francais pour summary, reason et proposed_text. "
+        "Les valeurs action doivent rester exactement : keep, delete, rewrite ou review. "
         f"{severity_rules.get(severity, severity_rules['balanced'])} "
-        "Keep the summary short and operational."
+        "Le champ summary doit rester court et operationnel."
     )
 
     user_prompt = {
-        "task": "Review this viewer memory export and propose cleanup actions.",
+        "task": (
+            "Analyse cet export memoire pour un viewer et propose des actions de nettoyage. "
+            "Retourne les champs textuels en francais."
+        ),
         "viewer_export": review_export,
     }
 
