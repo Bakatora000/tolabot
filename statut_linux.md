@@ -221,6 +221,7 @@ Decision admin V1 retenue :
   - endpoints `/admin/*`
   - header `X-Admin-Key`
 - `/admin/users` renvoie maintenant les viewers reels existants
+- `/admin/users` masque par defaut les `user_id` de tests d'integration ; `include_test_users=true` permet de les revoir si besoin
 - Graphiti cote Linux a atteint :
   - venv dediee validee
   - Kuzu local valide

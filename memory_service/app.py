@@ -160,6 +160,15 @@ def parse_user_parts(user_id: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+def is_test_user_id(user_id: str) -> bool:
+    channel, viewer = parse_user_parts(user_id)
+    channel_value = (channel or "").lower()
+    viewer_value = (viewer or "").lower()
+    if channel_value == "integration":
+        return True
+    return viewer_value.startswith("windows_linux_e2e_")
+
+
 def admin_local_only_dependency(request: Request) -> None:
     if request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP"):
         raise HTTPException(
@@ -225,12 +234,15 @@ async def admin_healthcheck():
 async def admin_list_users(
     channel: str | None = None,
     viewer: str | None = None,
+    include_test_users: bool = False,
     backend=Depends(backend_dependency),
 ):
     requested_channel = (channel or "").strip().lower()
     requested_viewer = (viewer or "").strip().lower()
     users: list[UserSummary] = []
     for user_id in backend.list_user_ids():
+        if not include_test_users and is_test_user_id(user_id):
+            continue
         parsed_channel, parsed_viewer = parse_user_parts(user_id)
         if requested_channel and (parsed_channel or "").lower() != requested_channel:
             continue

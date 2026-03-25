@@ -59,6 +59,7 @@ Headers :
 Query params optionnels :
 - `channel`
 - `viewer`
+- `include_test_users`
 
 Reponse `200` :
 
@@ -79,6 +80,7 @@ Notes :
 - tri par `user_id`
 - `channel` et `viewer` sont derives du `user_id`
 - si le format ne matche pas la convention Twitch, `channel` et `viewer` peuvent etre `null`
+- `include_test_users=false` par defaut masque les `user_id` de tests d'integration (`twitch:integration:...`, `windows_linux_e2e_*`)
 
 ### `GET /admin/users/{user_id}/recent`
 
