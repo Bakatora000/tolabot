@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decision_tree import get_social_triggers
+
 
 PROMPT_INJECTION_PATTERNS = (
     "ignore previous instructions",
@@ -150,54 +152,11 @@ CORRECTION_TRIGGERS = (
     "elle voulait dire",
 )
 
-SHORT_ACKNOWLEDGMENT_TRIGGERS = (
-    "ok",
-    "okay",
-    "ok merci",
-    "merci",
-    "merci bien",
-    "merci beaucoup",
-    "super",
-    "tres bien",
-    "très bien",
-    "parfait",
-    "nickel",
-    "cool",
-    "ca marche",
-    "ça marche",
-    "top",
-    "d accord",
-    "dac",
-)
+SHORT_ACKNOWLEDGMENT_TRIGGERS = get_social_triggers("short_acknowledgment_triggers")
 
-PASSIVE_CLOSING_TRIGGERS = (
-    "au revoir",
-    "aurevoir",
-    "bye",
-    "bye bye",
-    "bonne aprem",
-    "bon aprem",
-    "bonne apres midi",
-    "bon apres midi",
-    "bonne après midi",
-    "bon après midi",
-    "bonne soiree",
-    "bonne soirée",
-    "bonne nuit",
-    "a plus",
-    "à plus",
-    "a bientot",
-    "à bientôt",
-    "ciao",
-)
+PASSIVE_CLOSING_TRIGGERS = get_social_triggers("closing_triggers")
 
-GREETING_TRIGGERS = (
-    "bonjour",
-    "salut",
-    "hello",
-    "coucou",
-    "bonsoir",
-)
+GREETING_TRIGGERS = get_social_triggers("greeting_triggers")
 
 NEW_RIDDLE_THREAD_TRIGGERS = (
     "une autre charade",

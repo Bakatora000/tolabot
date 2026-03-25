@@ -24,6 +24,7 @@ from conversation_rules import (
     SUSPICIOUS_OUTPUT_PATTERNS,
     contains_any_pattern,
 )
+from decision_tree import classify_social_intent, get_social_reply_template
 
 BOT_USERNAME = "anneaunimouss"
 BOT_TRIGGER = "@anneaunimouss"
@@ -114,6 +115,25 @@ def is_no_reply_signal(text: str) -> bool:
     return normalized in NO_REPLY_SIGNALS
 
 
+def normalize_web_sourced_reply(text: str, web_context: str = "") -> str:
+    cleaned = (text or "").strip()
+    if not cleaned or not web_context or web_context == "aucun":
+        return cleaned
+
+    replacements = (
+        (r"^d['’]apres ce que tu m['’]as dit[, ]*", "Selon les sources web, "),
+        (r"^d['’]après ce que tu m['’]as dit[, ]*", "Selon les sources web, "),
+        (r"^d['’]apres le contexte[, ]*", "Selon les sources web, "),
+        (r"^d['’]après le contexte[, ]*", "Selon les sources web, "),
+        (r"^dans le contexte[, ]*", "Selon les sources web, "),
+    )
+    normalized = cleaned
+    for pattern, replacement in replacements:
+        normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^Selon les sources web,\s*dans le contexte[, ]*", "Selon les sources web, ", normalized, flags=re.IGNORECASE)
+    return normalized
+
+
 def asks_about_channel_content(text: str) -> bool:
     lowered = strip_trigger(text).lower()
     return contains_any_pattern(lowered, CHANNEL_CONTENT_TRIGGERS)
@@ -158,7 +178,7 @@ def looks_like_short_acknowledgment(text: str) -> bool:
     lowered = normalize_spaces(lowered)
     if not lowered:
         return False
-    return lowered in SHORT_ACKNOWLEDGMENT_TRIGGERS
+    return classify_social_intent(lowered) == "short_ack"
 
 
 def looks_like_passive_closing(text: str) -> bool:
@@ -167,7 +187,7 @@ def looks_like_passive_closing(text: str) -> bool:
     lowered = normalize_spaces(lowered)
     if not lowered:
         return False
-    return lowered in PASSIVE_CLOSING_TRIGGERS
+    return classify_social_intent(lowered) == "closing"
 
 
 def looks_like_greeting(text: str) -> bool:
@@ -176,14 +196,18 @@ def looks_like_greeting(text: str) -> bool:
     lowered = normalize_spaces(lowered)
     if not lowered:
         return False
-    return lowered in GREETING_TRIGGERS
+    return classify_social_intent(lowered) == "greeting"
 
 
 def build_social_reply(text: str, repeated: bool = False) -> str:
-    if looks_like_greeting(text):
-        return "Bonjour, mais tu m'as deja salue je crois." if repeated else "Bonjour !"
-    if looks_like_passive_closing(text):
-        return "" if repeated else "Au revoir !"
+    lowered = sanitize_user_text(strip_trigger(text)).lower()
+    lowered = re.sub(r"[^a-z0-9àâäçéèêëîïôöùûüÿœæ]+", " ", lowered)
+    lowered = normalize_spaces(lowered)
+    intent = classify_social_intent(lowered)
+    if intent == "greeting":
+        return get_social_reply_template("greeting", repeated=repeated)
+    if intent == "closing":
+        return get_social_reply_template("closing", repeated=repeated)
     return ""
 
 
@@ -1033,6 +1057,9 @@ def build_messages(
             "- Si le web_context contient des indices exploitables, ne reponds pas NO_REPLY.\n"
             "- Fais une synthese courte et prudente a partir du web_context, sans inventer au-dela.\n"
             "- Si le web_context est incomplet, dis simplement ce que tu peux en tirer au lieu de refuser en bloc.\n"
+            "- Quand tu utilises le web_context, n'attribue jamais l'information au viewer.\n"
+            "- N'ecris pas 'd'apres ce que tu m'as dit' ni 'dans le contexte' pour une information venant du web_context.\n"
+            "- Prefere des formulations comme 'selon les sources web', 'selon les sources météo' ou 'd'apres les resultats trouves'.\n"
         )
         extra_user_context = (
             "Un web_context recent est fourni pour aider sur une question externe. "

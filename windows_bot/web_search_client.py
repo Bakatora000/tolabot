@@ -2,6 +2,7 @@ import requests
 import re
 
 from bot_logic import normalize_spaces, sanitize_user_text, strip_trigger
+from decision_tree import build_web_search_decision
 
 
 class WebSearchError(RuntimeError):
@@ -14,107 +15,10 @@ def should_enable_web_search(
     global_context: str = "",
     mode: str = "auto",
 ) -> bool:
-    normalized_mode = normalize_spaces((mode or "auto").lower())
-    if normalized_mode == "always":
-        return True
-    if normalized_mode in {"off", "false", "0", "disabled"}:
-        return False
-
     lowered = sanitize_user_text(strip_trigger(message)).lower()
     context_text = f"{viewer_context}\n{global_context}".lower()
-    trigger_fragments = (
-        "aujourd'hui",
-        "today",
-        "demain",
-        "semaine",
-        "en ce moment",
-        "actu",
-        "actualité",
-        "actualite",
-        "news",
-        "dernières nouvelles",
-        "dernieres nouvelles",
-        "dernières infos",
-        "dernieres infos",
-        "recherche sur le web",
-        "cherche sur le web",
-        "cherche sur internet",
-        "sur internet",
-        "sur le web",
-        "internet",
-        "web",
-        "météo",
-        "meteo",
-        "prix du",
-        "cours du",
-        "score du match",
-        "résultat du match",
-        "resultat du match",
-        "président",
-        "president",
-        "premier ministre",
-        "date de sortie",
-        "sorti quand",
-        "sortie de",
-        "meilleur film",
-        "meilleure série",
-        "meilleure serie",
-        "meilleur serie",
-        "films à l'affiche",
-        "films a l'affiche",
-        "films a l affiche",
-        "reuters",
-        "première page",
-        "premiere page",
-    )
-    if any(fragment in lowered for fragment in trigger_fragments):
-        return True
-
-    followup_fragments = (
-        "et pour demain",
-        "et demain",
-        "et pour cette semaine",
-        "et pour la semaine",
-        "et la température",
-        "et la temperature",
-        "et quelle température",
-        "et quelle temperature",
-        "et le thermomètre",
-        "et le thermometre",
-        "et à lyon",
-        "et a lyon",
-        "et à paris",
-        "et a paris",
-        "et du coup",
-    )
-    context_indicators = (
-        "météo",
-        "meteo",
-        "quel temps fait",
-        "temps actuel",
-        "température",
-        "temperature",
-        "il pleut",
-        "il fait",
-        "actualité",
-        "actualite",
-        "reuters",
-        "film",
-        "films",
-        "à l'affiche",
-        "a l'affiche",
-        "a l affiche",
-        "selon les données",
-        "selon les donnees",
-    )
-    if any(fragment in lowered for fragment in followup_fragments) and any(indicator in context_text for indicator in context_indicators):
-        return True
-
-    if "qui est" in lowered or "qu'est ce que" in lowered or "qu est ce que" in lowered:
-        if context_text.strip() in {"", "aucun"}:
-            return True
-
-    return False
+    decision = build_web_search_decision(lowered, context_text, mode=mode)
+    return bool(decision["enabled"])
 
 
 def search_searxng(
@@ -161,23 +65,14 @@ def build_web_search_query(
     global_context: str = "",
 ) -> str:
     cleaned = sanitize_user_text(strip_trigger(message))
-    lowered = cleaned.lower()
     context_text = sanitize_user_text(f"{viewer_context}\n{global_context}")
+    lowered = cleaned.lower()
     context_lower = context_text.lower()
-
-    if any(fragment in lowered for fragment in ("et pour demain", "et demain", "pour demain")):
-        location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", context_text)
-        if "météo" in context_lower or "meteo" in context_lower:
-            if location_match:
-                return f"météo demain à {location_match.group(1)}"
-            return "météo demain"
-
-    if any(fragment in lowered for fragment in ("température", "temperature", "thermomètre", "thermometre")):
-        location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", context_text)
-        if "météo" in context_lower or "meteo" in context_lower or "quel temps fait" in context_lower:
-            if location_match:
-                return f"température actuelle à {location_match.group(1)}"
-            return "température actuelle"
+    decision = build_web_search_decision(cleaned, context_text, mode="auto")
+    if decision["enabled"] and decision["query"]:
+        query = str(decision["query"])
+        if query != cleaned:
+            return query
 
     if "reuters" in lowered and ("première page" in lowered or "premiere page" in lowered or "actualité" in lowered or "actualite" in lowered):
         return "Reuters actualité première page"
