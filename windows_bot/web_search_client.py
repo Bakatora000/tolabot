@@ -75,6 +75,12 @@ def should_enable_web_search(
         "et demain",
         "et pour cette semaine",
         "et pour la semaine",
+        "et la température",
+        "et la temperature",
+        "et quelle température",
+        "et quelle temperature",
+        "et le thermomètre",
+        "et le thermometre",
         "et à lyon",
         "et a lyon",
         "et à paris",
@@ -84,6 +90,12 @@ def should_enable_web_search(
     context_indicators = (
         "météo",
         "meteo",
+        "quel temps fait",
+        "temps actuel",
+        "température",
+        "temperature",
+        "il pleut",
+        "il fait",
         "actualité",
         "actualite",
         "reuters",
@@ -159,6 +171,13 @@ def build_web_search_query(
             if location_match:
                 return f"météo demain à {location_match.group(1)}"
             return "météo demain"
+
+    if any(fragment in lowered for fragment in ("température", "temperature", "thermomètre", "thermometre")):
+        location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", context_text)
+        if "météo" in context_lower or "meteo" in context_lower or "quel temps fait" in context_lower:
+            if location_match:
+                return f"température actuelle à {location_match.group(1)}"
+            return "température actuelle"
 
     if "reuters" in lowered and ("première page" in lowered or "premiere page" in lowered or "actualité" in lowered or "actualite" in lowered):
         return "Reuters actualité première page"

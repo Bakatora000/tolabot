@@ -26,6 +26,15 @@ class WebSearchClientTests(unittest.TestCase):
             )
         )
 
+    def test_should_enable_web_search_on_temperature_followup_when_recent_context_is_weather(self):
+        self.assertTrue(
+            should_enable_web_search(
+                "et la température ?",
+                viewer_context="alice: quel temps fait il actuellement à Villeurbanne ?\nbot: Il pleut actuellement à Villeurbanne !",
+                global_context="aucun",
+            )
+        )
+
     def test_build_web_search_query_uses_recent_weather_location_for_followup(self):
         query = build_web_search_query(
             "et pour demain ?",
@@ -34,6 +43,15 @@ class WebSearchClientTests(unittest.TestCase):
         )
 
         self.assertEqual(query, "météo demain à Lyon")
+
+    def test_build_web_search_query_uses_recent_weather_location_for_temperature_followup(self):
+        query = build_web_search_query(
+            "et la température ?",
+            viewer_context="alice: quel temps fait il actuellement à Villeurbanne ?\nbot: Il pleut actuellement à Villeurbanne !",
+            global_context="aucun",
+        )
+
+        self.assertEqual(query, "température actuelle à Villeurbanne")
 
     def test_build_web_search_query_normalizes_reuters_front_page_request(self):
         query = build_web_search_query(
