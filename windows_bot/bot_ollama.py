@@ -698,6 +698,116 @@ class Bot(commands.Bot):
         )
         self.mark_replied(author)
 
+    def should_mark_memory_helpful(
+        self,
+        *,
+        context_bundle: RuntimeContextBundle,
+        resolved_text: str,
+    ) -> bool:
+        return context_bundle.viewer_context != "aucun" and likely_needs_memory_context(resolved_text)
+
+    async def finalize_model_reply(
+        self,
+        *,
+        payload: twitchio.ChatMessage,
+        author: str,
+        channel_name: str,
+        clean_viewer_message: str,
+        resolved_text: str,
+        reply: str,
+        msg_id: str | None,
+        allow_remote: bool,
+        author_is_owner: bool,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_related: bool,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+        context_bundle: RuntimeContextBundle,
+    ) -> bool:
+        if not reply or is_no_reply_signal(reply):
+            fallback_reply = build_no_reply_fallback(resolved_text, riddle_related=riddle_related)
+            await self.handle_model_no_reply(
+                payload=payload,
+                author=author,
+                channel_name=channel_name,
+                clean_viewer_message=clean_viewer_message,
+                fallback_reply=fallback_reply,
+                msg_id=msg_id,
+                allow_remote=allow_remote,
+                author_is_owner=author_is_owner,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+            )
+            return True
+
+        if riddle_related and (
+            is_partial_riddle_message(resolved_text) or is_riddle_refusal_reply(reply)
+        ):
+            self.persist_local_and_remote_turn(
+                channel_name=channel_name,
+                author=author,
+                clean_viewer_message=clean_viewer_message,
+                msg_id=msg_id,
+                allow_remote=False,
+                author_is_owner=author_is_owner,
+                event_type=event_type,
+                related_viewer=related_viewer,
+                related_message=related_message,
+                reply_to_turn_id=reply_to_turn_id,
+                related_turn_id=related_turn_id,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+            )
+            print("↪️ Réponse de refus/indice partiel supprimée pour la charade", flush=True)
+            return True
+
+        final_reply = smart_truncate(reply.replace("\n", " "), MAX_OUTPUT_CHARS)
+        if not final_reply:
+            print("↪️ Réponse vide après nettoyage", flush=True)
+            return True
+
+        if output_is_suspicious(final_reply):
+            print("↪️ Réponse suspecte bloquée", flush=True)
+            return True
+
+        await self.handle_model_reply_result(
+            payload=payload,
+            author=author,
+            channel_name=channel_name,
+            clean_viewer_message=clean_viewer_message,
+            final_reply=final_reply,
+            msg_id=msg_id,
+            allow_remote=allow_remote,
+            author_is_owner=author_is_owner,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+        )
+        if self.should_mark_memory_helpful(
+            context_bundle=context_bundle,
+            resolved_text=resolved_text,
+        ):
+            increment_chat_memory_counter(
+                self.chat_memory,
+                "memory_helpful_replies",
+            )
+            if CONFIG.debug_chat_memory:
+                print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
+        return True
+
     def maybe_refresh_context_for_web(
         self,
         *,
@@ -1252,65 +1362,13 @@ class Bot(commands.Bot):
             reply = normalize_web_sourced_reply(reply, web_context=context_bundle.web_context)
 
             print(f"🧠 Réponse Ollama : {reply}", flush=True)
-
-            if not reply or is_no_reply_signal(reply):
-                fallback_reply = build_no_reply_fallback(resolved_text, riddle_related=riddle_related)
-                await self.handle_model_no_reply(
-                    payload=payload,
-                    author=author,
-                    channel_name=channel_name,
-                    clean_viewer_message=clean_viewer_message,
-                    fallback_reply=fallback_reply,
-                    msg_id=msg_id,
-                    allow_remote=not specialized_local_thread,
-                    author_is_owner=author_is_owner,
-                    event_type=event_type,
-                    related_viewer=related_viewer,
-                    related_message=related_message,
-                    reply_to_turn_id=reply_to_turn_id,
-                    related_turn_id=related_turn_id,
-                    riddle_thread_reset=riddle_thread_reset,
-                    riddle_thread_close=riddle_thread_close,
-                )
-                return
-
-            if riddle_related and (
-                is_partial_riddle_message(resolved_text) or is_riddle_refusal_reply(reply)
-            ):
-                self.persist_local_and_remote_turn(
-                    channel_name=channel_name,
-                    author=author,
-                    clean_viewer_message=clean_viewer_message,
-                    msg_id=msg_id,
-                    allow_remote=False,
-                    author_is_owner=author_is_owner,
-                    event_type=event_type,
-                    related_viewer=related_viewer,
-                    related_message=related_message,
-                    reply_to_turn_id=reply_to_turn_id,
-                    related_turn_id=related_turn_id,
-                    riddle_thread_reset=riddle_thread_reset,
-                    riddle_thread_close=riddle_thread_close,
-                )
-                print("↪️ Réponse de refus/indice partiel supprimée pour la charade", flush=True)
-                return
-
-            final_reply = smart_truncate(reply.replace("\n", " "), MAX_OUTPUT_CHARS)
-
-            if not final_reply:
-                print("↪️ Réponse vide après nettoyage", flush=True)
-                return
-
-            if output_is_suspicious(final_reply):
-                print("↪️ Réponse suspecte bloquée", flush=True)
-                return
-
-            await self.handle_model_reply_result(
+            await self.finalize_model_reply(
                 payload=payload,
                 author=author,
                 channel_name=channel_name,
                 clean_viewer_message=clean_viewer_message,
-                final_reply=final_reply,
+                resolved_text=resolved_text,
+                reply=reply,
                 msg_id=msg_id,
                 allow_remote=not specialized_local_thread,
                 author_is_owner=author_is_owner,
@@ -1319,16 +1377,12 @@ class Bot(commands.Bot):
                 related_message=related_message,
                 reply_to_turn_id=reply_to_turn_id,
                 related_turn_id=related_turn_id,
+                riddle_related=riddle_related,
                 riddle_thread_reset=riddle_thread_reset,
                 riddle_thread_close=riddle_thread_close,
+                context_bundle=context_bundle,
             )
-            if context_bundle.viewer_context != "aucun" and likely_needs_memory_context(resolved_text):
-                increment_chat_memory_counter(
-                    self.chat_memory,
-                    "memory_helpful_replies",
-                )
-                if CONFIG.debug_chat_memory:
-                    print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
+            return
 
     async def reply_about_channel_content(self, payload: twitchio.ChatMessage, author: str) -> None:
         print("📺 Question sur le contenu de la chaîne", flush=True)
