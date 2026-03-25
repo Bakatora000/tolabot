@@ -12,8 +12,10 @@ from bot_logic import (
     smart_truncate,
     strip_trigger,
 )
+from context_sources import build_auxiliary_context_sources, make_context_source_result, merge_context_text
 from ollama_client import ask_ollama
 from runtime_types import RuntimeContextBundle
+from web_search_client import build_web_search_context, build_web_search_query, search_searxng
 
 
 @dataclass
@@ -347,4 +349,266 @@ async def handle_model_decision_pipeline(
         handle_model_reply_result_fn=handle_model_reply_result_fn,
         increment_memory_helpful_fn=increment_memory_helpful_fn,
         debug_chat_memory=debug_chat_memory,
+    )
+
+
+def maybe_refresh_context_for_web(
+    *,
+    resolved_text: str,
+    channel_name: str,
+    author: str,
+    prefer_active_thread: bool,
+    riddle_thread_reset: bool,
+    riddle_thread_close: bool,
+    specialized_local_thread: bool,
+    context_source: str,
+    chat_context: dict,
+    context_sources: list,
+    alias_context: str,
+    focus_context: str,
+    facts_context: str,
+    get_context_with_fallback_fn,
+) -> tuple[dict, str, list]:
+    if specialized_local_thread or not any(source.source_id == "mem0" for source in context_sources):
+        return chat_context, context_source, context_sources
+
+    chat_context, context_source, context_sources = get_context_with_fallback_fn(
+        text=resolved_text,
+        channel_name=channel_name,
+        author=author,
+        prefer_active_thread=prefer_active_thread,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        use_remote_memory=False,
+    )
+    chat_context["global_context"] = merge_context_text(
+        alias_context,
+        focus_context,
+        facts_context,
+        chat_context.get("global_context", "aucun"),
+    )
+    return chat_context, context_source, context_sources
+
+
+def resolve_web_context(
+    *,
+    resolved_text: str,
+    prefer_active_thread: bool,
+    riddle_thread_reset: bool,
+    riddle_thread_close: bool,
+    specialized_local_thread: bool,
+    channel_name: str,
+    author: str,
+    chat_context: dict,
+    context_source: str,
+    context_sources: list,
+    alias_context: str,
+    focus_context: str,
+    facts_context: str,
+    prefetch_web_decision,
+    config,
+    get_context_with_fallback_fn,
+    build_web_search_decision_fn,
+    build_web_search_context_fn=build_web_search_context,
+    search_searxng_fn=search_searxng,
+) -> tuple[str, dict, str, list]:
+    web_context = "aucun"
+    if not (config.web_search_enabled and config.web_search_provider == "searxng"):
+        return web_context, chat_context, context_source, context_sources
+
+    web_decision = prefetch_web_decision
+    if not web_decision or not web_decision.needs_web:
+        web_decision = build_web_search_decision_fn(
+            sanitize_user_text(strip_trigger(resolved_text)),
+            f"{chat_context.get('viewer_context', 'aucun')}\n{chat_context.get('global_context', 'aucun')}",
+            mode=config.web_search_mode,
+        )
+    if not web_decision.needs_web:
+        return web_context, chat_context, context_source, context_sources
+
+    chat_context, context_source, context_sources = maybe_refresh_context_for_web(
+        resolved_text=resolved_text,
+        channel_name=channel_name,
+        author=author,
+        prefer_active_thread=prefer_active_thread,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        specialized_local_thread=specialized_local_thread,
+        context_source=context_source,
+        chat_context=chat_context,
+        context_sources=context_sources,
+        alias_context=alias_context,
+        focus_context=focus_context,
+        facts_context=facts_context,
+        get_context_with_fallback_fn=get_context_with_fallback_fn,
+    )
+    print(f"🌐 Règle web matchée : {web_decision.rule_id} ({web_decision.reason})", flush=True)
+    try:
+        web_query = str(web_decision.query).strip() or build_web_search_query(
+            resolved_text,
+            viewer_context=chat_context.get("viewer_context", "aucun"),
+            global_context=chat_context.get("global_context", "aucun"),
+        )
+        web_results = search_searxng_fn(
+            query=web_query,
+            base_url=config.searxng_base_url,
+            timeout_seconds=config.web_search_timeout_seconds,
+            max_results=config.web_search_max_results,
+        )
+        web_context = build_web_search_context_fn(web_results)
+        if web_context != "aucun":
+            print("🌐 Contexte web injecté via SearXNG", flush=True)
+    except Exception as exc:
+        print(f"⚠️ Recherche web SearXNG indisponible : {exc}", flush=True)
+    return web_context, chat_context, context_source, context_sources
+
+
+def prepare_runtime_context(
+    *,
+    resolved_text: str,
+    payload,
+    channel_name: str,
+    author: str,
+    prefer_active_thread: bool,
+    riddle_thread_reset: bool,
+    riddle_thread_close: bool,
+    specialized_local_thread: bool,
+    decision,
+    alias_context: str,
+    focus_context: str,
+    facts_context: str,
+    config,
+    should_use_remote_memory: bool,
+    get_specialized_local_context_fn,
+    get_context_with_fallback_fn,
+    build_web_search_decision_fn,
+) -> tuple[dict, str, list, object | None]:
+    prefetch_web_decision = None
+    if config.web_search_enabled and config.web_search_provider == "searxng":
+        prefetch_web_decision = build_web_search_decision_fn(
+            sanitize_user_text(strip_trigger(resolved_text)),
+            f"{alias_context}\n{focus_context}\n{facts_context}",
+            mode=config.web_search_mode,
+        )
+
+    if specialized_local_thread:
+        chat_context, context_sources = get_specialized_local_context_fn(
+            payload.broadcaster.name,
+            author,
+            use_active_thread=not riddle_thread_close,
+        )
+        if chat_context["viewer_context"] == "aucun" and not riddle_thread_close:
+            chat_context, context_sources = get_specialized_local_context_fn(
+                payload.broadcaster.name,
+                author,
+                use_active_thread=False,
+            )
+        context_source = "local-specialized"
+    else:
+        use_remote_memory = should_use_remote_memory and decision.needs_long_memory
+        if prefetch_web_decision and prefetch_web_decision.needs_web:
+            use_remote_memory = False
+        chat_context, context_source, context_sources = get_context_with_fallback_fn(
+            text=resolved_text,
+            channel_name=channel_name,
+            author=author,
+            prefer_active_thread=prefer_active_thread,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            use_remote_memory=use_remote_memory,
+        )
+
+    chat_context["global_context"] = merge_context_text(
+        alias_context,
+        focus_context,
+        facts_context,
+        chat_context.get("global_context", "aucun"),
+    )
+    context_sources = context_sources + build_auxiliary_context_sources(
+        alias_context=alias_context,
+        focus_context=focus_context,
+        facts_context=facts_context,
+    )
+    return chat_context, context_source, context_sources, prefetch_web_decision
+
+
+def build_runtime_context_bundle(
+    *,
+    resolved_text: str,
+    payload,
+    channel_name: str,
+    author: str,
+    prefer_active_thread: bool,
+    riddle_thread_reset: bool,
+    riddle_thread_close: bool,
+    specialized_local_thread: bool,
+    decision,
+    alias_context: str,
+    focus_context: str,
+    facts_context: str,
+    conversation_mode: str,
+    config,
+    should_use_remote_memory: bool,
+    get_specialized_local_context_fn,
+    get_context_with_fallback_fn,
+    build_web_search_decision_fn,
+    build_web_search_context_fn=build_web_search_context,
+    search_searxng_fn=search_searxng,
+) -> RuntimeContextBundle:
+    chat_context, context_source, context_sources, prefetch_web_decision = prepare_runtime_context(
+        resolved_text=resolved_text,
+        payload=payload,
+        channel_name=channel_name,
+        author=author,
+        prefer_active_thread=prefer_active_thread,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        specialized_local_thread=specialized_local_thread,
+        decision=decision,
+        alias_context=alias_context,
+        focus_context=focus_context,
+        facts_context=facts_context,
+        config=config,
+        should_use_remote_memory=should_use_remote_memory,
+        get_specialized_local_context_fn=get_specialized_local_context_fn,
+        get_context_with_fallback_fn=get_context_with_fallback_fn,
+        build_web_search_decision_fn=build_web_search_decision_fn,
+    )
+    web_context, chat_context, context_source, context_sources = resolve_web_context(
+        resolved_text=resolved_text,
+        prefer_active_thread=prefer_active_thread,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        specialized_local_thread=specialized_local_thread,
+        channel_name=channel_name,
+        author=author,
+        chat_context=chat_context,
+        context_source=context_source,
+        context_sources=context_sources,
+        alias_context=alias_context,
+        focus_context=focus_context,
+        facts_context=facts_context,
+        prefetch_web_decision=prefetch_web_decision,
+        config=config,
+        get_context_with_fallback_fn=get_context_with_fallback_fn,
+        build_web_search_decision_fn=build_web_search_decision_fn,
+        build_web_search_context_fn=build_web_search_context_fn,
+        search_searxng_fn=search_searxng_fn,
+    )
+    web_source = make_context_source_result(
+        "web",
+        web_context,
+        priority=95,
+        confidence=0.7,
+        meta={"context_label": "web"},
+    )
+    if web_source:
+        context_sources.append(web_source)
+    return RuntimeContextBundle(
+        viewer_context=chat_context.get("viewer_context", "aucun"),
+        global_context=chat_context.get("global_context", "aucun"),
+        web_context=web_context,
+        context_source="local" if web_context != "aucun" else context_source,
+        sources=context_sources,
+        conversation_mode=conversation_mode,
     )
