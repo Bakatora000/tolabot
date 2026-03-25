@@ -2,7 +2,9 @@ import subprocess
 
 import requests
 
-from bot_logic import MAX_INPUT_CHARS, build_messages, normalize_spaces, strip_trigger, sanitize_user_text
+from bot_logic import MAX_INPUT_CHARS, normalize_spaces, strip_trigger, sanitize_user_text
+from context_sources import build_context_source_results
+from prompt_composer import build_messages_from_prompt_plan, build_prompt_plan
 from web_search_client import should_enable_web_search
 
 
@@ -196,14 +198,13 @@ def ask_ollama(
     clean_message = sanitize_user_text(strip_trigger(message))
     clean_message = clean_message[:MAX_INPUT_CHARS]
 
-    messages = build_messages(
-        user_name,
-        clean_message,
+    sources = build_context_source_results(
         viewer_context=viewer_context,
-        global_context=global_context,
+        conversation_context=global_context,
         web_context=web_context,
-        conversation_mode=conversation_mode,
     )
+    plan = build_prompt_plan(sources, conversation_mode=conversation_mode)
+    messages = build_messages_from_prompt_plan(plan, user_name=user_name, clean_message=clean_message)
 
     if provider == "openai":
         print(f"DEBUG OPENAI_MODEL = {ollama_model!r}", flush=True)

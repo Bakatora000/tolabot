@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any
 import re
 
+from runtime_types import DecisionResult
+
 
 DECISION_TREE_FILE = Path(__file__).with_name("decision_tree.json")
 
@@ -51,12 +53,23 @@ def classify_social_intent(normalized_text: str) -> str:
     return ""
 
 
-def build_web_search_decision(message: str, context_text: str, mode: str = "auto") -> dict[str, str | bool]:
+def build_web_search_decision(message: str, context_text: str, mode: str = "auto") -> DecisionResult:
     normalized_mode = "auto" if not mode else str(mode).strip().lower()
     if normalized_mode == "always":
-        return {"enabled": True, "reason": "mode_always", "rule_id": "mode_always", "query": message}
+        return DecisionResult(
+            decision="web_search",
+            rule_id="mode_always",
+            reason="mode_always",
+            needs_web=True,
+            query=message,
+        )
     if normalized_mode in {"off", "false", "0", "disabled"}:
-        return {"enabled": False, "reason": "mode_disabled", "rule_id": "mode_disabled", "query": ""}
+        return DecisionResult(
+            decision="skip",
+            rule_id="mode_disabled",
+            reason="mode_disabled",
+            needs_web=False,
+        )
 
     lowered = str(message).lower()
     context_lower = str(context_text).lower()
@@ -82,7 +95,13 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
                 query = str(actions.get("temperature_followup_template", "température actuelle à {location}")).format(location=location_match.group(1))
             else:
                 query = str(actions.get("temperature_default_query", "température actuelle"))
-        return {"enabled": True, "reason": "context_followup", "rule_id": "context_followup", "query": query}
+        return DecisionResult(
+            decision="web_search",
+            rule_id="context_followup",
+            reason="context_followup",
+            needs_web=True,
+            query=query,
+        )
 
     for rule in get_web_rules():
         match_all = tuple(str(item) for item in rule.get("match_all", []))
@@ -103,23 +122,42 @@ def build_web_search_decision(message: str, context_text: str, mode: str = "auto
             location_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", message)
             if not location_match:
                 continue
-            return {
-                "enabled": True,
-                "reason": "structured_rule",
-                "rule_id": str(rule.get("rule_id", "structured_rule")),
-                "query": query_value.format(location=location_match.group(1)),
-            }
-        return {
-            "enabled": True,
-            "reason": "structured_rule",
-            "rule_id": str(rule.get("rule_id", "structured_rule")),
-            "query": query_value,
-        }
+            return DecisionResult(
+                decision="web_search",
+                rule_id=str(rule.get("rule_id", "structured_rule")),
+                reason="structured_rule",
+                needs_web=True,
+                query=query_value.format(location=location_match.group(1)),
+            )
+        return DecisionResult(
+            decision="web_search",
+            rule_id=str(rule.get("rule_id", "structured_rule")),
+            reason="structured_rule",
+            needs_web=True,
+            query=query_value,
+        )
 
     if any(fragment in lowered for fragment in trigger_fragments):
-        return {"enabled": True, "reason": "direct_trigger", "rule_id": "generic_direct_trigger", "query": message}
+        return DecisionResult(
+            decision="web_search",
+            rule_id="generic_direct_trigger",
+            reason="direct_trigger",
+            needs_web=True,
+            query=message,
+        )
 
     if ("qui est" in lowered or "qu'est ce que" in lowered or "qu est ce que" in lowered) and context_lower.strip() in {"", "aucun"}:
-        return {"enabled": True, "reason": "open_fact_query", "rule_id": "open_fact_query", "query": message}
+        return DecisionResult(
+            decision="web_search",
+            rule_id="open_fact_query",
+            reason="open_fact_query",
+            needs_web=True,
+            query=message,
+        )
 
-    return {"enabled": False, "reason": "no_match", "rule_id": "no_match", "query": ""}
+    return DecisionResult(
+        decision="skip",
+        rule_id="no_match",
+        reason="no_match",
+        needs_web=False,
+    )

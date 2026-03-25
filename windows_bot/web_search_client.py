@@ -17,7 +17,7 @@ def should_enable_web_search(
     lowered = sanitize_user_text(strip_trigger(message)).lower()
     context_text = f"{viewer_context}\n{global_context}".lower()
     decision = build_web_search_decision(lowered, context_text, mode=mode)
-    return bool(decision["enabled"])
+    return bool(decision.needs_web)
 
 
 def search_searxng(
@@ -66,8 +66,8 @@ def build_web_search_query(
     cleaned = sanitize_user_text(strip_trigger(message))
     context_text = sanitize_user_text(f"{viewer_context}\n{global_context}")
     decision = build_web_search_decision(cleaned, context_text, mode="auto")
-    if decision["enabled"] and decision["query"]:
-        query = str(decision["query"])
+    if decision.needs_web and decision.query:
+        query = str(decision.query)
         if query != cleaned:
             return query
 

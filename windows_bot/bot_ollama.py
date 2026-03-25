@@ -66,6 +66,7 @@ from conversation_graph import (
     load_conversation_graph,
     prune_conversation_graph,
 )
+from context_sources import build_context_source_results
 from decision_tree import build_web_search_decision
 from facts_memory import (
     append_reported_facts,
@@ -701,13 +702,13 @@ class Bot(commands.Bot):
                     f"{chat_context.get('viewer_context', 'aucun')}\n{chat_context.get('global_context', 'aucun')}",
                     mode=CONFIG.web_search_mode,
                 )
-                if web_decision["enabled"]:
+                if web_decision.needs_web:
                     print(
-                        f"🌐 Règle web matchée : {web_decision.get('rule_id', '')} ({web_decision.get('reason', '')})",
+                        f"🌐 Règle web matchée : {web_decision.rule_id} ({web_decision.reason})",
                         flush=True,
                     )
                     try:
-                        web_query = str(web_decision.get("query", "")).strip() or build_web_search_query(
+                        web_query = str(web_decision.query).strip() or build_web_search_query(
                             resolved_text,
                             viewer_context=chat_context.get("viewer_context", "aucun"),
                             global_context=chat_context.get("global_context", "aucun"),
@@ -726,10 +727,21 @@ class Bot(commands.Bot):
             if CONFIG.debug_chat_memory and (
                 chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun" or web_context != "aucun"
             ):
+                context_sources = build_context_source_results(
+                    viewer_context=chat_context["viewer_context"],
+                    conversation_context=chat_context["global_context"],
+                    web_context=web_context,
+                    context_label=context_source,
+                )
                 print("🧠 Contexte mémoire injecté", flush=True)
                 if context_source == "local" and prefer_active_thread and not riddle_thread_reset:
                     print("   Mode   : fil actif", flush=True)
                 print(f"   Source : {context_source}", flush=True)
+                if context_sources:
+                    print(
+                        f"   Trace  : {', '.join(source.source_id for source in context_sources)}",
+                        flush=True,
+                    )
                 if chat_context["viewer_context"] != "aucun":
                     print(f"   Viewer : {chat_context['viewer_context']}", flush=True)
                 if chat_context["global_context"] != "aucun":
