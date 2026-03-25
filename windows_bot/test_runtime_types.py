@@ -1,7 +1,7 @@
 import unittest
 
 from context_sources import make_context_source_result
-from runtime_types import ContextSourceResult, DecisionResult, NormalizedEvent, PromptPlan
+from runtime_types import ContextSourceResult, DecisionResult, NormalizedEvent, PromptPlan, RuntimeContextBundle
 
 
 class RuntimeTypesTests(unittest.TestCase):
@@ -43,10 +43,19 @@ class RuntimeTypesTests(unittest.TestCase):
             style_block="style",
             source_trace=["local", "mem0"],
         )
+        runtime_context = RuntimeContextBundle(
+            viewer_context="viewer",
+            global_context="conversation",
+            web_context="web",
+            context_source="local",
+            sources=[source],
+            conversation_mode="",
+        )
 
         self.assertEqual(event.type, "chat_message")
         self.assertEqual(source.source_id, "mem0")
         self.assertEqual(prompt.source_trace, ["local", "mem0"])
+        self.assertEqual(runtime_context.context_source, "local")
 
     def test_make_context_source_result_skips_empty_blocks(self):
         self.assertIsNone(

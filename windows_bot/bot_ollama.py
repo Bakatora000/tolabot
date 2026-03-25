@@ -77,7 +77,7 @@ from facts_memory import (
 )
 from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, store_memory_turn
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
-from runtime_types import MessagePreparation
+from runtime_types import MessagePreparation, RuntimeContextBundle
 from twitch_auth import run_oauth_flow
 from web_search_client import build_web_search_context, build_web_search_query, search_searxng, should_enable_web_search
 
@@ -869,6 +869,126 @@ class Bot(commands.Bot):
         )
         return chat_context, context_source, context_sources, prefetch_web_decision
 
+    def build_runtime_context_bundle(
+        self,
+        *,
+        resolved_text: str,
+        payload: twitchio.ChatMessage,
+        channel_name: str,
+        author: str,
+        prefer_active_thread: bool,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+        specialized_local_thread: bool,
+        decision,
+        alias_context: str,
+        focus_context: str,
+        facts_context: str,
+        conversation_mode: str,
+    ) -> RuntimeContextBundle:
+        chat_context, context_source, context_sources, prefetch_web_decision = self.prepare_runtime_context(
+            resolved_text=resolved_text,
+            payload=payload,
+            channel_name=channel_name,
+            author=author,
+            prefer_active_thread=prefer_active_thread,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            specialized_local_thread=specialized_local_thread,
+            decision=decision,
+            alias_context=alias_context,
+            focus_context=focus_context,
+            facts_context=facts_context,
+        )
+        web_context, chat_context, context_source, context_sources = self.resolve_web_context(
+            resolved_text=resolved_text,
+            prefer_active_thread=prefer_active_thread,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            specialized_local_thread=specialized_local_thread,
+            channel_name=channel_name,
+            author=author,
+            chat_context=chat_context,
+            context_source=context_source,
+            context_sources=context_sources,
+            alias_context=alias_context,
+            focus_context=focus_context,
+            facts_context=facts_context,
+            prefetch_web_decision=prefetch_web_decision,
+        )
+        web_source = make_context_source_result(
+            "web",
+            web_context,
+            priority=95,
+            confidence=0.7,
+            meta={"context_label": "web"},
+        )
+        if web_source:
+            context_sources.append(web_source)
+        return RuntimeContextBundle(
+            viewer_context=chat_context["viewer_context"],
+            global_context=chat_context["global_context"],
+            web_context=web_context,
+            context_source=context_source,
+            sources=context_sources,
+            conversation_mode=conversation_mode,
+        )
+
+    def log_runtime_context(
+        self,
+        *,
+        context_bundle: RuntimeContextBundle,
+        prefer_active_thread: bool,
+        riddle_thread_reset: bool,
+    ) -> None:
+        if not CONFIG.debug_chat_memory:
+            return
+        if (
+            context_bundle.viewer_context == "aucun"
+            and context_bundle.global_context == "aucun"
+            and context_bundle.web_context == "aucun"
+        ):
+            return
+        print("🧠 Contexte mémoire injecté", flush=True)
+        if context_bundle.context_source == "local" and prefer_active_thread and not riddle_thread_reset:
+            print("   Mode   : fil actif", flush=True)
+        print(f"   Source : {context_bundle.context_source}", flush=True)
+        if context_bundle.sources:
+            print(
+                f"   Trace  : {', '.join(source.source_id for source in context_bundle.sources)}",
+                flush=True,
+            )
+        if context_bundle.viewer_context != "aucun":
+            print(f"   Viewer : {context_bundle.viewer_context}", flush=True)
+        if context_bundle.global_context != "aucun":
+            print(f"   Global : {context_bundle.global_context}", flush=True)
+        if context_bundle.web_context != "aucun":
+            print(f"   Web    : {context_bundle.web_context}", flush=True)
+
+    async def generate_model_reply(
+        self,
+        *,
+        payload: twitchio.ChatMessage,
+        resolved_text: str,
+        context_bundle: RuntimeContextBundle,
+    ) -> str:
+        return await asyncio.to_thread(
+            ask_ollama,
+            payload.chatter.name,
+            resolved_text,
+            CONFIG.ollama_url,
+            OLLAMA_MODEL,
+            CONFIG.request_timeout_seconds,
+            context_bundle.viewer_context,
+            context_bundle.global_context,
+            context_bundle.web_context,
+            context_bundle.conversation_mode,
+            CONFIG.llm_provider,
+            CONFIG.openai_api_key,
+            CONFIG.openai_web_search_enabled,
+            CONFIG.openai_web_search_mode,
+        )
+
     def prepare_message(
         self,
         *,
@@ -1084,7 +1204,7 @@ class Bot(commands.Bot):
             print("🤖 Mention détectée, appel à Ollama...", flush=True)
             prefer_active_thread = bool(decision.meta.get("prefer_active_thread", specialized_local_thread or likely_needs_memory_context(resolved_text)))
             conversation_mode = str(decision.meta.get("conversation_mode", ""))
-            chat_context, context_source, context_sources, prefetch_web_decision = self.prepare_runtime_context(
+            context_bundle = self.build_runtime_context_bundle(
                 resolved_text=resolved_text,
                 payload=payload,
                 channel_name=channel_name,
@@ -1097,67 +1217,19 @@ class Bot(commands.Bot):
                 alias_context=alias_context,
                 focus_context=focus_context,
                 facts_context=facts_context,
+                conversation_mode=conversation_mode,
             )
-            web_context, chat_context, context_source, context_sources = self.resolve_web_context(
-                resolved_text=resolved_text,
+            self.log_runtime_context(
+                context_bundle=context_bundle,
                 prefer_active_thread=prefer_active_thread,
                 riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-                specialized_local_thread=specialized_local_thread,
-                channel_name=channel_name,
-                author=author,
-                chat_context=chat_context,
-                context_source=context_source,
-                context_sources=context_sources,
-                alias_context=alias_context,
-                focus_context=focus_context,
-                facts_context=facts_context,
-                prefetch_web_decision=prefetch_web_decision,
             )
-            web_source = make_context_source_result(
-                "web",
-                web_context,
-                priority=95,
-                confidence=0.7,
-                meta={"context_label": "web"},
+            reply = await self.generate_model_reply(
+                payload=payload,
+                resolved_text=resolved_text,
+                context_bundle=context_bundle,
             )
-            if web_source:
-                context_sources.append(web_source)
-            if CONFIG.debug_chat_memory and (
-                chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun" or web_context != "aucun"
-            ):
-                print("🧠 Contexte mémoire injecté", flush=True)
-                if context_source == "local" and prefer_active_thread and not riddle_thread_reset:
-                    print("   Mode   : fil actif", flush=True)
-                print(f"   Source : {context_source}", flush=True)
-                if context_sources:
-                    print(
-                        f"   Trace  : {', '.join(source.source_id for source in context_sources)}",
-                        flush=True,
-                    )
-                if chat_context["viewer_context"] != "aucun":
-                    print(f"   Viewer : {chat_context['viewer_context']}", flush=True)
-                if chat_context["global_context"] != "aucun":
-                    print(f"   Global : {chat_context['global_context']}", flush=True)
-                if web_context != "aucun":
-                    print(f"   Web    : {web_context}", flush=True)
-            reply = await asyncio.to_thread(
-                ask_ollama,
-                payload.chatter.name,
-                resolved_text,
-                CONFIG.ollama_url,
-                OLLAMA_MODEL,
-                CONFIG.request_timeout_seconds,
-                chat_context["viewer_context"],
-                chat_context["global_context"],
-                web_context,
-                conversation_mode,
-                CONFIG.llm_provider,
-                CONFIG.openai_api_key,
-                CONFIG.openai_web_search_enabled,
-                CONFIG.openai_web_search_mode,
-            )
-            reply = normalize_web_sourced_reply(reply, web_context=web_context)
+            reply = normalize_web_sourced_reply(reply, web_context=context_bundle.web_context)
 
             print(f"🧠 Réponse Ollama : {reply}", flush=True)
 
@@ -1230,7 +1302,7 @@ class Bot(commands.Bot):
                 riddle_thread_reset=riddle_thread_reset,
                 riddle_thread_close=riddle_thread_close,
             )
-            if chat_context["viewer_context"] != "aucun" and likely_needs_memory_context(resolved_text):
+            if context_bundle.viewer_context != "aucun" and likely_needs_memory_context(resolved_text):
                 increment_chat_memory_counter(
                     self.chat_memory,
                     "memory_helpful_replies",

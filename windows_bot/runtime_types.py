@@ -61,6 +61,16 @@ class PromptPlan:
 
 
 @dataclass(slots=True)
+class RuntimeContextBundle:
+    viewer_context: str
+    global_context: str
+    web_context: str
+    context_source: str
+    sources: list[ContextSourceResult] = field(default_factory=list)
+    conversation_mode: str = ""
+
+
+@dataclass(slots=True)
 class MessagePreparation:
     resolved_text: str
     alias_context: str
