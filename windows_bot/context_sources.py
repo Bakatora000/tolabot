@@ -71,3 +71,56 @@ def build_context_source_results(
         sources.append(web_source)
 
     return sources
+
+
+def merge_context_text(*parts: str) -> str:
+    cleaned_parts: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        cleaned = _normalize_context_text(part)
+        if cleaned == "aucun" or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        cleaned_parts.append(cleaned)
+    return "\n".join(cleaned_parts) if cleaned_parts else "aucun"
+
+
+def build_auxiliary_context_sources(
+    *,
+    alias_context: str = "",
+    focus_context: str = "",
+    facts_context: str = "",
+) -> list[ContextSourceResult]:
+    sources: list[ContextSourceResult] = []
+
+    alias_source = make_context_source_result(
+        "alias_resolution",
+        alias_context,
+        priority=92,
+        confidence=0.9,
+        meta={"context_label": "local"},
+    )
+    if alias_source:
+        sources.append(alias_source)
+
+    focus_source = make_context_source_result(
+        "recent_focus",
+        focus_context,
+        priority=89,
+        confidence=0.82,
+        meta={"context_label": "local"},
+    )
+    if focus_source:
+        sources.append(focus_source)
+
+    facts_source = make_context_source_result(
+        "facts_memory",
+        facts_context,
+        priority=91,
+        confidence=0.83,
+        meta={"context_label": "local"},
+    )
+    if facts_source:
+        sources.append(facts_source)
+
+    return sources

@@ -62,7 +62,12 @@ from conversation_graph import (
     load_conversation_graph,
     prune_conversation_graph,
 )
-from context_sources import build_context_source_results, make_context_source_result
+from context_sources import (
+    build_auxiliary_context_sources,
+    build_context_source_results,
+    make_context_source_result,
+    merge_context_text,
+)
 from decision_tree import build_web_search_decision
 from facts_memory import (
     append_reported_facts,
@@ -87,20 +92,6 @@ class QueuedMessage:
     author: str
     msg_id: str | None
     received_at: float
-
-
-def merge_context_text(*parts: str) -> str:
-    cleaned_parts: list[str] = []
-    seen: set[str] = set()
-    for part in parts:
-        cleaned = (part or "").strip()
-        if not cleaned or cleaned == "aucun":
-            continue
-        if cleaned in seen:
-            continue
-        seen.add(cleaned)
-        cleaned_parts.append(cleaned)
-    return "\n".join(cleaned_parts) if cleaned_parts else "aucun"
 
 
 class Bot(commands.Bot):
@@ -913,34 +904,11 @@ class Bot(commands.Bot):
                 facts_context,
                 chat_context.get("global_context", "aucun"),
             )
-            extra_context_sources = []
-            alias_source = make_context_source_result(
-                "alias_resolution",
-                alias_context,
-                priority=92,
-                confidence=0.9,
-                meta={"context_label": "local"},
+            extra_context_sources = build_auxiliary_context_sources(
+                alias_context=alias_context,
+                focus_context=focus_context,
+                facts_context=facts_context,
             )
-            if alias_source:
-                extra_context_sources.append(alias_source)
-            focus_source = make_context_source_result(
-                "recent_focus",
-                focus_context,
-                priority=89,
-                confidence=0.82,
-                meta={"context_label": "local"},
-            )
-            if focus_source:
-                extra_context_sources.append(focus_source)
-            facts_source = make_context_source_result(
-                "facts_memory",
-                facts_context,
-                priority=91,
-                confidence=0.83,
-                meta={"context_label": "local"},
-            )
-            if facts_source:
-                extra_context_sources.append(facts_source)
             web_context = "aucun"
             if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
                 web_decision = prefetch_web_decision

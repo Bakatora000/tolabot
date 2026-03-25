@@ -362,8 +362,17 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 "streamer": {
                     "viewer_turns": {
                         "alice": [
-                            {"role": "viewer", "text": "quel temps fera t il demain sur Lyon ?", "ts": "2026-03-25T10:00:00Z"},
-                            {"role": "bot", "text": "Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.", "ts": "2026-03-25T10:00:01Z"},
+                            {
+                                "timestamp": "2026-03-25T10:00:00Z",
+                                "channel": "streamer",
+                                "viewer": "alice",
+                                "viewer_message": "quel temps fera t il demain sur Lyon ?",
+                                "bot_reply": "Selon les sources web, demain à Lyon les températures varient entre 6 et 15°C.",
+                                "thread_boundary": "",
+                                "event_type": "",
+                                "related_viewer": "",
+                                "related_message": "",
+                            },
                         ]
                     },
                     "global_turns": [],
