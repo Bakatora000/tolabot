@@ -14,7 +14,7 @@ Le projet actif est organise autour de 2 ensembles en production :
 
 2. services Linux
 - memory_service : API memoire distante utilisee par le bot
-- admin_service : surface admin utilisee via tunnel SSH depuis Windows
+- routes admin montees dans `memory_service` et utilisees via tunnel SSH depuis Windows
 
 
 Flux principal en runtime
@@ -143,16 +143,13 @@ memory_service
 - API memoire distante principale
 - routes de sante, recherche, memorisation, oubli, historique recent
 - backend memoire utilise par le bot Windows
-
-admin_service
-- API admin dediee
-- utilisee par l'UI admin Windows via tunnel SSH
+- routes admin locales montees dans le meme service
 
 
 Flux admin
 
 1. L'interface Windows ouvre un tunnel SSH vers le serveur Linux.
-2. admin_ui parle a admin_service via l'URL locale tunnelisee.
+2. admin_ui parle aux routes `/admin/*` de `memory_service` via l'URL locale tunnelisee.
 3. L'admin peut exporter, relire, supprimer ou reecrire des souvenirs.
 
 
@@ -174,4 +171,3 @@ Le bot utilise en priorite :
 
 Le modele principal actuellement utilise en production locale est :
 - qwen3.5 via Ollama
-

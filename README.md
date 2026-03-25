@@ -1,183 +1,226 @@
-# mem0-api
+# Tolabot
 
-Service HTTP JSON pour fournir une couche mémoire distante au bot Twitch Windows.
+Bot Twitch francophone avec memoire contextuelle, recherche web selective, interface d'administration locale et trajectoire vers une memoire plus structuree.
 
-## Structure du repo
+Le projet ne se resume pas a `mem0`.
+`mem0` est seulement un composant de la memoire longue actuelle.
 
-- `memory_service/` : service mem0 HTTP cote Linux
-- `deploy/` : deploiement systemd / Nginx
-- `windows_bot/` : code du bot Twitch Windows partage
+Aujourd'hui, Tolabot est organise autour de deux ensembles :
+- `windows_bot/` : le runtime principal du bot sur Windows
+- `memory_service/` : le service memoire/admin sur Linux
 
-## Objectif
+---
 
-Le service expose une API REST stable devant le backend mémoire.
+## Vue d'ensemble
 
-Contrat visé :
-- `GET /health` en interne, publie via `GET /api/memory/health`
-- `POST /search` en interne, publie via `POST /api/memory/search`
-- `POST /remember` en interne, publie via `POST /api/memory/remember`
-- `POST /forget` en interne, publie via `POST /api/memory/forget`
-- `POST /recent` en interne, publie via `POST /api/memory/recent`
+Tolabot vise a :
+- repondre naturellement dans le chat Twitch
+- garder un contexte recent borne
+- reutiliser une memoire durable cross-live
+- enrichir certaines reponses avec du web quand c'est pertinent
+- fournir une UI admin locale pour inspecter et nettoyer la memoire
+- converger a terme vers un bot plus contextuel, plus temporel, et potentiellement plus autonome
 
-Le bot Windows parle uniquement à cette API. Il ne doit jamais parler directement à mem0.
+En pratique, le runtime Windows combine deja :
+- Ollama local pour la generation
+- memoire courte locale
+- graphe conversationnel local
+- faits locaux structures
+- `homegraph` pour un contexte viewer compact
+- `mem0` pour la memoire durable generale
+- SearXNG pour les questions externes ou recentes
 
-## Stack actuelle
+---
 
-- API : FastAPI
-- Backend MVP local : stockage fichier JSON
-- Backend cible : Mem0 OSS + Qdrant + SQLite history
-- Validation Mem0 locale : `mem0ai` + Qdrant en mode `path` + `fastembed`
+## Composants Principaux
 
-Le backend actif est piloté par `MEMORY_BACKEND` :
-- `file` : mode de démarrage simple, utile pour valider l’API et l’intégration Windows
-- `mem0` : mode cible, utilisant `mem0ai`, Qdrant et SQLite history
+### `windows_bot/`
 
-## Mode mem0 valide localement
+Runtime principal du bot Twitch.
 
-Une validation réelle a été faite localement avec :
-- `MEMORY_BACKEND=mem0`
-- `mem0ai`
-- Qdrant local via `MEM0_QDRANT_PATH`
-- `fastembed` pour les embeddings
-- provider LLM `lmstudio` configuré uniquement pour satisfaire l’initialisation du SDK, avec `infer=False` sur `/remember`
+Responsabilites actuelles :
+- reception des messages Twitch
+- arbitrage initial
+- collecte du contexte local et distant
+- recherche web selective
+- composition du prompt
+- appel a Ollama
+- memorisation post-reponse
+- UI admin locale Windows
 
-Dans cette configuration :
-- le service n’a pas besoin d’un serveur Qdrant séparé pour le test local
-- `/remember`, `/search`, `/recent` et `/forget` fonctionnent réellement via `mem0`
-- le backend stocke le texte brut reçu par l’API, ce qui correspond bien au contrat du bot Windows
+Modules notables :
+- `bot_ollama.py` : orchestrateur runtime
+- `arbitrator.py` : premieres decisions explicites du bot
+- `decision_tree.py` + `decision_tree.json` : couche declarative pour certains triggers et routages
+- `conversation_graph.py` : memoire conversationnelle locale
+- `facts_memory.py` : faits locaux structures
+- `context_sources.py` : representation unifiee des sources de contexte
+- `prompt_composer.py` : composition explicite du prompt
+- `admin_ui.py` : interface admin locale
 
-## Lancement local
+### `memory_service/`
 
-1. Installer les dépendances :
+Service Linux expose publiquement pour la memoire distante.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Responsabilites actuelles :
+- API memoire publique du bot
+- API admin locale accessible via tunnel SSH
+- backend `mem0` avec Qdrant local + SQLite history
+- listing / export / purge / recherche de memoires
+- exposition du contexte `homegraph` au bot Windows
 
-2. Copier l’exemple d’environnement :
+Routes publiques principales :
+- `GET /api/memory/health`
+- `POST /api/memory/search`
+- `POST /api/memory/remember`
+- `POST /api/memory/forget`
+- `POST /api/memory/recent`
 
-```bash
-cp .env.example .env
-```
+Routes admin locales principales :
+- `GET /admin/health`
+- `GET /admin/users`
+- `GET /admin/users/{user_id}/recent`
+- `DELETE /admin/users/{user_id}`
+- `GET /admin/homegraph/users/{user_id}/context`
 
-3. Ajuster au minimum :
+### `homegraph/`
 
-```env
-MEM0_API_KEY=xxxxxxxxxxxxxxxx
-MEMORY_BACKEND=file
-```
+Voie produit actuelle pour enrichir le prompt avec un contexte viewer compact.
 
-4. Lancer le service :
+Pipeline vise :
+- source : `mem0`
+- extraction : GPT
+- stockage : SQLite
+- restitution : `text_block` viewer compact
 
-```bash
-uvicorn main:app --host 127.0.0.1 --port 8000
-```
+Etat actuel :
+- pipeline Linux en place
+- endpoint admin expose au bot Windows
+- alimentation encore progressive viewer-par-viewer
 
-### Variante mem0 locale validée
+### `graphiti/`
 
-```bash
-PYTHONPATH=.deps \
-MEM0_API_KEY=xxxxxxxxxxxxxxxx \
-MEMORY_BACKEND=mem0 \
-MEM0_QDRANT_PATH=./data/qdrant \
-MEM0_QDRANT_COLLECTION=mem0 \
-MEM0_QDRANT_ON_DISK=true \
-MEM0_HISTORY_DB_PATH=./data/history.db \
-MEM0_LLM_PROVIDER=lmstudio \
-MEM0_LLM_MODEL=dummy-local-model \
-MEM0_LMSTUDIO_BASE_URL=http://127.0.0.1:1234/v1 \
-MEM0_EMBEDDER_PROVIDER=fastembed \
-MEM0_EMBEDDER_MODEL=BAAI/bge-small-en-v1.5 \
-MEM0_EMBEDDER_DIMS=384 \
-python3 -m uvicorn main:app --host 127.0.0.1 --port 8000
-```
+Piste experimentale mise en veille pour la voie produit principale.
 
-## Exemple d’appels
+Pourquoi :
+- chaine technique validee
+- mais ingestion trop lourde/lente dans la forme actuelle
 
-Healthcheck :
+Le repo conserve cette piste comme laboratoire, pas comme composant prioritaire du produit.
 
-```bash
-curl http://127.0.0.1:8000/health
-```
+---
 
-Remember :
+## Flux Principal
 
-```bash
-curl -X POST http://127.0.0.1:8000/remember \
-  -H 'X-API-Key: xxxxxxxxxxxxxxxx' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "user_id": "twitch:streamer:viewer:alice",
-    "text": "Le viewer préfère les amplis compacts.",
-    "metadata": {
-      "source": "twitch_chat",
-      "channel": "streamer",
-      "viewer": "alice",
-      "message_id": "abc123"
-    }
-  }'
-```
+1. Un viewer mentionne `@anneaunimouss` sur Twitch.
+2. `windows_bot` normalise l'evenement et arbitre.
+3. Le runtime collecte le contexte utile :
+- memoire locale specialisee
+- conversation graph local
+- faits locaux
+- `homegraph`
+- `mem0`
+- web via SearXNG si necessaire
+4. Le prompt est compose puis envoye a Ollama sur Windows.
+5. La reponse est post-traitee puis envoyee dans le chat.
+6. Les memoires utiles sont mises a jour localement et/ou a distance.
 
-Search :
+---
 
-```bash
-curl -X POST http://127.0.0.1:8000/search \
-  -H 'X-API-Key: xxxxxxxxxxxxxxxx' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "user_id": "twitch:streamer:viewer:alice",
-    "query": "De quoi parlait-on à propos des amplis ?",
-    "limit": 5
-  }'
-```
+## Etat Produit Actuel
 
-## Notes mem0 OSS
+Ce qui est deja reellement en place :
+- bot Windows operationnel
+- Ollama local en usage reel
+- memoire distante `mem0` validee en bout en bout
+- admin UI Windows via tunnel SSH
+- recherche web selective via SearXNG
+- `homegraph` consomme en runtime comme source de contexte supplementaire
+- debut de refacto Windows vers une architecture plus modulaire :
+  - `runtime_types`
+  - `arbitrator`
+  - `context_sources`
+  - `prompt_composer`
 
-La documentation officielle mem0 OSS indique actuellement :
-- installation Python via `pip install mem0ai`
-- Qdrant comme vector store supporté
-- SQLite history configurable via `history_db_path`
+Direction architecture actuelle :
+- garder `bot_ollama.py` comme orchestrateur
+- sortir progressivement l'arbitrage et la composition hors du monolithe runtime
+- preparer une trajectoire vers un futur package unifie type `tolabot.exe`
 
-Le point pratique important observé ici :
-- `mem0` initialise aussi le provider LLM au démarrage, même si `/remember` utilise `infer=False`
-- pour un test local sans clé externe, `fastembed` + Qdrant local par `path` fonctionnent
-- pour la prod, tu peux garder cette approche locale, ou remplacer le provider LLM/embedder par une pile distante explicitement choisie
+---
 
-## Déploiement
+## Structure Du Repo
 
-Des gabarits sont fournis dans :
-- `deploy/systemd/mem0-api.service`
-- `deploy/systemd/mem0-admin-api.service`
-- `deploy/nginx/memory.example.net.conf`
+- `windows_bot/` : bot Twitch Windows, admin UI, arbitrage, memoire locale
+- `memory_service/` : service memoire/admin Linux
+- `homegraph/` : graphe metier maison pour le contexte viewer
+- `graphiti/` : chantier experimental mis en veille
+- `deploy/` : gabarits systemd / Nginx / deploiement Linux
+- `architecture_active.txt` : photographie de l'architecture actuellement en service
+- `architecture_target_vnext.md` : cible de refacto pour le bot plus contextuel / temporel
+- `admin_api_contract_v1.md` : contrat admin local
+- `admin_interface_v1.md` : cadrage de l'UI admin Windows
+
+---
+
+## Documentation A Lire En Priorite
+
+Pour comprendre le produit global :
+- `architecture_active.txt`
+- `architecture_target_vnext.md`
+- `contexte_projet_tolabot_mem0.md`
+
+Pour le runtime Windows :
+- `windows_bot/README.md`
+- `statut_windows.md`
+
+Pour la memoire Linux :
 - `deploy/DEPLOYMENT.md`
-
-Recommendation pragmatique actuelle :
-- demarrer en prod avec `MEMORY_BACKEND=mem0`
-- utiliser Qdrant local par `MEM0_QDRANT_PATH`
-- garder Nginx devant l'API avec TLS
-
-La procedure detaillee est dans `deploy/DEPLOYMENT.md`.
-
-## Admin API locale
-
-Une V1 d'API admin locale est disponible pour une future UI Windows via tunnel SSH.
-
-Principes :
-- bind local recommande : `127.0.0.1:9000`
-- aucune exposition publique via Nginx
-- auth dediee avec `X-Admin-Key`
-- cle separee : `MEM0_ADMIN_KEY`
-
-Entree :
-- `admin_main.py`
-
-Contrat V1 :
+- `statut_linux.md`
 - `admin_api_contract_v1.md`
 
-Lancement local type :
+Pour `homegraph` :
+- `graphe_metier_maison_v1.md`
+- `homegraph/README.md`
+- `homegraph/workflow_v1.md`
 
-```bash
-uvicorn admin_main:app --host 127.0.0.1 --port 9000
-```
+---
+
+## Demarrage Rapide
+
+### Bot Windows
+
+Voir :
+- `windows_bot/README.md`
+
+En bref :
+- config `.env`
+- Ollama local
+- `py .\manage_bot.py run-ollama`
+
+### Service memoire Linux
+
+En bref :
+- `cp .env.example .env`
+- regler `MEM0_API_KEY`
+- lancer `uvicorn main:app --host 127.0.0.1 --port 8000`
+
+La procedure de deploiement durable est documentee dans :
+- `deploy/DEPLOYMENT.md`
+
+---
+
+## Cap Long Terme
+
+Le but n'est pas seulement un bot qui repond.
+
+Le but est un systeme qui sait :
+- percevoir
+- arbitrer
+- selectionner le bon contexte
+- reutiliser une memoire durable
+- tenir compte du temps
+- et plus tard intervenir spontanement avec des garde-fous stricts
+
+La cible d'architecture pour cette evolution est documentee ici :
+- `architecture_target_vnext.md`
