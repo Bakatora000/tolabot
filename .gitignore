@@ -28,6 +28,11 @@ homegraph/payloads/*.txt
 logs/
 *.log
 *.pid
+windows_bot/.tio.tokens.json
+windows_bot/channel_history.json
+windows_bot/chat_memory.json
+windows_bot/conversation_graph.json
+windows_bot/facts_memory.json
 
 bottwitch.zip
 *.zip
