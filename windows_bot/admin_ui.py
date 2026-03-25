@@ -8,7 +8,15 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote
 
-from admin_client import AdminApiError, admin_healthcheck, delete_user_memories, export_user_memories, get_recent_memories, list_admin_users
+from admin_client import (
+    AdminApiError,
+    admin_healthcheck,
+    delete_memory,
+    delete_user_memories,
+    export_user_memories,
+    get_recent_memories,
+    list_admin_users,
+)
 from admin_tunnel import AdminTunnelManager
 from bot_config import AppConfig, load_config
 from openai_review_client import OpenAIReviewError, analyze_review_export, build_review_export, is_openai_review_enabled
@@ -224,8 +232,29 @@ HTML_PAGE = """<!doctype html>
             created_at: ${escapeHtml(item.created_at || '')}<br />
             score: ${escapeHtml(item.score ?? '')}
           </div>
+          <div class="actions">
+            <button type="button" onclick="deleteSingleMemory('${escapeHtml(item.id || '')}')">Supprimer</button>
+          </div>
         </div>
       `).join('');
+    }
+
+    async function deleteSingleMemory(memoryId) {
+      if (!selectedUserId || !memoryId) {
+        return;
+      }
+      const confirmed = window.confirm(`Supprimer le souvenir ${memoryId} ?`);
+      if (!confirmed) {
+        return;
+      }
+      setError('');
+      const response = await fetch(`/api/memories/${encodeURIComponent(memoryId)}/delete`, { method: 'POST' });
+      const data = await response.json();
+      if (!data.ok) {
+        setError(data.error || 'Échec de la suppression du souvenir.');
+        return;
+      }
+      await loadRecent(selectedUserId, selectedViewerLabel || selectedUserId);
     }
 
     async function purgeSelectedUser() {
@@ -489,6 +518,15 @@ class AdminUiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route, _, query_string = self.path.partition("?")
+
+        if route.startswith("/api/memories/") and route.endswith("/delete"):
+            memory_id = unquote(route[len("/api/memories/") : -len("/delete")].strip("/"))
+            try:
+                deleted = delete_memory(self.server.config, memory_id)
+                self._send_json({"ok": True, "memory_id": memory_id, "deleted": deleted})
+            except AdminApiError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
 
         if route.startswith("/api/users/") and route.endswith("/export"):
             user_id = unquote(route[len("/api/users/") : -len("/export")].strip("/"))
