@@ -1072,6 +1072,53 @@ class Bot(commands.Bot):
             specialized_local_thread=specialized_local_thread,
         )
 
+    def log_prepared_message_state(self, prepared: MessagePreparation) -> None:
+        if not prepared.specialized_local_thread:
+            return
+        print("🧩 Charade/devinette détectée", flush=True)
+        increment_chat_memory_counter(
+            self.chat_memory,
+            "riddle_messages_seen",
+        )
+        if prepared.riddle_thread_reset:
+            print("🧹 Nouveau fil de charade détecté", flush=True)
+        elif prepared.riddle_thread_close:
+            print("✅ Clôture de charade détectée", flush=True)
+
+    def build_runtime_decision(
+        self,
+        *,
+        msg_id: str | None,
+        channel_name: str,
+        author: str,
+        clean_viewer_message: str,
+        prepared: MessagePreparation,
+    ):
+        repeated_social_count = viewer_recent_social_redundancy(
+            self.chat_memory,
+            channel_name,
+            author,
+            clean_viewer_message,
+        )
+        normalized_event = build_normalized_event(
+            event_id=msg_id or "",
+            channel=channel_name,
+            author=author,
+            timestamp="",
+            text=prepared.resolved_text,
+            metadata={"message_id": msg_id or ""},
+        )
+        return arbitrate_chat_message(
+            event=normalized_event,
+            clean_viewer_message=clean_viewer_message,
+            author_is_owner=prepared.author_is_owner,
+            riddle_related=prepared.riddle_related,
+            riddle_thread_reset=prepared.riddle_thread_reset,
+            riddle_thread_close=prepared.riddle_thread_close,
+            asks_channel_content=asks_about_channel_content(prepared.resolved_text),
+            repeated_social_count=repeated_social_count,
+        )
+
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
         broadcaster_name = normalize_spaces(getattr(queued_message.payload.broadcaster, "name", "")).lower()
         is_owner_message = (
@@ -1144,40 +1191,13 @@ class Bot(commands.Bot):
         riddle_thread_reset = prepared.riddle_thread_reset
         riddle_thread_close = prepared.riddle_thread_close
         specialized_local_thread = prepared.specialized_local_thread
-        if specialized_local_thread:
-            print("🧩 Charade/devinette détectée", flush=True)
-            increment_chat_memory_counter(
-                self.chat_memory,
-                "riddle_messages_seen",
-            )
-            if riddle_thread_reset:
-                print("🧹 Nouveau fil de charade détecté", flush=True)
-            elif riddle_thread_close:
-                print("✅ Clôture de charade détectée", flush=True)
-
-        repeated_social_count = viewer_recent_social_redundancy(
-            self.chat_memory,
-            channel_name,
-            author,
-            clean_viewer_message,
-        )
-        normalized_event = build_normalized_event(
-            event_id=msg_id or "",
-            channel=channel_name,
+        self.log_prepared_message_state(prepared)
+        decision = self.build_runtime_decision(
+            msg_id=msg_id,
+            channel_name=channel_name,
             author=author,
-            timestamp="",
-            text=resolved_text,
-            metadata={"message_id": msg_id or ""},
-        )
-        decision = arbitrate_chat_message(
-            event=normalized_event,
             clean_viewer_message=clean_viewer_message,
-            author_is_owner=author_is_owner,
-            riddle_related=riddle_related,
-            riddle_thread_reset=riddle_thread_reset,
-            riddle_thread_close=riddle_thread_close,
-            asks_channel_content=asks_about_channel_content(resolved_text),
-            repeated_social_count=repeated_social_count,
+            prepared=prepared,
         )
 
         async with self.generation_lock:
