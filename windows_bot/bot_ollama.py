@@ -95,6 +95,15 @@ class QueuedMessage:
     received_at: float
 
 
+@dataclass
+class IncomingMessageData:
+    raw_text: str
+    text: str
+    clean_viewer_message: str
+    author: str
+    msg_id: str | None
+
+
 class Bot(commands.Bot):
     def __init__(self):
         super().__init__(
@@ -421,6 +430,51 @@ class Bot(commands.Bot):
             token_for=self.bot_id,
         )
         self.mark_replied(author)
+
+    def build_incoming_message_data(self, payload: twitchio.ChatMessage) -> IncomingMessageData:
+        raw_text = payload.text or ""
+        text = sanitize_user_text(raw_text)
+        return IncomingMessageData(
+            raw_text=raw_text,
+            text=text,
+            clean_viewer_message=sanitize_user_text(strip_trigger(text)),
+            author=(payload.chatter.name or "").lower(),
+            msg_id=getattr(payload, "id", None),
+        )
+
+    def log_incoming_message(self, payload: twitchio.ChatMessage, incoming: IncomingMessageData) -> None:
+        print("--------------------------------------------------", flush=True)
+        print("💬 MESSAGE REÇU", flush=True)
+        print(f"Chaîne : {payload.broadcaster.name}", flush=True)
+        print(f"Auteur : {payload.chatter.name}", flush=True)
+        print(f"Texte brut : {incoming.raw_text}", flush=True)
+        print(f"Texte  : {incoming.text}", flush=True)
+
+    def should_ignore_incoming_message(self, incoming: IncomingMessageData) -> bool:
+        if incoming.msg_id and incoming.msg_id in self.recent_ids:
+            print("↪️ Message déjà traité, ignoré", flush=True)
+            return True
+
+        if incoming.msg_id:
+            self.recent_ids.append(incoming.msg_id)
+
+        if not incoming.author:
+            print("↪️ Auteur vide, ignoré", flush=True)
+            return True
+
+        if incoming.author == BOT_USERNAME:
+            print("↪️ Message ignoré : envoyé par le bot", flush=True)
+            return True
+
+        if BOT_TRIGGER not in incoming.text.lower():
+            print("↪️ Pas de mention du bot, ignoré", flush=True)
+            return True
+
+        if looks_like_prompt_injection(incoming.text):
+            print("↪️ Tentative probable de prompt injection, ignorée", flush=True)
+            return True
+
+        return False
 
     def persist_local_turn(
         self,
@@ -1474,47 +1528,17 @@ class Bot(commands.Bot):
 
     async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
-            raw_text = payload.text or ""
-            text = sanitize_user_text(raw_text)
-            clean_viewer_message = sanitize_user_text(strip_trigger(text))
-            author = (payload.chatter.name or "").lower()
-            msg_id = getattr(payload, "id", None)
+            incoming = self.build_incoming_message_data(payload)
+            self.log_incoming_message(payload, incoming)
 
-            print("--------------------------------------------------", flush=True)
-            print("💬 MESSAGE REÇU", flush=True)
-            print(f"Chaîne : {payload.broadcaster.name}", flush=True)
-            print(f"Auteur : {payload.chatter.name}", flush=True)
-            print(f"Texte brut : {raw_text}", flush=True)
-            print(f"Texte  : {text}", flush=True)
-
-            if msg_id and msg_id in self.recent_ids:
-                print("↪️ Message déjà traité, ignoré", flush=True)
-                return
-
-            if msg_id:
-                self.recent_ids.append(msg_id)
-
-            if not author:
-                print("↪️ Auteur vide, ignoré", flush=True)
-                return
-
-            if author == BOT_USERNAME:
-                print("↪️ Message ignoré : envoyé par le bot", flush=True)
-                return
-
-            if BOT_TRIGGER not in text.lower():
-                print("↪️ Pas de mention du bot, ignoré", flush=True)
-                return
-
-            if looks_like_prompt_injection(text):
-                print("↪️ Tentative probable de prompt injection, ignorée", flush=True)
+            if self.should_ignore_incoming_message(incoming):
                 return
             queued_message = QueuedMessage(
                 payload=payload,
-                text=text,
-                clean_viewer_message=clean_viewer_message,
-                author=author,
-                msg_id=msg_id,
+                text=incoming.text,
+                clean_viewer_message=incoming.clean_viewer_message,
+                author=incoming.author,
+                msg_id=incoming.msg_id,
                 received_at=now_ts(),
             )
             if self.queue_worker_task is None:
