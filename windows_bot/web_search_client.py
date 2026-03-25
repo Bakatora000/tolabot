@@ -1,5 +1,4 @@
 import requests
-import re
 
 from bot_logic import normalize_spaces, sanitize_user_text, strip_trigger
 from decision_tree import build_web_search_decision
@@ -66,24 +65,11 @@ def build_web_search_query(
 ) -> str:
     cleaned = sanitize_user_text(strip_trigger(message))
     context_text = sanitize_user_text(f"{viewer_context}\n{global_context}")
-    lowered = cleaned.lower()
-    context_lower = context_text.lower()
     decision = build_web_search_decision(cleaned, context_text, mode="auto")
     if decision["enabled"] and decision["query"]:
         query = str(decision["query"])
         if query != cleaned:
             return query
-
-    if "reuters" in lowered and ("première page" in lowered or "premiere page" in lowered or "actualité" in lowered or "actualite" in lowered):
-        return "Reuters actualité première page"
-
-    if "meilleur film" in lowered and "2025" in lowered:
-        return "meilleur film 2025"
-
-    if "films à l'affiche" in lowered or "films a l'affiche" in lowered or "films a l affiche" in lowered:
-        city_match = re.search(r"\b(?:à|a)\s+([A-ZÀ-ÖØ-öø-ÿ][a-zà-öø-ÿ-]+)\b", cleaned)
-        if city_match:
-            return f"films à l'affiche cette semaine {city_match.group(1)}"
 
     return cleaned
 

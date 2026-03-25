@@ -66,6 +66,39 @@
     "best_film_2025_query": "meilleur film 2025",
     "movies_this_week_template": "films à l'affiche cette semaine {location}"
   },
+  "web_rules": [
+    {
+      "rule_id": "reuters_front_page",
+      "match_all": [
+        "reuters"
+      ],
+      "match_any": [
+        "première page",
+        "premiere page",
+        "actualité",
+        "actualite"
+      ],
+      "query_action": "reuters_front_page_query"
+    },
+    {
+      "rule_id": "best_film_2025",
+      "match_all": [
+        "meilleur film",
+        "2025"
+      ],
+      "query_action": "best_film_2025_query"
+    },
+    {
+      "rule_id": "movies_this_week_city",
+      "match_any": [
+        "films à l'affiche",
+        "films a l'affiche",
+        "films a l affiche"
+      ],
+      "query_action": "movies_this_week_template",
+      "requires_location": true
+    }
+  ],
   "web_search": {
     "trigger_fragments": [
       "aujourd'hui",

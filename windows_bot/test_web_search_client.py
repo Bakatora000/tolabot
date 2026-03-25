@@ -62,6 +62,15 @@ class WebSearchClientTests(unittest.TestCase):
 
         self.assertEqual(query, "Reuters actualité première page")
 
+    def test_build_web_search_query_normalizes_best_film_request(self):
+        query = build_web_search_query(
+            "quelle est le meilleur film de 2025 ?",
+            viewer_context="aucun",
+            global_context="aucun",
+        )
+
+        self.assertEqual(query, "meilleur film 2025")
+
     @patch("web_search_client.requests.get")
     def test_search_searxng_parses_results(self, mock_get):
         response = Mock()

@@ -66,6 +66,7 @@ from conversation_graph import (
     load_conversation_graph,
     prune_conversation_graph,
 )
+from decision_tree import build_web_search_decision
 from facts_memory import (
     append_reported_facts,
     build_facts_context,
@@ -695,15 +696,18 @@ class Bot(commands.Bot):
             )
             web_context = "aucun"
             if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
-                use_web_search = should_enable_web_search(
-                    resolved_text,
-                    viewer_context=chat_context.get("viewer_context", "aucun"),
-                    global_context=chat_context.get("global_context", "aucun"),
+                web_decision = build_web_search_decision(
+                    sanitize_user_text(strip_trigger(resolved_text)),
+                    f"{chat_context.get('viewer_context', 'aucun')}\n{chat_context.get('global_context', 'aucun')}",
                     mode=CONFIG.web_search_mode,
                 )
-                if use_web_search:
+                if web_decision["enabled"]:
+                    print(
+                        f"🌐 Règle web matchée : {web_decision.get('rule_id', '')} ({web_decision.get('reason', '')})",
+                        flush=True,
+                    )
                     try:
-                        web_query = build_web_search_query(
+                        web_query = str(web_decision.get("query", "")).strip() or build_web_search_query(
                             resolved_text,
                             viewer_context=chat_context.get("viewer_context", "aucun"),
                             global_context=chat_context.get("global_context", "aucun"),
