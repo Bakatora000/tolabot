@@ -33,6 +33,7 @@ Code partage :
 - `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
 - `graphiti/` : base de travail Graphiti V1 Linux locale/offline
+- `homegraph/homegraph_v2_links.md` : proposition de V2 centree sur une couche liens SQLite-compatible
 
 ---
 

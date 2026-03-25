@@ -23,6 +23,7 @@ Disponible :
 ## Fichiers
 
 - `homegraph/schema.py`
+- `homegraph/homegraph_v2_links.md`
 - `homegraph/init_db.py`
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
@@ -112,3 +113,4 @@ homegraph/viewer_context_contract_v1.md
 
 - automatiser eventuellement l'appel GPT
 - brancher l'appel cote Windows
+- preparer `homegraph v2` avec une vraie couche liens sans quitter SQLite
