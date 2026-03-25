@@ -28,6 +28,7 @@ Fichiers de suivi :
 Code partage :
 - `memory_service/` : service Linux
 - `windows_bot/` : bot Twitch Windows
+- `architecture_target_vnext.md` : cible d'architecture pour la refacto Windows vers un bot contextuel, temporel et plus arbitrable
 - `admin_interface_v1.md` : design V1 pour l'administration memoire via tunnel SSH
 - `admin_api_contract_v1.md` : contrat de l'API admin locale Linux
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
