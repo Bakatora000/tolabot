@@ -165,7 +165,7 @@ async def finalize_model_reply(
     handle_model_reply_result_fn,
     increment_memory_helpful_fn,
     debug_chat_memory: bool,
-) -> bool:
+    ) -> bool:
     if not reply or is_no_reply_signal(reply):
         fallback_reply = build_no_reply_fallback(resolved_text, riddle_related=riddle_related)
         await handle_model_no_reply_fn(
@@ -241,3 +241,110 @@ async def finalize_model_reply(
         if debug_chat_memory:
             print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
     return True
+
+
+async def handle_model_decision_pipeline(
+    *,
+    payload,
+    author: str,
+    channel_name: str,
+    clean_viewer_message: str,
+    resolved_text: str,
+    msg_id: str | None,
+    author_is_owner: bool,
+    event_type: str,
+    related_viewer: str,
+    related_message: str,
+    reply_to_turn_id: str,
+    related_turn_id: str,
+    riddle_related: bool,
+    riddle_thread_reset: bool,
+    riddle_thread_close: bool,
+    specialized_local_thread: bool,
+    decision,
+    alias_context: str,
+    focus_context: str,
+    facts_context: str,
+    config,
+    model,
+    ask_fn,
+    max_output_chars: int,
+    suspicious_output_checker,
+    partial_riddle_checker,
+    riddle_refusal_checker,
+    memory_context_checker,
+    build_runtime_context_bundle_fn,
+    handle_model_no_reply_fn,
+    persist_local_and_remote_turn_fn,
+    handle_model_reply_result_fn,
+    increment_memory_helpful_fn,
+    debug_chat_memory: bool,
+) -> None:
+    print("🤖 Mention détectée, appel à Ollama...", flush=True)
+    prefer_active_thread = bool(
+        decision.meta.get(
+            "prefer_active_thread",
+            specialized_local_thread or memory_context_checker(resolved_text),
+        )
+    )
+    conversation_mode = str(decision.meta.get("conversation_mode", ""))
+    context_bundle = build_runtime_context_bundle_fn(
+        resolved_text=resolved_text,
+        payload=payload,
+        channel_name=channel_name,
+        author=author,
+        prefer_active_thread=prefer_active_thread,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        specialized_local_thread=specialized_local_thread,
+        decision=decision,
+        alias_context=alias_context,
+        focus_context=focus_context,
+        facts_context=facts_context,
+        conversation_mode=conversation_mode,
+    )
+    log_runtime_context(
+        config=config,
+        context_bundle=context_bundle,
+        prefer_active_thread=prefer_active_thread,
+        riddle_thread_reset=riddle_thread_reset,
+    )
+    reply = await generate_model_reply(
+        payload=payload,
+        resolved_text=resolved_text,
+        context_bundle=context_bundle,
+        config=config,
+        model=model,
+        ask_fn=ask_fn,
+    )
+    print(f"🧠 Réponse Ollama : {reply}", flush=True)
+    await finalize_model_reply(
+        payload=payload,
+        author=author,
+        channel_name=channel_name,
+        clean_viewer_message=clean_viewer_message,
+        resolved_text=resolved_text,
+        reply=reply,
+        msg_id=msg_id,
+        allow_remote=not specialized_local_thread,
+        author_is_owner=author_is_owner,
+        event_type=event_type,
+        related_viewer=related_viewer,
+        related_message=related_message,
+        reply_to_turn_id=reply_to_turn_id,
+        related_turn_id=related_turn_id,
+        riddle_related=riddle_related,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        context_bundle=context_bundle,
+        max_output_chars=max_output_chars,
+        suspicious_output_checker=suspicious_output_checker,
+        partial_riddle_checker=partial_riddle_checker,
+        riddle_refusal_checker=riddle_refusal_checker,
+        memory_context_checker=memory_context_checker,
+        handle_model_no_reply_fn=handle_model_no_reply_fn,
+        persist_local_and_remote_turn_fn=persist_local_and_remote_turn_fn,
+        handle_model_reply_result_fn=handle_model_reply_result_fn,
+        increment_memory_helpful_fn=increment_memory_helpful_fn,
+        debug_chat_memory=debug_chat_memory,
+    )

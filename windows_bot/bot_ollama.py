@@ -76,10 +76,8 @@ from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, s
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from runtime_pipeline import (
     build_incoming_message_data,
-    finalize_model_reply,
-    generate_model_reply,
+    handle_model_decision_pipeline,
     log_incoming_message,
-    log_runtime_context,
     send_channel_summary_reply,
     should_ignore_incoming_message,
 )
@@ -704,105 +702,6 @@ class Bot(commands.Bot):
         )
         self.mark_replied(author)
 
-    async def handle_model_decision_pipeline(
-        self,
-        *,
-        payload: twitchio.ChatMessage,
-        author: str,
-        channel_name: str,
-        clean_viewer_message: str,
-        resolved_text: str,
-        msg_id: str | None,
-        author_is_owner: bool,
-        event_type: str,
-        related_viewer: str,
-        related_message: str,
-        reply_to_turn_id: str,
-        related_turn_id: str,
-        riddle_related: bool,
-        riddle_thread_reset: bool,
-        riddle_thread_close: bool,
-        specialized_local_thread: bool,
-        decision,
-        alias_context: str,
-        focus_context: str,
-        facts_context: str,
-    ) -> None:
-        print("🤖 Mention détectée, appel à Ollama...", flush=True)
-        prefer_active_thread = bool(
-            decision.meta.get(
-                "prefer_active_thread",
-                specialized_local_thread or likely_needs_memory_context(resolved_text),
-            )
-        )
-        conversation_mode = str(decision.meta.get("conversation_mode", ""))
-        context_bundle = self.build_runtime_context_bundle(
-            resolved_text=resolved_text,
-            payload=payload,
-            channel_name=channel_name,
-            author=author,
-            prefer_active_thread=prefer_active_thread,
-            riddle_thread_reset=riddle_thread_reset,
-            riddle_thread_close=riddle_thread_close,
-            specialized_local_thread=specialized_local_thread,
-            decision=decision,
-            alias_context=alias_context,
-            focus_context=focus_context,
-            facts_context=facts_context,
-            conversation_mode=conversation_mode,
-        )
-        log_runtime_context(
-            config=CONFIG,
-            context_bundle=context_bundle,
-            prefer_active_thread=prefer_active_thread,
-            riddle_thread_reset=riddle_thread_reset,
-        )
-        reply = await generate_model_reply(
-            payload=payload,
-            resolved_text=resolved_text,
-            context_bundle=context_bundle,
-            config=CONFIG,
-            model=OLLAMA_MODEL,
-            ask_fn=ask_ollama,
-        )
-        reply = normalize_web_sourced_reply(reply, web_context=context_bundle.web_context)
-
-        print(f"🧠 Réponse Ollama : {reply}", flush=True)
-
-        await finalize_model_reply(
-            payload=payload,
-            author=author,
-            channel_name=channel_name,
-            clean_viewer_message=clean_viewer_message,
-            resolved_text=resolved_text,
-            reply=reply,
-            msg_id=msg_id,
-            allow_remote=not specialized_local_thread,
-            author_is_owner=author_is_owner,
-            event_type=event_type,
-            related_viewer=related_viewer,
-            related_message=related_message,
-            reply_to_turn_id=reply_to_turn_id,
-            related_turn_id=related_turn_id,
-            riddle_related=riddle_related,
-            riddle_thread_reset=riddle_thread_reset,
-            riddle_thread_close=riddle_thread_close,
-            context_bundle=context_bundle,
-            max_output_chars=MAX_OUTPUT_CHARS,
-            suspicious_output_checker=output_is_suspicious,
-            partial_riddle_checker=is_partial_riddle_message,
-            riddle_refusal_checker=is_riddle_refusal_reply,
-            memory_context_checker=likely_needs_memory_context,
-            handle_model_no_reply_fn=self.handle_model_no_reply,
-            persist_local_and_remote_turn_fn=self.persist_local_and_remote_turn,
-            handle_model_reply_result_fn=self.handle_model_reply_result,
-            increment_memory_helpful_fn=lambda: increment_chat_memory_counter(
-                self.chat_memory,
-                "memory_helpful_replies",
-            ),
-            debug_chat_memory=CONFIG.debug_chat_memory,
-        )
-
     def maybe_refresh_context_for_web(
         self,
         *,
@@ -1271,7 +1170,7 @@ class Bot(commands.Bot):
             ):
                 return
 
-            await self.handle_model_decision_pipeline(
+            await handle_model_decision_pipeline(
                 payload=payload,
                 author=author,
                 channel_name=channel_name,
@@ -1292,6 +1191,23 @@ class Bot(commands.Bot):
                 alias_context=alias_context,
                 focus_context=focus_context,
                 facts_context=facts_context,
+                config=CONFIG,
+                model=OLLAMA_MODEL,
+                ask_fn=ask_ollama,
+                max_output_chars=MAX_OUTPUT_CHARS,
+                suspicious_output_checker=output_is_suspicious,
+                partial_riddle_checker=is_partial_riddle_message,
+                riddle_refusal_checker=is_riddle_refusal_reply,
+                memory_context_checker=likely_needs_memory_context,
+                build_runtime_context_bundle_fn=self.build_runtime_context_bundle,
+                handle_model_no_reply_fn=self.handle_model_no_reply,
+                persist_local_and_remote_turn_fn=self.persist_local_and_remote_turn,
+                handle_model_reply_result_fn=self.handle_model_reply_result,
+                increment_memory_helpful_fn=lambda: increment_chat_memory_counter(
+                    self.chat_memory,
+                    "memory_helpful_replies",
+                ),
+                debug_chat_memory=CONFIG.debug_chat_memory,
             )
             return
 
