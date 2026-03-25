@@ -26,6 +26,40 @@ class BotRuntimeTests(unittest.IsolatedAsyncioTestCase):
         bot._bot_id = "bot-id"
         return bot
 
+    def test_prepare_message_builds_structured_preparation(self):
+        bot = self.make_bot()
+        bot.chat_memory = {
+            "channels": {
+                "streamer": {
+                    "global_turns": [
+                        {
+                            "timestamp": "2026-03-25T10:00:00Z",
+                            "channel": "streamer",
+                            "viewer": "alice",
+                            "viewer_message": "MissCouette76 est le plus souvent appelée MissCouette ou Caouette",
+                            "bot_reply": "C'est noté.",
+                            "thread_boundary": "",
+                            "event_type": "memory",
+                            "related_viewer": "",
+                            "related_message": "",
+                        }
+                    ],
+                    "viewer_turns": {},
+                    "counters": {},
+                }
+            }
+        }
+
+        prepared = bot.prepare_message(
+            text="@AnneAuNimouss que peux tu me dire sur Caouette ?",
+            channel_name="streamer",
+            author="alice",
+        )
+
+        self.assertIn("MissCouette76", prepared.resolved_text)
+        self.assertIn("alias local: caouette = MissCouette76", prepared.alias_context)
+        self.assertFalse(prepared.specialized_local_thread)
+
     async def test_enqueue_message_drops_oldest_when_queue_is_full(self):
         bot = self.make_bot()
         payload = SimpleNamespace(text="@AnneAuNimouss salut", chatter=SimpleNamespace(name="alice"), broadcaster=SimpleNamespace(name="streamer"), id="m1")

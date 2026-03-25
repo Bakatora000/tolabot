@@ -77,6 +77,7 @@ from facts_memory import (
 )
 from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, store_memory_turn
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
+from runtime_types import MessagePreparation
 from twitch_auth import run_oauth_flow
 from web_search_client import build_web_search_context, build_web_search_query, search_searxng, should_enable_web_search
 
@@ -868,6 +869,89 @@ class Bot(commands.Bot):
         )
         return chat_context, context_source, context_sources, prefetch_web_decision
 
+    def prepare_message(
+        self,
+        *,
+        text: str,
+        channel_name: str,
+        author: str,
+    ) -> MessagePreparation:
+        alias_index = build_channel_alias_index(self.chat_memory, channel_name)
+        resolved_text, alias_replacements = resolve_known_aliases(text, alias_index)
+        alias_context = "aucun"
+        if alias_replacements:
+            alias_context = "\n".join(
+                f"alias local: {alias} = {canonical}" for alias, canonical in alias_replacements
+            )
+
+        focus = infer_recent_focus(self.chat_memory, channel_name, author)
+        resolved_text, focus_notes = resolve_recent_reference_subjects(resolved_text, focus)
+        focus_context = "\n".join(focus_notes) if focus_notes else "aucun"
+        facts_context = build_facts_context(
+            self.facts_memory,
+            channel_name,
+            author,
+            resolved_text,
+        )
+        author_is_owner = author == channel_name
+        event_type = classify_conversation_event(resolved_text, author_is_owner=author_is_owner)
+
+        related_viewer = ""
+        related_message = ""
+        related_turn_id = ""
+        reply_to_turn_id = ""
+        if likely_needs_memory_context(resolved_text):
+            reply_target_turn = find_reply_target_turn(
+                self.conversation_graph,
+                channel_name=channel_name,
+                author_name=author,
+            )
+            if reply_target_turn:
+                reply_to_turn_id = normalize_spaces(reply_target_turn.get("turn_id", ""))
+
+        if event_type in {"correction", "owner_correction"}:
+            related_turn = find_related_conversation_turn(
+                self.conversation_graph,
+                channel_name=channel_name,
+                author_name=author,
+                message_text=resolved_text,
+            )
+            if related_turn is None:
+                related_turn = find_related_global_turn(
+                    self.chat_memory,
+                    channel_name=channel_name,
+                    message_text=resolved_text,
+                    author_name=author,
+                )
+            if related_turn:
+                related_viewer = normalize_spaces(related_turn.get("viewer", related_turn.get("speaker", "")))
+                related_message = sanitize_user_text(
+                    related_turn.get("viewer_message", related_turn.get("message_text", ""))
+                )
+                related_turn_id = normalize_spaces(related_turn.get("turn_id", ""))
+
+        riddle_related = looks_like_riddle_message(resolved_text)
+        riddle_thread_reset = starts_new_riddle_thread(resolved_text)
+        riddle_thread_close = closes_riddle_thread(resolved_text)
+        specialized_local_thread = riddle_related or riddle_thread_reset or riddle_thread_close
+
+        return MessagePreparation(
+            resolved_text=resolved_text,
+            alias_context=alias_context,
+            focus_context=focus_context,
+            facts_context=facts_context,
+            author_is_owner=author_is_owner,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            related_turn_id=related_turn_id,
+            reply_to_turn_id=reply_to_turn_id,
+            riddle_related=riddle_related,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            specialized_local_thread=specialized_local_thread,
+        )
+
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
         broadcaster_name = normalize_spaces(getattr(queued_message.payload.broadcaster, "name", "")).lower()
         is_owner_message = (
@@ -921,61 +1005,25 @@ class Bot(commands.Bot):
         author = queued_message.author
         msg_id = queued_message.msg_id
         channel_name = normalize_spaces(payload.broadcaster.name).lower()
-        alias_index = build_channel_alias_index(self.chat_memory, channel_name)
-        resolved_text, alias_replacements = resolve_known_aliases(text, alias_index)
-        alias_context = "aucun"
-        if alias_replacements:
-            alias_lines = [f"alias local: {alias} = {canonical}" for alias, canonical in alias_replacements]
-            alias_context = "\n".join(alias_lines)
-        focus = infer_recent_focus(self.chat_memory, channel_name, author)
-        resolved_text, focus_notes = resolve_recent_reference_subjects(resolved_text, focus)
-        focus_context = "aucun"
-        if focus_notes:
-            focus_context = "\n".join(focus_notes)
-        facts_context = build_facts_context(
-            self.facts_memory,
-            channel_name,
-            author,
-            resolved_text,
+        prepared = self.prepare_message(
+            text=text,
+            channel_name=channel_name,
+            author=author,
         )
-        author_is_owner = author == channel_name
-        event_type = classify_conversation_event(resolved_text, author_is_owner=author_is_owner)
-        related_turn = None
-        related_viewer = ""
-        related_message = ""
-        related_turn_id = ""
-        reply_to_turn_id = ""
-        if likely_needs_memory_context(resolved_text):
-            reply_target_turn = find_reply_target_turn(
-                self.conversation_graph,
-                channel_name=channel_name,
-                author_name=author,
-            )
-            if reply_target_turn:
-                reply_to_turn_id = normalize_spaces(reply_target_turn.get("turn_id", ""))
-        if event_type in {"correction", "owner_correction"}:
-            related_turn = find_related_conversation_turn(
-                self.conversation_graph,
-                channel_name=channel_name,
-                author_name=author,
-                message_text=resolved_text,
-            )
-            if related_turn is None:
-                related_turn = find_related_global_turn(
-                    self.chat_memory,
-                    channel_name=channel_name,
-                    message_text=resolved_text,
-                    author_name=author,
-                )
-            if related_turn:
-                related_viewer = normalize_spaces(related_turn.get("viewer", related_turn.get("speaker", "")))
-                related_message = sanitize_user_text(related_turn.get("viewer_message", related_turn.get("message_text", "")))
-                related_turn_id = normalize_spaces(related_turn.get("turn_id", ""))
-
-        riddle_related = looks_like_riddle_message(resolved_text)
-        riddle_thread_reset = starts_new_riddle_thread(resolved_text)
-        riddle_thread_close = closes_riddle_thread(resolved_text)
-        specialized_local_thread = riddle_related or riddle_thread_reset or riddle_thread_close
+        resolved_text = prepared.resolved_text
+        alias_context = prepared.alias_context
+        focus_context = prepared.focus_context
+        facts_context = prepared.facts_context
+        author_is_owner = prepared.author_is_owner
+        event_type = prepared.event_type
+        related_viewer = prepared.related_viewer
+        related_message = prepared.related_message
+        related_turn_id = prepared.related_turn_id
+        reply_to_turn_id = prepared.reply_to_turn_id
+        riddle_related = prepared.riddle_related
+        riddle_thread_reset = prepared.riddle_thread_reset
+        riddle_thread_close = prepared.riddle_thread_close
+        specialized_local_thread = prepared.specialized_local_thread
         if specialized_local_thread:
             print("🧩 Charade/devinette détectée", flush=True)
             increment_chat_memory_counter(

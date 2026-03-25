@@ -59,3 +59,20 @@ class PromptPlan:
     style_block: str
     source_trace: list[str] = field(default_factory=list)
 
+
+@dataclass(slots=True)
+class MessagePreparation:
+    resolved_text: str
+    alias_context: str
+    focus_context: str
+    facts_context: str
+    author_is_owner: bool
+    event_type: str
+    related_viewer: str
+    related_message: str
+    related_turn_id: str
+    reply_to_turn_id: str
+    riddle_related: bool
+    riddle_thread_reset: bool
+    riddle_thread_close: bool
+    specialized_local_thread: bool
