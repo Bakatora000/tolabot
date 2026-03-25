@@ -72,6 +72,7 @@ from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from runtime_pipeline import (
     build_incoming_message_data,
     build_runtime_context_bundle,
+    handle_non_model_decision,
     handle_model_decision_pipeline,
     log_incoming_message,
     send_channel_summary_reply,
@@ -461,107 +462,6 @@ class Bot(commands.Bot):
             ttl_hours=CONFIG.chat_memory_ttl_hours,
         )
 
-    async def handle_non_model_decision(
-        self,
-        *,
-        payload: twitchio.ChatMessage,
-        author: str,
-        channel_name: str,
-        msg_id: str | None,
-        decision,
-        clean_viewer_message: str,
-        event_type: str,
-        related_viewer: str,
-        related_message: str,
-        reply_to_turn_id: str,
-        related_turn_id: str,
-        riddle_thread_reset: bool,
-        riddle_thread_close: bool,
-        author_is_owner: bool,
-    ) -> bool:
-        if decision.decision == "channel_summary":
-            await self.reply_about_channel_content(payload, author)
-            return True
-
-        if decision.decision == "refuse_memory_instruction":
-            refusal_reply = str(decision.meta.get("reply", "Je ne prends ce type de note mémoire que d'Expevay."))
-            print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
-            await self.send_chat_reply(payload.broadcaster, author, refusal_reply)
-            self.persist_local_turn(
-                channel_name=channel_name,
-                author=author,
-                clean_viewer_message=clean_viewer_message,
-                bot_reply=refusal_reply,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-                store_reported_facts=False,
-            )
-            self.mark_replied(author)
-            return True
-
-        if decision.decision == "store_only":
-            self.persist_local_turn(
-                channel_name=channel_name,
-                author=author,
-                clean_viewer_message=clean_viewer_message,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-                riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-            )
-            self.remember_remote_turn(
-                channel_name,
-                author,
-                clean_viewer_message,
-                message_id=msg_id,
-                allow_remote=False,
-                author_is_owner=author_is_owner,
-            )
-            print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
-            return True
-
-        if decision.decision == "social_reply":
-            social_reply = str(decision.meta.get("reply", ""))
-            if social_reply:
-                await self.send_chat_reply(payload.broadcaster, author, social_reply, log_prefix="📤 Réponse sociale")
-            self.persist_local_turn(
-                channel_name=channel_name,
-                author=author,
-                clean_viewer_message=clean_viewer_message,
-                bot_reply=social_reply,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-            )
-            if social_reply:
-                self.mark_replied(author)
-            print("↪️ Salutation/clôture traitée localement, sans appel au modèle", flush=True)
-            return True
-
-        if decision.decision == "skip_reply":
-            self.persist_local_turn(
-                channel_name=channel_name,
-                author=author,
-                clean_viewer_message=clean_viewer_message,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-            )
-            print("↪️ Acquiescement bref détecté, sans appel au modèle", flush=True)
-            return True
-
-        return False
-
     def persist_local_and_remote_turn(
         self,
         *,
@@ -912,7 +812,7 @@ class Bot(commands.Bot):
         async with self.generation_lock:
             print(f"🧭 Décision : {decision.decision} [{decision.rule_id}]", flush=True)
 
-            if await self.handle_non_model_decision(
+            if await handle_non_model_decision(
                 payload=payload,
                 author=author,
                 channel_name=channel_name,
@@ -927,6 +827,12 @@ class Bot(commands.Bot):
                 riddle_thread_reset=riddle_thread_reset,
                 riddle_thread_close=riddle_thread_close,
                 author_is_owner=author_is_owner,
+                reply_about_channel_content_fn=self.reply_about_channel_content,
+                send_chat_reply_fn=self.send_chat_reply,
+                persist_local_turn_fn=self.persist_local_turn,
+                persist_local_and_remote_turn_fn=self.persist_local_and_remote_turn,
+                remember_remote_turn_fn=self.remember_remote_turn,
+                mark_replied_fn=self.mark_replied,
             ):
                 return
 

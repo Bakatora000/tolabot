@@ -86,6 +86,113 @@ async def send_channel_summary_reply(bot, payload, author: str, summary: str) ->
     bot.mark_replied(author)
 
 
+async def handle_non_model_decision(
+    *,
+    payload,
+    author: str,
+    channel_name: str,
+    msg_id: str | None,
+    decision,
+    clean_viewer_message: str,
+    event_type: str,
+    related_viewer: str,
+    related_message: str,
+    reply_to_turn_id: str,
+    related_turn_id: str,
+    riddle_thread_reset: bool,
+    riddle_thread_close: bool,
+    author_is_owner: bool,
+    reply_about_channel_content_fn,
+    send_chat_reply_fn,
+    persist_local_turn_fn,
+    persist_local_and_remote_turn_fn,
+    remember_remote_turn_fn,
+    mark_replied_fn,
+) -> bool:
+    if decision.decision == "channel_summary":
+        await reply_about_channel_content_fn(payload, author)
+        return True
+
+    if decision.decision == "refuse_memory_instruction":
+        refusal_reply = str(decision.meta.get("reply", "Je ne prends ce type de note mémoire que d'Expevay."))
+        print("↪️ Demande de mémorisation refusée : auteur non propriétaire", flush=True)
+        await send_chat_reply_fn(payload.broadcaster, author, refusal_reply)
+        persist_local_turn_fn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            bot_reply=refusal_reply,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            store_reported_facts=False,
+        )
+        mark_replied_fn(author)
+        return True
+
+    if decision.decision == "store_only":
+        persist_local_turn_fn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+        )
+        remember_remote_turn_fn(
+            channel_name,
+            author,
+            clean_viewer_message,
+            message_id=msg_id,
+            allow_remote=False,
+            author_is_owner=author_is_owner,
+        )
+        print("↪️ Indice partiel de charade mémorisé, sans appel au modèle", flush=True)
+        return True
+
+    if decision.decision == "social_reply":
+        social_reply = str(decision.meta.get("reply", ""))
+        if social_reply:
+            await send_chat_reply_fn(payload.broadcaster, author, social_reply, log_prefix="📤 Réponse sociale")
+        persist_local_turn_fn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            bot_reply=social_reply,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+        )
+        if social_reply:
+            mark_replied_fn(author)
+        print("↪️ Salutation/clôture traitée localement, sans appel au modèle", flush=True)
+        return True
+
+    if decision.decision == "skip_reply":
+        persist_local_turn_fn(
+            channel_name=channel_name,
+            author=author,
+            clean_viewer_message=clean_viewer_message,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+        )
+        print("↪️ Acquiescement bref détecté, sans appel au modèle", flush=True)
+        return True
+
+    return False
+
+
 def log_runtime_context(*, config, context_bundle: RuntimeContextBundle, prefer_active_thread: bool, riddle_thread_reset: bool) -> None:
     if not config.debug_chat_memory:
         return
