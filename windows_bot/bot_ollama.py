@@ -412,6 +412,16 @@ class Bot(commands.Bot):
             token_for=self.bot_id,
         )
 
+    async def send_channel_summary_reply(self, payload: twitchio.ChatMessage, author: str, summary: str) -> None:
+        outgoing_summary = self.format_chat_reply(author, summary)
+        print(f"📤 Envoi résumé chaîne : {outgoing_summary}", flush=True)
+        await payload.broadcaster.send_message(
+            outgoing_summary,
+            sender=self.bot_id,
+            token_for=self.bot_id,
+        )
+        self.mark_replied(author)
+
     def persist_local_turn(
         self,
         *,
@@ -807,6 +817,88 @@ class Bot(commands.Bot):
             if CONFIG.debug_chat_memory:
                 print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
         return True
+
+    async def handle_model_decision_pipeline(
+        self,
+        *,
+        payload: twitchio.ChatMessage,
+        author: str,
+        channel_name: str,
+        clean_viewer_message: str,
+        resolved_text: str,
+        msg_id: str | None,
+        author_is_owner: bool,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_related: bool,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+        specialized_local_thread: bool,
+        decision,
+        alias_context: str,
+        focus_context: str,
+        facts_context: str,
+    ) -> None:
+        print("🤖 Mention détectée, appel à Ollama...", flush=True)
+        prefer_active_thread = bool(
+            decision.meta.get(
+                "prefer_active_thread",
+                specialized_local_thread or likely_needs_memory_context(resolved_text),
+            )
+        )
+        conversation_mode = str(decision.meta.get("conversation_mode", ""))
+        context_bundle = self.build_runtime_context_bundle(
+            resolved_text=resolved_text,
+            payload=payload,
+            channel_name=channel_name,
+            author=author,
+            prefer_active_thread=prefer_active_thread,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            specialized_local_thread=specialized_local_thread,
+            decision=decision,
+            alias_context=alias_context,
+            focus_context=focus_context,
+            facts_context=facts_context,
+            conversation_mode=conversation_mode,
+        )
+        self.log_runtime_context(
+            context_bundle=context_bundle,
+            prefer_active_thread=prefer_active_thread,
+            riddle_thread_reset=riddle_thread_reset,
+        )
+        reply = await self.generate_model_reply(
+            payload=payload,
+            resolved_text=resolved_text,
+            context_bundle=context_bundle,
+        )
+        reply = normalize_web_sourced_reply(reply, web_context=context_bundle.web_context)
+
+        print(f"🧠 Réponse Ollama : {reply}", flush=True)
+
+        await self.finalize_model_reply(
+            payload=payload,
+            author=author,
+            channel_name=channel_name,
+            clean_viewer_message=clean_viewer_message,
+            resolved_text=resolved_text,
+            reply=reply,
+            msg_id=msg_id,
+            allow_remote=not specialized_local_thread,
+            author_is_owner=author_is_owner,
+            event_type=event_type,
+            related_viewer=related_viewer,
+            related_message=related_message,
+            reply_to_turn_id=reply_to_turn_id,
+            related_turn_id=related_turn_id,
+            riddle_related=riddle_related,
+            riddle_thread_reset=riddle_thread_reset,
+            riddle_thread_close=riddle_thread_close,
+            context_bundle=context_bundle,
+        )
 
     def maybe_refresh_context_for_web(
         self,
@@ -1331,46 +1423,13 @@ class Bot(commands.Bot):
             ):
                 return
 
-            print("🤖 Mention détectée, appel à Ollama...", flush=True)
-            prefer_active_thread = bool(decision.meta.get("prefer_active_thread", specialized_local_thread or likely_needs_memory_context(resolved_text)))
-            conversation_mode = str(decision.meta.get("conversation_mode", ""))
-            context_bundle = self.build_runtime_context_bundle(
-                resolved_text=resolved_text,
-                payload=payload,
-                channel_name=channel_name,
-                author=author,
-                prefer_active_thread=prefer_active_thread,
-                riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-                specialized_local_thread=specialized_local_thread,
-                decision=decision,
-                alias_context=alias_context,
-                focus_context=focus_context,
-                facts_context=facts_context,
-                conversation_mode=conversation_mode,
-            )
-            self.log_runtime_context(
-                context_bundle=context_bundle,
-                prefer_active_thread=prefer_active_thread,
-                riddle_thread_reset=riddle_thread_reset,
-            )
-            reply = await self.generate_model_reply(
-                payload=payload,
-                resolved_text=resolved_text,
-                context_bundle=context_bundle,
-            )
-            reply = normalize_web_sourced_reply(reply, web_context=context_bundle.web_context)
-
-            print(f"🧠 Réponse Ollama : {reply}", flush=True)
-            await self.finalize_model_reply(
+            await self.handle_model_decision_pipeline(
                 payload=payload,
                 author=author,
                 channel_name=channel_name,
                 clean_viewer_message=clean_viewer_message,
                 resolved_text=resolved_text,
-                reply=reply,
                 msg_id=msg_id,
-                allow_remote=not specialized_local_thread,
                 author_is_owner=author_is_owner,
                 event_type=event_type,
                 related_viewer=related_viewer,
@@ -1380,7 +1439,11 @@ class Bot(commands.Bot):
                 riddle_related=riddle_related,
                 riddle_thread_reset=riddle_thread_reset,
                 riddle_thread_close=riddle_thread_close,
-                context_bundle=context_bundle,
+                specialized_local_thread=specialized_local_thread,
+                decision=decision,
+                alias_context=alias_context,
+                focus_context=focus_context,
+                facts_context=facts_context,
             )
             return
 
@@ -1407,14 +1470,7 @@ class Bot(commands.Bot):
             print("↪️ Résumé suspect bloqué", flush=True)
             return
 
-        outgoing_summary = self.format_chat_reply(author, summary)
-        print(f"📤 Envoi résumé chaîne : {outgoing_summary}", flush=True)
-        await payload.broadcaster.send_message(
-            outgoing_summary,
-            sender=self.bot_id,
-            token_for=self.bot_id,
-        )
-        self.mark_replied(author)
+        await self.send_channel_summary_reply(payload, author, summary)
 
     async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
