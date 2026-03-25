@@ -19,7 +19,6 @@ from bot_logic import (
     build_channel_alias_index,
     asks_about_channel_content,
     build_chat_context,
-    build_no_reply_fallback,
     classify_conversation_event,
     closes_riddle_thread,
     find_related_global_turn,
@@ -77,12 +76,12 @@ from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, s
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from runtime_pipeline import (
     build_incoming_message_data,
+    finalize_model_reply,
     generate_model_reply,
     log_incoming_message,
     log_runtime_context,
     send_channel_summary_reply,
     should_ignore_incoming_message,
-    should_mark_memory_helpful,
 )
 from runtime_types import MessagePreparation, RuntimeContextBundle
 from twitch_auth import run_oauth_flow
@@ -705,109 +704,6 @@ class Bot(commands.Bot):
         )
         self.mark_replied(author)
 
-    async def finalize_model_reply(
-        self,
-        *,
-        payload: twitchio.ChatMessage,
-        author: str,
-        channel_name: str,
-        clean_viewer_message: str,
-        resolved_text: str,
-        reply: str,
-        msg_id: str | None,
-        allow_remote: bool,
-        author_is_owner: bool,
-        event_type: str,
-        related_viewer: str,
-        related_message: str,
-        reply_to_turn_id: str,
-        related_turn_id: str,
-        riddle_related: bool,
-        riddle_thread_reset: bool,
-        riddle_thread_close: bool,
-        context_bundle: RuntimeContextBundle,
-    ) -> bool:
-        if not reply or is_no_reply_signal(reply):
-            fallback_reply = build_no_reply_fallback(resolved_text, riddle_related=riddle_related)
-            await self.handle_model_no_reply(
-                payload=payload,
-                author=author,
-                channel_name=channel_name,
-                clean_viewer_message=clean_viewer_message,
-                fallback_reply=fallback_reply,
-                msg_id=msg_id,
-                allow_remote=allow_remote,
-                author_is_owner=author_is_owner,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-                riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-            )
-            return True
-
-        if riddle_related and (
-            is_partial_riddle_message(resolved_text) or is_riddle_refusal_reply(reply)
-        ):
-            self.persist_local_and_remote_turn(
-                channel_name=channel_name,
-                author=author,
-                clean_viewer_message=clean_viewer_message,
-                msg_id=msg_id,
-                allow_remote=False,
-                author_is_owner=author_is_owner,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-                riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-            )
-            print("↪️ Réponse de refus/indice partiel supprimée pour la charade", flush=True)
-            return True
-
-        final_reply = smart_truncate(reply.replace("\n", " "), MAX_OUTPUT_CHARS)
-        if not final_reply:
-            print("↪️ Réponse vide après nettoyage", flush=True)
-            return True
-
-        if output_is_suspicious(final_reply):
-            print("↪️ Réponse suspecte bloquée", flush=True)
-            return True
-
-        await self.handle_model_reply_result(
-            payload=payload,
-            author=author,
-            channel_name=channel_name,
-            clean_viewer_message=clean_viewer_message,
-            final_reply=final_reply,
-            msg_id=msg_id,
-            allow_remote=allow_remote,
-            author_is_owner=author_is_owner,
-            event_type=event_type,
-            related_viewer=related_viewer,
-            related_message=related_message,
-            reply_to_turn_id=reply_to_turn_id,
-            related_turn_id=related_turn_id,
-            riddle_thread_reset=riddle_thread_reset,
-            riddle_thread_close=riddle_thread_close,
-        )
-        if should_mark_memory_helpful(
-            context_bundle=context_bundle,
-            resolved_text=resolved_text,
-            memory_context_checker=likely_needs_memory_context,
-        ):
-            increment_chat_memory_counter(
-                self.chat_memory,
-                "memory_helpful_replies",
-            )
-            if CONFIG.debug_chat_memory:
-                print("📌 Réponse marquée comme aide probable de la mémoire", flush=True)
-        return True
-
     async def handle_model_decision_pipeline(
         self,
         *,
@@ -873,7 +769,7 @@ class Bot(commands.Bot):
 
         print(f"🧠 Réponse Ollama : {reply}", flush=True)
 
-        await self.finalize_model_reply(
+        await finalize_model_reply(
             payload=payload,
             author=author,
             channel_name=channel_name,
@@ -892,6 +788,19 @@ class Bot(commands.Bot):
             riddle_thread_reset=riddle_thread_reset,
             riddle_thread_close=riddle_thread_close,
             context_bundle=context_bundle,
+            max_output_chars=MAX_OUTPUT_CHARS,
+            suspicious_output_checker=output_is_suspicious,
+            partial_riddle_checker=is_partial_riddle_message,
+            riddle_refusal_checker=is_riddle_refusal_reply,
+            memory_context_checker=likely_needs_memory_context,
+            handle_model_no_reply_fn=self.handle_model_no_reply,
+            persist_local_and_remote_turn_fn=self.persist_local_and_remote_turn,
+            handle_model_reply_result_fn=self.handle_model_reply_result,
+            increment_memory_helpful_fn=lambda: increment_chat_memory_counter(
+                self.chat_memory,
+                "memory_helpful_replies",
+            ),
+            debug_chat_memory=CONFIG.debug_chat_memory,
         )
 
     def maybe_refresh_context_for_web(
