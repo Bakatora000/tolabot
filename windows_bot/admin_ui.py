@@ -43,6 +43,10 @@ HTML_PAGE = """<!doctype html>
     .user-item { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; cursor: pointer; }
     .user-item.active { border-color: #1d70b8; background: #eef6ff; }
     .user-item:hover { background: #f7f7f7; }
+    .user-item-header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    .user-item-main { flex: 1; min-width: 0; }
+    .edit-panel { margin-top: 24px; }
+    .scroll-box { max-height: 420px; overflow-y: auto; padding-right: 6px; }
     pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 12px; border-radius: 6px; margin: 0; }
     .memory-card { border: 1px solid #e1e1e1; border-radius: 6px; padding: 12px; margin: 10px 0; background: #fafafa; }
     .memory-meta { color: #666; font-size: 0.9rem; margin-top: 8px; }
@@ -78,6 +82,13 @@ HTML_PAGE = """<!doctype html>
     <div class="panel">
       <h2>Recent</h2>
       <div id="recent">Sélectionne un viewer.</div>
+      <div class="edit-panel">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <h2 style="margin:0;">Édition</h2>
+          <span id="editor-selection" class="muted">Aucun viewer ouvert en édition.</span>
+        </div>
+        <div id="editor" class="muted">Clique sur “Éditer” pour afficher toute la mémoire d’un viewer.</div>
+      </div>
       <div style="display:flex; align-items:center; gap:12px; margin-top: 24px;">
         <h2 style="margin:0;">Review</h2>
         <button id="verbose-button" type="button">Verbose: OFF</button>
@@ -89,6 +100,8 @@ HTML_PAGE = """<!doctype html>
   <script>
     let selectedUserId = null;
     let selectedViewerLabel = null;
+    let editingUserId = null;
+    let editingViewerLabel = null;
     let verboseEnabled = false;
     let reviewSeverity = 'balanced';
     window.currentAnalysis = null;
@@ -111,6 +124,9 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('selection').textContent = selectedViewerLabel
         ? `Viewer sélectionné : ${selectedViewerLabel}`
         : 'Aucun viewer sélectionné.';
+      document.getElementById('editor-selection').textContent = editingViewerLabel
+        ? `Édition ouverte : ${editingViewerLabel}`
+        : 'Aucun viewer ouvert en édition.';
       document.getElementById('export-button').disabled = !selectedUserId;
       document.getElementById('export-review-button').disabled = !selectedUserId;
       document.getElementById('analyze-button').disabled = !selectedUserId;
@@ -191,11 +207,27 @@ HTML_PAGE = """<!doctype html>
       for (const user of data.users) {
         const item = document.createElement('li');
         const button = document.createElement('div');
+        const viewerLabel = user.viewer || user.user_id;
         button.className = 'user-item';
         if (user.user_id === selectedUserId) {
           button.classList.add('active');
         }
-        button.innerHTML = `<strong>${escapeHtml(user.viewer || user.user_id)}</strong><div class="muted">${escapeHtml(user.user_id)}</div>`;
+        button.innerHTML = `
+          <div class="user-item-header">
+            <div class="user-item-main">
+              <strong>${escapeHtml(viewerLabel)}</strong>
+              <div class="muted">${escapeHtml(user.user_id)}</div>
+            </div>
+            <button type="button" class="edit-viewer-button">Éditer</button>
+          </div>
+        `;
+        const editButton = button.querySelector('.edit-viewer-button');
+        if (editButton) {
+          editButton.onclick = (event) => {
+            event.stopPropagation();
+            openEditor(user.user_id, viewerLabel);
+          };
+        }
         button.onclick = () => loadRecent(user.user_id, user.viewer || user.user_id);
         item.appendChild(button);
         usersNode.appendChild(item);
@@ -232,15 +264,53 @@ HTML_PAGE = """<!doctype html>
             created_at: ${escapeHtml(item.created_at || '')}<br />
             score: ${escapeHtml(item.score ?? '')}
           </div>
-          <div class="actions">
-            <button type="button" onclick="deleteSingleMemory('${escapeHtml(item.id || '')}')">Supprimer</button>
-          </div>
         </div>
       `).join('');
     }
 
+    async function openEditor(userId, viewerLabel = userId) {
+      editingUserId = userId;
+      editingViewerLabel = viewerLabel;
+      updateSelectionState();
+      const editorNode = document.getElementById('editor');
+      editorNode.innerHTML = '<div class="muted">Chargement de toute la mémoire…</div>';
+      const response = await fetch(`/api/users/${encodeURIComponent(userId)}/all-memories`);
+      const data = await response.json();
+      if (!data.ok) {
+        setError(data.error || 'Erreur lors du chargement complet de la mémoire.');
+        editorNode.innerHTML = '<div class="muted">Impossible de charger la mémoire complète.</div>';
+        return;
+      }
+      setError('');
+      renderEditorMemories(data.results || []);
+    }
+
+    function renderEditorMemories(results) {
+      const editorNode = document.getElementById('editor');
+      if (!results || results.length === 0) {
+        editorNode.innerHTML = '<div class="muted">Aucun souvenir pour ce viewer.</div>';
+        return;
+      }
+      editorNode.innerHTML = `
+        <div class="scroll-box">
+          ${results.map((item) => `
+            <div class="memory-card">
+              <pre>${escapeHtml(item.memory || '')}</pre>
+              <div class="memory-meta">
+                id: ${escapeHtml(item.id || '')}<br />
+                created_at: ${escapeHtml(item.created_at || '')}
+              </div>
+              <div class="actions">
+                <button type="button" onclick="deleteSingleMemory('${escapeHtml(item.id || '')}')">Supprimer</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
     async function deleteSingleMemory(memoryId) {
-      if (!selectedUserId || !memoryId) {
+      if (!memoryId) {
         return;
       }
       const confirmed = window.confirm(`Supprimer le souvenir ${memoryId} ?`);
@@ -254,7 +324,12 @@ HTML_PAGE = """<!doctype html>
         setError(data.error || 'Échec de la suppression du souvenir.');
         return;
       }
-      await loadRecent(selectedUserId, selectedViewerLabel || selectedUserId);
+      if (selectedUserId) {
+        await loadRecent(selectedUserId, selectedViewerLabel || selectedUserId);
+      }
+      if (editingUserId) {
+        await openEditor(editingUserId, editingViewerLabel || editingUserId);
+      }
     }
 
     async function purgeSelectedUser() {
@@ -274,6 +349,12 @@ HTML_PAGE = """<!doctype html>
       }
       document.getElementById('recent').innerHTML =
         `<div class="muted">Purge effectuée : ${escapeHtml(data.deleted_count ?? 0)} souvenir(s) supprimé(s).</div>`;
+      if (editingUserId === selectedUserId) {
+        editingUserId = null;
+        editingViewerLabel = null;
+        document.getElementById('editor').innerHTML = '<div class="muted">La mémoire complète a été purgée.</div>';
+        updateSelectionState();
+      }
       await loadUsers();
     }
 
@@ -510,6 +591,22 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             try:
                 results = get_recent_memories(self.server.config, user_id)
                 self._send_json({"ok": True, "results": results})
+            except AdminApiError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
+
+        if self.path.startswith("/api/users/") and self.path.endswith("/all-memories"):
+            user_id = unquote(self.path[len("/api/users/") : -len("/all-memories")].strip("/"))
+            try:
+                payload = export_user_memories(self.server.config, user_id)
+                export_root = payload.get("export", payload)
+                self._send_json(
+                    {
+                        "ok": True,
+                        "count": export_root.get("count", 0),
+                        "results": list(export_root.get("records", [])),
+                    }
+                )
             except AdminApiError as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
             return
