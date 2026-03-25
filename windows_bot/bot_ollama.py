@@ -804,6 +804,70 @@ class Bot(commands.Bot):
             print(f"⚠️ Recherche web SearXNG indisponible : {exc}", flush=True)
         return web_context, chat_context, context_source, context_sources
 
+    def prepare_runtime_context(
+        self,
+        *,
+        resolved_text: str,
+        payload: twitchio.ChatMessage,
+        channel_name: str,
+        author: str,
+        prefer_active_thread: bool,
+        riddle_thread_reset: bool,
+        riddle_thread_close: bool,
+        specialized_local_thread: bool,
+        decision,
+        alias_context: str,
+        focus_context: str,
+        facts_context: str,
+    ) -> tuple[dict, str, list, object | None]:
+        prefetch_web_decision = None
+        if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
+            prefetch_web_decision = build_web_search_decision(
+                sanitize_user_text(strip_trigger(resolved_text)),
+                f"{alias_context}\n{focus_context}\n{facts_context}",
+                mode=CONFIG.web_search_mode,
+            )
+
+        if specialized_local_thread:
+            chat_context, context_sources = self.get_specialized_local_context(
+                payload.broadcaster.name,
+                author,
+                use_active_thread=not riddle_thread_close,
+            )
+            if chat_context["viewer_context"] == "aucun" and not riddle_thread_close:
+                chat_context, context_sources = self.get_specialized_local_context(
+                    payload.broadcaster.name,
+                    author,
+                    use_active_thread=False,
+                )
+            context_source = "local-specialized"
+        else:
+            use_remote_memory = self.should_use_remote_memory_for_message(False) and decision.needs_long_memory
+            if prefetch_web_decision and prefetch_web_decision.needs_web:
+                use_remote_memory = False
+            chat_context, context_source, context_sources = self.get_context_with_fallback(
+                text=resolved_text,
+                channel_name=channel_name,
+                author=author,
+                prefer_active_thread=prefer_active_thread,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+                use_remote_memory=use_remote_memory,
+            )
+
+        chat_context["global_context"] = merge_context_text(
+            alias_context,
+            focus_context,
+            facts_context,
+            chat_context.get("global_context", "aucun"),
+        )
+        context_sources = context_sources + build_auxiliary_context_sources(
+            alias_context=alias_context,
+            focus_context=focus_context,
+            facts_context=facts_context,
+        )
+        return chat_context, context_source, context_sources, prefetch_web_decision
+
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
         broadcaster_name = normalize_spaces(getattr(queued_message.payload.broadcaster, "name", "")).lower()
         is_owner_message = (
@@ -972,46 +1036,16 @@ class Bot(commands.Bot):
             print("🤖 Mention détectée, appel à Ollama...", flush=True)
             prefer_active_thread = bool(decision.meta.get("prefer_active_thread", specialized_local_thread or likely_needs_memory_context(resolved_text)))
             conversation_mode = str(decision.meta.get("conversation_mode", ""))
-            prefetch_web_decision = None
-            if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
-                prefetch_web_decision = build_web_search_decision(
-                    sanitize_user_text(strip_trigger(resolved_text)),
-                    f"{alias_context}\n{focus_context}\n{facts_context}",
-                    mode=CONFIG.web_search_mode,
-                )
-            if specialized_local_thread:
-                chat_context, context_sources = self.get_specialized_local_context(
-                    payload.broadcaster.name,
-                    author,
-                    use_active_thread=not riddle_thread_close,
-                )
-                if chat_context["viewer_context"] == "aucun" and not riddle_thread_close:
-                    chat_context, context_sources = self.get_specialized_local_context(
-                        payload.broadcaster.name,
-                        author,
-                        use_active_thread=False,
-                    )
-                context_source = "local-specialized"
-            else:
-                use_remote_memory = self.should_use_remote_memory_for_message(False) and decision.needs_long_memory
-                if prefetch_web_decision and prefetch_web_decision.needs_web:
-                    use_remote_memory = False
-                chat_context, context_source, context_sources = self.get_context_with_fallback(
-                    text=resolved_text,
-                    channel_name=channel_name,
-                    author=author,
-                    prefer_active_thread=prefer_active_thread,
-                    riddle_thread_reset=riddle_thread_reset,
-                    riddle_thread_close=riddle_thread_close,
-                    use_remote_memory=use_remote_memory,
-                )
-            chat_context["global_context"] = merge_context_text(
-                alias_context,
-                focus_context,
-                facts_context,
-                chat_context.get("global_context", "aucun"),
-            )
-            extra_context_sources = build_auxiliary_context_sources(
+            chat_context, context_source, context_sources, prefetch_web_decision = self.prepare_runtime_context(
+                resolved_text=resolved_text,
+                payload=payload,
+                channel_name=channel_name,
+                author=author,
+                prefer_active_thread=prefer_active_thread,
+                riddle_thread_reset=riddle_thread_reset,
+                riddle_thread_close=riddle_thread_close,
+                specialized_local_thread=specialized_local_thread,
+                decision=decision,
                 alias_context=alias_context,
                 focus_context=focus_context,
                 facts_context=facts_context,
@@ -1040,18 +1074,17 @@ class Bot(commands.Bot):
                 meta={"context_label": "web"},
             )
             if web_source:
-                extra_context_sources.append(web_source)
+                context_sources.append(web_source)
             if CONFIG.debug_chat_memory and (
                 chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun" or web_context != "aucun"
             ):
-                all_context_sources = context_sources + extra_context_sources
                 print("🧠 Contexte mémoire injecté", flush=True)
                 if context_source == "local" and prefer_active_thread and not riddle_thread_reset:
                     print("   Mode   : fil actif", flush=True)
                 print(f"   Source : {context_source}", flush=True)
-                if all_context_sources:
+                if context_sources:
                     print(
-                        f"   Trace  : {', '.join(source.source_id for source in all_context_sources)}",
+                        f"   Trace  : {', '.join(source.source_id for source in context_sources)}",
                         flush=True,
                     )
                 if chat_context["viewer_context"] != "aucun":
