@@ -8,6 +8,29 @@ def _normalize_context_text(text: str) -> str:
     return cleaned if cleaned else "aucun"
 
 
+def make_context_source_result(
+    source_id: str,
+    text_block: str,
+    *,
+    priority: int,
+    confidence: float,
+    stale: bool = False,
+    meta: dict | None = None,
+) -> ContextSourceResult | None:
+    normalized = _normalize_context_text(text_block)
+    if normalized == "aucun":
+        return None
+    return ContextSourceResult(
+        source_id=source_id,
+        available=True,
+        priority=priority,
+        confidence=confidence,
+        stale=stale,
+        text_block=normalized,
+        meta=meta or {},
+    )
+
+
 def build_context_source_results(
     viewer_context: str = "",
     conversation_context: str = "",
@@ -16,44 +39,35 @@ def build_context_source_results(
 ) -> list[ContextSourceResult]:
     sources: list[ContextSourceResult] = []
 
-    if viewer_context and viewer_context != "aucun":
-        sources.append(
-            ContextSourceResult(
-                source_id="viewer_context",
-                available=True,
-                priority=100,
-                confidence=0.85,
-                stale=False,
-                text_block=_normalize_context_text(viewer_context),
-                meta={"context_label": context_label},
-            )
-        )
+    viewer_source_id = "local_specialized" if context_label == "local-specialized" else "local_viewer_thread"
+    viewer_source = make_context_source_result(
+        viewer_source_id,
+        viewer_context,
+        priority=100,
+        confidence=0.85,
+        meta={"context_label": context_label},
+    )
+    if viewer_source:
+        sources.append(viewer_source)
 
-    if conversation_context and conversation_context != "aucun":
-        sources.append(
-            ContextSourceResult(
-                source_id="conversation_context",
-                available=True,
-                priority=90,
-                confidence=0.8,
-                stale=False,
-                text_block=_normalize_context_text(conversation_context),
-                meta={"context_label": context_label},
-            )
-        )
+    conversation_source = make_context_source_result(
+        "conversation_graph",
+        conversation_context,
+        priority=90,
+        confidence=0.8,
+        meta={"context_label": context_label},
+    )
+    if conversation_source:
+        sources.append(conversation_source)
 
-    if web_context and web_context != "aucun":
-        sources.append(
-            ContextSourceResult(
-                source_id="web_context",
-                available=True,
-                priority=95,
-                confidence=0.7,
-                stale=False,
-                text_block=_normalize_context_text(web_context),
-                meta={"context_label": "web"},
-            )
-        )
+    web_source = make_context_source_result(
+        "web",
+        web_context,
+        priority=95,
+        confidence=0.7,
+        meta={"context_label": "web"},
+    )
+    if web_source:
+        sources.append(web_source)
 
     return sources
-

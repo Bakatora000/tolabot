@@ -1,5 +1,6 @@
 import unittest
 
+from context_sources import make_context_source_result
 from runtime_types import ContextSourceResult, DecisionResult, NormalizedEvent, PromptPlan
 
 
@@ -46,6 +47,16 @@ class RuntimeTypesTests(unittest.TestCase):
         self.assertEqual(event.type, "chat_message")
         self.assertEqual(source.source_id, "mem0")
         self.assertEqual(prompt.source_trace, ["local", "mem0"])
+
+    def test_make_context_source_result_skips_empty_blocks(self):
+        self.assertIsNone(
+            make_context_source_result(
+                "mem0",
+                "aucun",
+                priority=80,
+                confidence=0.7,
+            )
+        )
 
 
 if __name__ == "__main__":

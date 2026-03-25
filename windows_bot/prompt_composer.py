@@ -55,9 +55,9 @@ def build_prompt_plan(
         if not source.available or not source.text_block or source.text_block == "aucun":
             continue
         source_trace.append(source.source_id)
-        if source.source_id == "viewer_context" and viewer_block == "aucun":
+        if source.source_id in {"local_specialized", "local_viewer_thread", "mem0"} and viewer_block == "aucun":
             viewer_block = _normalize_context_value(source.text_block)
-        elif source.source_id == "web_context" and web_block == "aucun":
+        elif source.source_id == "web" and web_block == "aucun":
             web_block = _normalize_context_value(source.text_block)
         else:
             if conversation_block == "aucun":
@@ -136,4 +136,3 @@ def build_messages_from_prompt_plan(
             ),
         },
     ]
-

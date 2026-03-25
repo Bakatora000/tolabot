@@ -62,7 +62,7 @@ from conversation_graph import (
     load_conversation_graph,
     prune_conversation_graph,
 )
-from context_sources import build_context_source_results
+from context_sources import build_context_source_results, make_context_source_result
 from decision_tree import build_web_search_decision
 from facts_memory import (
     append_reported_facts,
@@ -144,7 +144,7 @@ class Bot(commands.Bot):
         channel_name: str,
         author: str,
         use_active_thread: bool,
-    ) -> dict:
+    ) -> tuple[dict, list]:
         normalized_channel = normalize_spaces(channel_name).lower()
         normalized_author = normalize_spaces(author).lower()
         channel_data = self.chat_memory.get("channels", {}).get(normalized_channel, {})
@@ -153,7 +153,7 @@ class Bot(commands.Bot):
             active_turns = extract_active_viewer_thread(viewer_turns)
             viewer_turns = active_turns or viewer_turns
 
-        return {
+        context = {
             "viewer_context": format_chat_turns(viewer_turns),
             "global_context": build_conversation_graph_context(
                 self.conversation_graph,
@@ -162,6 +162,12 @@ class Bot(commands.Bot):
             ),
             "items": [],
         }
+        sources = build_context_source_results(
+            viewer_context=context["viewer_context"],
+            conversation_context=context["global_context"],
+            context_label="local-specialized",
+        )
+        return context, sources
 
     def get_context_with_fallback(
         self,
@@ -172,7 +178,7 @@ class Bot(commands.Bot):
         riddle_thread_reset: bool,
         riddle_thread_close: bool,
         use_remote_memory: bool,
-    ) -> tuple[dict, str]:
+    ) -> tuple[dict, str, list]:
         if use_remote_memory:
             local_context = build_chat_context(
                 self.chat_memory,
@@ -187,6 +193,25 @@ class Bot(commands.Bot):
                 current_message=text,
             )
             local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
+            source_results = []
+            local_viewer_source = make_context_source_result(
+                "local_viewer_thread",
+                local_context.get("viewer_context", "aucun"),
+                priority=90,
+                confidence=0.82,
+                meta={"context_label": "local"},
+            )
+            if local_viewer_source:
+                source_results.append(local_viewer_source)
+            graph_source = make_context_source_result(
+                "conversation_graph",
+                graph_context,
+                priority=88,
+                confidence=0.8,
+                meta={"context_label": "local"},
+            )
+            if graph_source:
+                source_results.append(graph_source)
             if (
                 local_context["viewer_context"] == "aucun"
                 and prefer_active_thread
@@ -224,11 +249,20 @@ class Bot(commands.Bot):
                     "global_context": merged_global_context,
                     "items": list(remote_context.get("items", [])),
                 }
-                return merged_context, "local-priority+mem0" if favor_local_context else "local+mem0"
+                mem0_source = make_context_source_result(
+                    "mem0",
+                    remote_context.get("viewer_context", "aucun"),
+                    priority=80,
+                    confidence=0.7,
+                    meta={"context_label": "mem0"},
+                )
+                if mem0_source:
+                    source_results.append(mem0_source)
+                return merged_context, "local-priority+mem0" if favor_local_context else "local+mem0", source_results
             except MemoryApiError as exc:
                 print(f"⚠️ Mémoire distante indisponible, fallback local : {exc}", flush=True)
                 if not CONFIG.mem0_fallback_local:
-                    return {"viewer_context": "aucun", "global_context": "aucun", "items": []}, "mem0-error"
+                    return {"viewer_context": "aucun", "global_context": "aucun", "items": []}, "mem0-error", []
 
         local_context = build_chat_context(
             self.chat_memory,
@@ -255,7 +289,11 @@ class Bot(commands.Bot):
                 prefer_active_thread=False,
             )
             local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
-        return local_context, "local"
+        return local_context, "local", build_context_source_results(
+            viewer_context=local_context["viewer_context"],
+            conversation_context=graph_context,
+            context_label="local",
+        )
 
     def remember_remote_turn(
         self,
@@ -683,13 +721,13 @@ class Bot(commands.Bot):
             prefer_active_thread = bool(decision.meta.get("prefer_active_thread", specialized_local_thread or likely_needs_memory_context(resolved_text)))
             conversation_mode = str(decision.meta.get("conversation_mode", ""))
             if specialized_local_thread:
-                chat_context = self.get_specialized_local_context(
+                chat_context, context_sources = self.get_specialized_local_context(
                     payload.broadcaster.name,
                     author,
                     use_active_thread=not riddle_thread_close,
                 )
                 if chat_context["viewer_context"] == "aucun" and not riddle_thread_close:
-                    chat_context = self.get_specialized_local_context(
+                    chat_context, context_sources = self.get_specialized_local_context(
                         payload.broadcaster.name,
                         author,
                         use_active_thread=False,
@@ -697,7 +735,7 @@ class Bot(commands.Bot):
                 context_source = "local-specialized"
             else:
                 use_remote_memory = self.should_use_remote_memory_for_message(False)
-                chat_context, context_source = self.get_context_with_fallback(
+                chat_context, context_source, context_sources = self.get_context_with_fallback(
                     text=resolved_text,
                     channel_name=channel_name,
                     author=author,
@@ -712,6 +750,34 @@ class Bot(commands.Bot):
                 facts_context,
                 chat_context.get("global_context", "aucun"),
             )
+            extra_context_sources = []
+            alias_source = make_context_source_result(
+                "alias_resolution",
+                alias_context,
+                priority=92,
+                confidence=0.9,
+                meta={"context_label": "local"},
+            )
+            if alias_source:
+                extra_context_sources.append(alias_source)
+            focus_source = make_context_source_result(
+                "recent_focus",
+                focus_context,
+                priority=89,
+                confidence=0.82,
+                meta={"context_label": "local"},
+            )
+            if focus_source:
+                extra_context_sources.append(focus_source)
+            facts_source = make_context_source_result(
+                "facts_memory",
+                facts_context,
+                priority=91,
+                confidence=0.83,
+                meta={"context_label": "local"},
+            )
+            if facts_source:
+                extra_context_sources.append(facts_source)
             web_context = "aucun"
             if CONFIG.web_search_enabled and CONFIG.web_search_provider == "searxng":
                 web_decision = build_web_search_decision(
@@ -741,22 +807,26 @@ class Bot(commands.Bot):
                             print("🌐 Contexte web injecté via SearXNG", flush=True)
                     except Exception as exc:
                         print(f"⚠️ Recherche web SearXNG indisponible : {exc}", flush=True)
+            web_source = make_context_source_result(
+                "web",
+                web_context,
+                priority=95,
+                confidence=0.7,
+                meta={"context_label": "web"},
+            )
+            if web_source:
+                extra_context_sources.append(web_source)
             if CONFIG.debug_chat_memory and (
                 chat_context["viewer_context"] != "aucun" or chat_context["global_context"] != "aucun" or web_context != "aucun"
             ):
-                context_sources = build_context_source_results(
-                    viewer_context=chat_context["viewer_context"],
-                    conversation_context=chat_context["global_context"],
-                    web_context=web_context,
-                    context_label=context_source,
-                )
+                all_context_sources = context_sources + extra_context_sources
                 print("🧠 Contexte mémoire injecté", flush=True)
                 if context_source == "local" and prefer_active_thread and not riddle_thread_reset:
                     print("   Mode   : fil actif", flush=True)
                 print(f"   Source : {context_source}", flush=True)
-                if context_sources:
+                if all_context_sources:
                     print(
-                        f"   Trace  : {', '.join(source.source_id for source in context_sources)}",
+                        f"   Trace  : {', '.join(source.source_id for source in all_context_sources)}",
                         flush=True,
                     )
                 if chat_context["viewer_context"] != "aucun":

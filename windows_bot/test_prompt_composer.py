@@ -18,7 +18,7 @@ class PromptComposerTests(unittest.TestCase):
         self.assertEqual(plan.viewer_block, "alice: salut")
         self.assertEqual(plan.conversation_block, "bot: bonjour")
         self.assertEqual(plan.web_block, "[1] Meteo Lyon - Temps nuageux.")
-        self.assertEqual(plan.source_trace, ["viewer_context", "conversation_context", "web_context"])
+        self.assertEqual(plan.source_trace, ["local_viewer_thread", "conversation_graph", "web"])
 
     def test_build_messages_from_prompt_plan_preserves_web_context_tags(self):
         sources = build_context_source_results(
