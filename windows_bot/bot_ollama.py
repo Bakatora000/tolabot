@@ -12,8 +12,6 @@ from twitchio.ext import commands
 from bot_config import load_config
 from arbitrator import arbitrate_chat_message, build_normalized_event
 from bot_logic import (
-    BOT_TRIGGER,
-    BOT_USERNAME,
     MAX_OUTPUT_CHARS,
     MAX_VIEWER_CHAT_TURNS,
     append_channel_update,
@@ -77,6 +75,11 @@ from facts_memory import (
 )
 from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, store_memory_turn
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
+from runtime_pipeline import (
+    build_incoming_message_data,
+    log_incoming_message,
+    should_ignore_incoming_message,
+)
 from runtime_types import MessagePreparation, RuntimeContextBundle
 from twitch_auth import run_oauth_flow
 from web_search_client import build_web_search_context, build_web_search_query, search_searxng, should_enable_web_search
@@ -93,15 +96,6 @@ class QueuedMessage:
     author: str
     msg_id: str | None
     received_at: float
-
-
-@dataclass
-class IncomingMessageData:
-    raw_text: str
-    text: str
-    clean_viewer_message: str
-    author: str
-    msg_id: str | None
 
 
 class Bot(commands.Bot):
@@ -430,51 +424,6 @@ class Bot(commands.Bot):
             token_for=self.bot_id,
         )
         self.mark_replied(author)
-
-    def build_incoming_message_data(self, payload: twitchio.ChatMessage) -> IncomingMessageData:
-        raw_text = payload.text or ""
-        text = sanitize_user_text(raw_text)
-        return IncomingMessageData(
-            raw_text=raw_text,
-            text=text,
-            clean_viewer_message=sanitize_user_text(strip_trigger(text)),
-            author=(payload.chatter.name or "").lower(),
-            msg_id=getattr(payload, "id", None),
-        )
-
-    def log_incoming_message(self, payload: twitchio.ChatMessage, incoming: IncomingMessageData) -> None:
-        print("--------------------------------------------------", flush=True)
-        print("💬 MESSAGE REÇU", flush=True)
-        print(f"Chaîne : {payload.broadcaster.name}", flush=True)
-        print(f"Auteur : {payload.chatter.name}", flush=True)
-        print(f"Texte brut : {incoming.raw_text}", flush=True)
-        print(f"Texte  : {incoming.text}", flush=True)
-
-    def should_ignore_incoming_message(self, incoming: IncomingMessageData) -> bool:
-        if incoming.msg_id and incoming.msg_id in self.recent_ids:
-            print("↪️ Message déjà traité, ignoré", flush=True)
-            return True
-
-        if incoming.msg_id:
-            self.recent_ids.append(incoming.msg_id)
-
-        if not incoming.author:
-            print("↪️ Auteur vide, ignoré", flush=True)
-            return True
-
-        if incoming.author == BOT_USERNAME:
-            print("↪️ Message ignoré : envoyé par le bot", flush=True)
-            return True
-
-        if BOT_TRIGGER not in incoming.text.lower():
-            print("↪️ Pas de mention du bot, ignoré", flush=True)
-            return True
-
-        if looks_like_prompt_injection(incoming.text):
-            print("↪️ Tentative probable de prompt injection, ignorée", flush=True)
-            return True
-
-        return False
 
     def persist_local_turn(
         self,
@@ -1528,10 +1477,14 @@ class Bot(commands.Bot):
 
     async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
-            incoming = self.build_incoming_message_data(payload)
-            self.log_incoming_message(payload, incoming)
+            incoming = build_incoming_message_data(payload)
+            log_incoming_message(payload, incoming)
 
-            if self.should_ignore_incoming_message(incoming):
+            if should_ignore_incoming_message(
+                incoming=incoming,
+                recent_ids=self.recent_ids,
+                injection_checker=looks_like_prompt_injection,
+            ):
                 return
             queued_message = QueuedMessage(
                 payload=payload,
