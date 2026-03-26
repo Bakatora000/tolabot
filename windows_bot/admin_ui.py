@@ -1349,16 +1349,17 @@ class AdminUiHandler(BaseHTTPRequestHandler):
                             }
                         )
                         return
-                    payload = build_homegraph_payload(
-                        get_homegraph_user_graph(
-                            self.server.config,
-                            user_id,
-                            include_uncertain=include_uncertain,
-                            min_weight=float(min_weight_param) if min_weight_param else None,
-                            max_links=int(max_links_param) if max_links_param else None,
-                        ),
-                        viewer_filter=viewer,
-                    )
+                    else:
+                        payload = build_homegraph_payload(
+                            get_homegraph_user_graph(
+                                self.server.config,
+                                user_id,
+                                include_uncertain=include_uncertain,
+                                min_weight=float(min_weight_param) if min_weight_param else None,
+                                max_links=int(max_links_param) if max_links_param else None,
+                            ),
+                            viewer_filter=viewer,
+                        )
                 elif kind == "facts":
                     payload = build_facts_graph_payload(
                         load_facts_memory(_graph_data_path("facts_memory.json")),
