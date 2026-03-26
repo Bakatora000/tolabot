@@ -192,6 +192,7 @@ class MultiHopGraphTests(unittest.TestCase):
         self.assertIsNone(payload["viewer_id"])
         self.assertEqual(payload["meta"]["center_node_id"], "game:valheim")
         self.assertEqual(payload["meta"]["root_node_id"], "game:valheim")
+        self.assertFalse(payload["meta"]["filtered_by_viewer"])
 
     def test_unknown_center_returns_empty_graph(self) -> None:
         payload = build_multihop_graph_payload("game:unknown_game", self.db_path, max_depth=2)

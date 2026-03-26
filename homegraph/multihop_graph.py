@@ -272,6 +272,7 @@ def build_multihop_graph_payload(
             "meta": {
                 "root_node_id": center,
                 "center_node_id": center,
+                "filtered_by_viewer": False,
                 "max_depth": bounded_depth,
                 "truncated": False,
                 "filters_applied": {
@@ -349,6 +350,7 @@ def build_multihop_graph_payload(
         "meta": {
             "root_node_id": center,
             "center_node_id": center,
+            "filtered_by_viewer": False,
             "max_depth": bounded_depth,
             "truncated": truncated,
             "filters_applied": {
