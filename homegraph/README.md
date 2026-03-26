@@ -41,7 +41,9 @@ Socle V2 deja pose :
 - `homegraph/merge_extraction.py`
 - `homegraph/extraction_output_example.json`
 - `homegraph/build_viewer_context.py`
+- `homegraph/build_viewer_graph.py`
 - `homegraph/viewer_context_contract_v1.md`
+- `homegraph/viewer_graph_contract_v1.md`
 - `homegraph/workflow_v1.md`
 - `homegraph/workflow_v2.md`
 
@@ -143,6 +145,22 @@ Le contrat est documente ici :
 
 ```text
 homegraph/viewer_context_contract_v1.md
+```
+
+## Construction Du Sous-Graphe Viewer
+
+```bash
+python3 homegraph/build_viewer_graph.py --viewer-id twitch:streamer:viewer:alice
+```
+
+Sortie :
+- JSON sur stdout
+- contient `nodes`, `links`, `stats`, `meta`
+
+Le contrat est documente ici :
+
+```text
+homegraph/viewer_graph_contract_v1.md
 ```
 
 ## Prochaine Etape

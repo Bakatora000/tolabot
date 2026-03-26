@@ -158,3 +158,47 @@ class AdminHomegraphContextResponse(BaseModel):
     staleness: HomegraphStaleness
     context: HomegraphContextContent
     text_block: str
+
+
+class HomegraphGraphMeta(BaseModel):
+    root_node_id: str
+    filtered_by_viewer: bool
+    profile_last_updated_at: str | None = None
+    stable_node_kinds: list[str]
+    stable_link_kinds: list[str]
+
+
+class HomegraphGraphStats(BaseModel):
+    node_count: int
+    link_count: int
+    node_kinds: dict[str, int]
+    link_kinds: dict[str, int]
+
+
+class HomegraphGraphNode(BaseModel):
+    id: str
+    label: str
+    kind: str
+    color: str | None = None
+    detail: str | None = None
+
+
+class HomegraphGraphLink(BaseModel):
+    source: str
+    target: str
+    kind: str
+    label: str | None = None
+    color: str | None = None
+    weight: float | None = None
+    detail: str | None = None
+
+
+class AdminHomegraphGraphResponse(BaseModel):
+    ok: bool = True
+    viewer_id: str
+    generated_at: str
+    source: str
+    meta: HomegraphGraphMeta
+    stats: HomegraphGraphStats
+    nodes: list[HomegraphGraphNode]
+    links: list[HomegraphGraphLink]

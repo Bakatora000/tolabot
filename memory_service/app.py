@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from admin_service.models import (
     AdminDeleteMemoryResponse,
     AdminExportResponse,
+    AdminHomegraphGraphResponse,
     AdminHealthResponse,
     AdminHomegraphContextResponse,
     AdminImportRequest,
@@ -26,6 +27,7 @@ from admin_service.models import (
     UserSummary,
 )
 from homegraph.context import build_viewer_context_payload
+from homegraph.graph import build_viewer_graph_payload
 from memory_service.auth import admin_key_dependency, api_key_dependency
 from memory_service.backend import MemoryBackendError, build_backend
 from memory_service.config import Settings
@@ -318,3 +320,17 @@ async def admin_homegraph_viewer_context(user_id: str, request: Request):
         db_path=settings_obj.homegraph_db_path,
     )
     return AdminHomegraphContextResponse(**payload)
+
+
+@app.get(
+    "/admin/homegraph/users/{user_id}/graph",
+    response_model=AdminHomegraphGraphResponse,
+    dependencies=admin_auth_dependencies(settings.admin_key),
+)
+async def admin_homegraph_viewer_graph(user_id: str, request: Request):
+    settings_obj = getattr(request.app.state, "settings", settings)
+    payload = build_viewer_graph_payload(
+        viewer_id=user_id,
+        db_path=settings_obj.homegraph_db_path,
+    )
+    return AdminHomegraphGraphResponse(**payload)

@@ -176,6 +176,66 @@ Notes :
 - acces local uniquement via le meme garde admin que les autres routes `/admin/*`
 - `text_block` est la sortie principale a injecter dans le prompt cote Windows
 
+### `GET /admin/homegraph/users/{user_id}/graph`
+
+Headers :
+- `X-Admin-Key`
+
+Reponse `200` :
+
+```json
+{
+  "ok": true,
+  "viewer_id": "twitch:streamer:viewer:alice",
+  "generated_at": "2026-03-26T10:00:00Z",
+  "source": "homegraph_graph_v1",
+  "meta": {
+    "root_node_id": "viewer:twitch:streamer:viewer:alice",
+    "filtered_by_viewer": true,
+    "profile_last_updated_at": "2026-03-26T09:45:00Z",
+    "stable_node_kinds": ["viewer", "game", "topic", "running_gag", "trait", "stream_mode", "object"],
+    "stable_link_kinds": ["plays", "likes", "dislikes", "talks_about", "returns_to", "knows", "compliments", "jokes_about", "interacts_with", "uses_build_style", "plays_in_mode", "owns"]
+  },
+  "stats": {
+    "node_count": 6,
+    "link_count": 5,
+    "node_kinds": {
+      "viewer": 1,
+      "game": 2
+    },
+    "link_kinds": {
+      "plays": 1,
+      "likes": 2
+    }
+  },
+  "nodes": [
+    {
+      "id": "viewer:twitch:streamer:viewer:alice",
+      "label": "Alice",
+      "kind": "viewer",
+      "color": "#4F46E5",
+      "detail": "Resume court optionnel"
+    }
+  ],
+  "links": [
+    {
+      "source": "viewer:twitch:streamer:viewer:alice",
+      "target": "game:valheim",
+      "kind": "plays",
+      "label": "plays",
+      "color": "#2563EB",
+      "weight": 0.95,
+      "detail": "status=active | polarity=positive | evidence=3"
+    }
+  ]
+}
+```
+
+Notes :
+- sous-graphe filtre par viewer, destine a une vue 2D/3D admin
+- le contrat detaille est documente dans `homegraph/viewer_graph_contract_v1.md`
+- acces local uniquement via le meme garde admin que les autres routes `/admin/*`
+
 ## Format d'erreur generique
 
 Exemple :
