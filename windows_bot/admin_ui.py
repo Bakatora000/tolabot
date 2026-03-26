@@ -561,6 +561,9 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('graph-selection').textContent = selectedViewerLabel
         ? `Vue filtrée sur : ${selectedViewerLabel}`
         : 'Vue globale.';
+      if (graphKind === 'homegraph' && homegraphCenterNodeId) {
+        document.getElementById('graph-selection').textContent += ` | centre: ${homegraphCenterNodeId}`;
+      }
       document.getElementById('homegraph-filter-group').style.display = graphKind === 'homegraph' ? 'contents' : 'none';
     }
 
@@ -715,6 +718,18 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('graph-stats').textContent = message;
     }
 
+    function findNodeById(data, nodeId) {
+      if (!nodeId) {
+        return null;
+      }
+      for (const node of (data.nodes || [])) {
+        if (node.id === nodeId) {
+          return node;
+        }
+      }
+      return null;
+    }
+
     function ensureGraphInstance() {
       if (graphInstance) {
         return graphInstance;
@@ -810,14 +825,19 @@ HTML_PAGE = """<!doctype html>
         if (graphKind === 'homegraph') {
           homegraphRootNodeId = (data.meta && data.meta.root_node_id) ? data.meta.root_node_id : '';
         }
+        updateSelectionState();
         setGraphStatus(
           `${data.kind} | ${data.stats.node_count} nœud(s) | ${data.stats.link_count} lien(s)` +
           (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '') +
           (graphKind === 'homegraph' && data.meta && data.meta.center_node_id ? ` | centre: ${data.meta.center_node_id}` : '') +
           (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '')
         );
-        renderGraphDetails(null);
         applyGraphFocus();
+        if (graphKind === 'homegraph' && homegraphCenterNodeId) {
+          renderGraphDetails(findNodeById(fullGraphData, homegraphCenterNodeId));
+        } else {
+          renderGraphDetails(null);
+        }
       } catch (error) {
         setError(`graph_load_failed: ${error}`);
         setGraphStatus('Chargement du graphe impossible.');
