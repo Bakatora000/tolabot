@@ -529,6 +529,7 @@ HTML_PAGE = """<!doctype html>
     let homegraphRootNodeId = '';
     let graphInstance = null;
     let fullGraphData = { nodes: [], links: [] };
+    let lastGraphSignature = '';
     let focusedNodeId = null;
     window.currentAnalysis = null;
     window.proposalDecisions = {};
@@ -730,6 +731,29 @@ HTML_PAGE = """<!doctype html>
       return null;
     }
 
+    function computeGraphSignature(data) {
+      const nodeIds = (data.nodes || []).map((node) => String(node.id || '')).sort();
+      const linkIds = (data.links || []).map((link) => {
+        const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+        const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+        return `${sourceId}|${targetId}|${link.kind || ''}`;
+      }).sort();
+      return JSON.stringify({ nodeIds, linkIds });
+    }
+
+    function focusCameraOnNode(node) {
+      if (!graphInstance || !node) {
+        return;
+      }
+      const distance = 110;
+      const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
+      graphInstance.cameraPosition(
+        { x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio },
+        node,
+        900
+      );
+    }
+
     function ensureGraphInstance() {
       if (graphInstance) {
         return graphInstance;
@@ -740,7 +764,12 @@ HTML_PAGE = """<!doctype html>
         .nodeLabel((node) => `${node.label} (${node.kind})`)
         .nodeAutoColorBy(null)
         .nodeColor((node) => node.color || '#8ecae6')
-        .nodeVal((node) => node.kind === 'turn' || node.kind === 'fact' ? 4 : 7)
+        .nodeVal((node) => {
+          if (graphKind === 'homegraph' && homegraphCenterNodeId && node.id === homegraphCenterNodeId) {
+            return 12;
+          }
+          return node.kind === 'turn' || node.kind === 'fact' ? 4 : 7;
+        })
         .linkColor((link) => link.color || '#94a3b8')
         .linkOpacity(0.75)
         .linkWidth((link) => link.kind === 'corrects' ? 2.5 : 1.2)
@@ -757,13 +786,7 @@ HTML_PAGE = """<!doctype html>
           renderGraphDetails(node.id === focusedNodeId ? null : node);
           applyGraphFocus();
           if (focusedNodeId) {
-            const distance = 110;
-            const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
-            graphInstance.cameraPosition(
-              { x: (node.x || 0) * distRatio, y: (node.y || 0) * distRatio, z: (node.z || 0) * distRatio },
-              node,
-              900
-            );
+            focusCameraOnNode(node);
           }
         })
         .onBackgroundClick(() => {
@@ -818,23 +841,30 @@ HTML_PAGE = """<!doctype html>
         }
         setError('');
         focusedNodeId = null;
+        const previousSignature = lastGraphSignature;
         fullGraphData = {
           nodes: data.nodes || [],
           links: data.links || [],
         };
+        lastGraphSignature = computeGraphSignature(fullGraphData);
         if (graphKind === 'homegraph') {
           homegraphRootNodeId = (data.meta && data.meta.root_node_id) ? data.meta.root_node_id : '';
         }
         updateSelectionState();
-        setGraphStatus(
+        let graphStatus =
           `${data.kind} | ${data.stats.node_count} nœud(s) | ${data.stats.link_count} lien(s)` +
           (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '') +
           (graphKind === 'homegraph' && data.meta && data.meta.center_node_id ? ` | centre: ${data.meta.center_node_id}` : '') +
-          (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '')
-        );
+          (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '');
+        if (graphKind === 'homegraph' && previousSignature && previousSignature === lastGraphSignature) {
+          graphStatus += ' | sous-graphe inchangé';
+        }
+        setGraphStatus(graphStatus);
         applyGraphFocus();
         if (graphKind === 'homegraph' && homegraphCenterNodeId) {
-          renderGraphDetails(findNodeById(fullGraphData, homegraphCenterNodeId));
+          const centerNode = findNodeById(fullGraphData, homegraphCenterNodeId);
+          renderGraphDetails(centerNode);
+          focusCameraOnNode(centerNode);
         } else {
           renderGraphDetails(null);
         }
