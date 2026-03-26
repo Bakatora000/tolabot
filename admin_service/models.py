@@ -162,8 +162,11 @@ class AdminHomegraphContextResponse(BaseModel):
 
 class HomegraphGraphMeta(BaseModel):
     root_node_id: str
+    center_node_id: str | None = None
     filtered_by_viewer: bool
     profile_last_updated_at: str | None = None
+    max_depth: int | None = None
+    truncated: bool | None = None
     stable_node_kinds: list[str]
     stable_link_kinds: list[str]
     filters_applied: dict[str, Any] | None = None

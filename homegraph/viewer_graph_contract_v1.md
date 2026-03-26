@@ -17,12 +17,17 @@ Le payload est volontairement simple :
 
 ## Portee
 
-V1 produit un sous-graphe **centre sur un viewer** :
+Le contrat couvre maintenant deux usages compatibles :
+
+1. sous-graphe **centre sur un viewer**
 - 1 noeud racine `viewer`
 - des noeuds cibles relies a ce viewer
 - des liens viewer -> cible
 
-Ce n'est pas encore un graphe global multi-hop.
+2. sous-graphe **multi-hop** centre sur n'importe quel noeud connu
+- exemple : `game:valheim`
+- expansion BFS bornee
+- meme forme JSON generale
 
 ## Structure
 
@@ -34,10 +39,18 @@ Ce n'est pas encore un graphe global multi-hop.
   "source": "homegraph_graph_v1",
   "meta": {
     "root_node_id": "viewer:twitch:streamer:viewer:alice",
+    "center_node_id": "viewer:twitch:streamer:viewer:alice",
     "filtered_by_viewer": true,
     "profile_last_updated_at": "2026-03-26T09:45:00+00:00",
+    "max_depth": 1,
+    "truncated": false,
     "stable_node_kinds": ["viewer", "game", "topic", "running_gag", "trait", "stream_mode", "object"],
-    "stable_link_kinds": ["plays", "likes", "dislikes", "talks_about", "returns_to", "knows", "compliments", "jokes_about", "interacts_with", "uses_build_style", "plays_in_mode", "owns"]
+    "stable_link_kinds": ["plays", "likes", "dislikes", "talks_about", "returns_to", "knows", "compliments", "jokes_about", "interacts_with", "uses_build_style", "plays_in_mode", "owns"],
+    "filters_applied": {
+      "include_uncertain": true,
+      "min_weight": null,
+      "max_links": null
+    }
   },
   "stats": {
     "node_count": 6,
@@ -156,8 +169,11 @@ Champs V1 :
 
 Champs V1 :
 - `root_node_id`
+- `center_node_id`
 - `filtered_by_viewer`
 - `profile_last_updated_at`
+- `max_depth`
+- `truncated`
 - `stable_node_kinds`
 - `stable_link_kinds`
 - `filters_applied`
@@ -178,15 +194,22 @@ python3 homegraph/build_viewer_graph.py --viewer-id twitch:streamer:viewer:alice
 GET /admin/homegraph/users/{user_id}/graph
 ```
 
+### Endpoint admin multi-hop
+
+```bash
+GET /admin/homegraph/graph?center_node_id=game:valheim&max_depth=2
+```
+
 Filtres optionnels deja supportes :
 - `include_uncertain=true|false`
 - `min_weight=<float>`
+- `max_nodes=<int>`
 - `max_links=<int>`
 
 Exemple :
 
 ```bash
-GET /admin/homegraph/users/{user_id}/graph?include_uncertain=false&min_weight=0.7&max_links=8
+GET /admin/homegraph/graph?center_node_id=game:valheim&max_depth=2&include_uncertain=false&min_weight=0.7&max_nodes=20&max_links=30
 ```
 
 Auth :

@@ -28,6 +28,7 @@ from admin_service.models import (
 )
 from homegraph.context import build_viewer_context_payload
 from homegraph.graph import build_viewer_graph_payload
+from homegraph.multihop_graph import build_multihop_graph_payload
 from memory_service.auth import admin_key_dependency, api_key_dependency
 from memory_service.backend import MemoryBackendError, build_backend
 from memory_service.config import Settings
@@ -341,5 +342,32 @@ async def admin_homegraph_viewer_graph(
         include_uncertain=include_uncertain,
         min_weight=min_weight,
         max_links=max_links,
+    )
+    return AdminHomegraphGraphResponse(**payload)
+
+
+@app.get(
+    "/admin/homegraph/graph",
+    response_model=AdminHomegraphGraphResponse,
+    dependencies=admin_auth_dependencies(settings.admin_key),
+)
+async def admin_homegraph_multihop_graph(
+    request: Request,
+    center_node_id: str,
+    max_depth: int = 1,
+    max_nodes: int | None = None,
+    max_links: int | None = None,
+    include_uncertain: bool = True,
+    min_weight: float | None = None,
+):
+    settings_obj = getattr(request.app.state, "settings", settings)
+    payload = build_multihop_graph_payload(
+        center_node_id=center_node_id,
+        db_path=settings_obj.homegraph_db_path,
+        max_depth=max_depth,
+        max_nodes=max_nodes,
+        max_links=max_links,
+        include_uncertain=include_uncertain,
+        min_weight=min_weight,
     )
     return AdminHomegraphGraphResponse(**payload)

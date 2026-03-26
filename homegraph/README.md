@@ -42,6 +42,7 @@ Socle V2 deja pose :
 - `homegraph/extraction_output_example.json`
 - `homegraph/build_viewer_context.py`
 - `homegraph/build_viewer_graph.py`
+- `homegraph/build_multihop_graph.py`
 - `homegraph/viewer_context_contract_v1.md`
 - `homegraph/viewer_graph_contract_v1.md`
 - `homegraph/viewer_graph_multihop_contract_v1.md`
@@ -176,6 +177,17 @@ Cette doc decrit un sous-graphe borne centre sur un noeud explicite, pour permet
 - clic sur un noeud puis rechargement du voisinage
 - exploration multi-hop limitee
 - compatibilite avec le payload `nodes / links / stats / meta`
+
+## Construction D'Un Sous-Graphe Multi-Hop
+
+```bash
+python3 homegraph/build_multihop_graph.py --center-node-id game:valheim --max-depth 2
+```
+
+Sortie :
+- JSON sur stdout
+- meme forme generale : `nodes`, `links`, `stats`, `meta`
+- centre arbitraire possible (`viewer:*`, `game:*`, etc.)
 
 ## Prochaine Etape
 

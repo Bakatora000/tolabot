@@ -240,6 +240,39 @@ Notes :
   - `min_weight=<float>`
   - `max_links=<int>`
 
+### `GET /admin/homegraph/graph`
+
+Route multi-hop pour charger un sous-graphe centre sur n'importe quel noeud connu.
+
+Headers :
+- `X-Admin-Key`
+
+Query params :
+- `center_node_id` (obligatoire)
+- `max_depth`
+- `max_nodes`
+- `max_links`
+- `include_uncertain`
+- `min_weight`
+
+Exemple :
+
+```text
+/admin/homegraph/graph?center_node_id=game:valheim&max_depth=2&max_nodes=20&max_links=30&include_uncertain=false&min_weight=0.7
+```
+
+Meta retournee :
+- `root_node_id`
+- `center_node_id`
+- `max_depth`
+- `truncated`
+- `filters_applied`
+
+Notes :
+- expansion BFS bornee cote Linux
+- la route viewer V1 reste intacte pour compatibilite
+- contrat detaille documente dans `homegraph/viewer_graph_contract_v1.md`
+
 ## Format d'erreur generique
 
 Exemple :
