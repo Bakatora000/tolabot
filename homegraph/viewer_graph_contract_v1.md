@@ -160,6 +160,7 @@ Champs V1 :
 - `profile_last_updated_at`
 - `stable_node_kinds`
 - `stable_link_kinds`
+- `filters_applied`
 
 ## Production Cote Linux
 
@@ -175,6 +176,17 @@ python3 homegraph/build_viewer_graph.py --viewer-id twitch:streamer:viewer:alice
 
 ```bash
 GET /admin/homegraph/users/{user_id}/graph
+```
+
+Filtres optionnels deja supportes :
+- `include_uncertain=true|false`
+- `min_weight=<float>`
+- `max_links=<int>`
+
+Exemple :
+
+```bash
+GET /admin/homegraph/users/{user_id}/graph?include_uncertain=false&min_weight=0.7&max_links=8
 ```
 
 Auth :

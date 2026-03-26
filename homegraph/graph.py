@@ -65,7 +65,14 @@ def compact_slug(value: str) -> str:
     return slug or "item"
 
 
-def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str, Any]:
+def build_viewer_graph_payload(
+    viewer_id: str,
+    db_path: Path | str,
+    *,
+    include_uncertain: bool = True,
+    min_weight: float | None = None,
+    max_links: int | None = None,
+) -> dict[str, Any]:
     conn = sqlite3.connect(Path(db_path))
     conn.row_factory = sqlite3.Row
     try:
@@ -179,6 +186,9 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
             payload["detail"] = detail
         links.append(payload)
 
+    def link_budget_exhausted() -> bool:
+        return max_links is not None and len(links) >= max_links
+
     viewer_node_id = f"viewer:{viewer_id}"
     add_node(
         viewer_node_id,
@@ -189,11 +199,19 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
     )
 
     for row in link_rows:
+        if link_budget_exhausted():
+            break
         entity_type = str(row["entity_type"] or "").strip() or "unknown"
         canonical_name = str(row["canonical_name"] or "").strip()
         fallback_value = str(row["target_fallback_value"] or "").strip()
         label = canonical_name or fallback_value
         if not label:
+            continue
+        status = str(row["status"] or "").strip()
+        weight = float(row["strength"] if row["strength"] is not None else (row["confidence"] or 0.0))
+        if not include_uncertain and status == "uncertain":
+            continue
+        if min_weight is not None and weight < min_weight:
             continue
         node_id = str(row["entity_id"] or "").strip() or f"{entity_type}:{compact_slug(label)}"
         kind = entity_type if entity_type in STABLE_NODE_KINDS else entity_type or "unknown"
@@ -202,8 +220,8 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
 
         source_memory_ids = _parse_json_list(row["source_memory_ids_json"])
         detail_parts = []
-        if row["status"]:
-            detail_parts.append(f"status={row['status']}")
+        if status:
+            detail_parts.append(f"status={status}")
         if row["polarity"]:
             detail_parts.append(f"polarity={row['polarity']}")
         if source_memory_ids:
@@ -218,16 +236,23 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
             str(row["relation_type"] or "").strip() or "related_to",
             label=str(row["relation_type"] or "").strip() or "",
             color=color,
-            weight=row["strength"] if row["strength"] is not None else row["confidence"],
+            weight=weight,
             detail=detail,
         )
 
     linked_targets = {(item["target"], item["kind"]) for item in links}
     for row in relation_rows:
+        if link_budget_exhausted():
+            break
         target_type = str(row["target_type"] or "").strip()
         target_value = str(row["target_id_or_value"] or "").strip()
         relation_type = str(row["relation_type"] or "").strip()
         if not target_type or not target_value or not relation_type:
+            continue
+        confidence = float(row["confidence"] or 0.0)
+        if not include_uncertain and confidence < 0.75:
+            continue
+        if min_weight is not None and confidence < min_weight:
             continue
         node_id = f"{target_type}:{compact_slug(target_value)}"
         if (node_id, relation_type) in linked_targets:
@@ -241,7 +266,7 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
             relation_type,
             label=relation_type,
             color=color,
-            weight=row["confidence"],
+            weight=confidence,
         )
 
     kind_counts: dict[str, int] = {}
@@ -263,6 +288,11 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
             "profile_last_updated_at": profile_last_updated_at,
             "stable_node_kinds": STABLE_NODE_KINDS,
             "stable_link_kinds": STABLE_LINK_KINDS,
+            "filters_applied": {
+                "include_uncertain": include_uncertain,
+                "min_weight": min_weight,
+                "max_links": max_links,
+            },
         },
         "stats": {
             "node_count": len(nodes),
@@ -275,5 +305,22 @@ def build_viewer_graph_payload(viewer_id: str, db_path: Path | str) -> dict[str,
     }
 
 
-def payload_as_json(viewer_id: str, db_path: Path | str) -> str:
-    return json.dumps(build_viewer_graph_payload(viewer_id, db_path), ensure_ascii=False, indent=2)
+def payload_as_json(
+    viewer_id: str,
+    db_path: Path | str,
+    *,
+    include_uncertain: bool = True,
+    min_weight: float | None = None,
+    max_links: int | None = None,
+) -> str:
+    return json.dumps(
+        build_viewer_graph_payload(
+            viewer_id,
+            db_path,
+            include_uncertain=include_uncertain,
+            min_weight=min_weight,
+            max_links=max_links,
+        ),
+        ensure_ascii=False,
+        indent=2,
+    )

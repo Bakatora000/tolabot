@@ -166,6 +166,7 @@ class HomegraphGraphMeta(BaseModel):
     profile_last_updated_at: str | None = None
     stable_node_kinds: list[str]
     stable_link_kinds: list[str]
+    filters_applied: dict[str, Any] | None = None
 
 
 class HomegraphGraphStats(BaseModel):

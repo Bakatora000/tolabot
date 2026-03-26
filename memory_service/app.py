@@ -327,10 +327,19 @@ async def admin_homegraph_viewer_context(user_id: str, request: Request):
     response_model=AdminHomegraphGraphResponse,
     dependencies=admin_auth_dependencies(settings.admin_key),
 )
-async def admin_homegraph_viewer_graph(user_id: str, request: Request):
+async def admin_homegraph_viewer_graph(
+    user_id: str,
+    request: Request,
+    include_uncertain: bool = True,
+    min_weight: float | None = None,
+    max_links: int | None = None,
+):
     settings_obj = getattr(request.app.state, "settings", settings)
     payload = build_viewer_graph_payload(
         viewer_id=user_id,
         db_path=settings_obj.homegraph_db_path,
+        include_uncertain=include_uncertain,
+        min_weight=min_weight,
+        max_links=max_links,
     )
     return AdminHomegraphGraphResponse(**payload)

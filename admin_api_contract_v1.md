@@ -235,6 +235,10 @@ Notes :
 - sous-graphe filtre par viewer, destine a une vue 2D/3D admin
 - le contrat detaille est documente dans `homegraph/viewer_graph_contract_v1.md`
 - acces local uniquement via le meme garde admin que les autres routes `/admin/*`
+- filtres optionnels supportes :
+  - `include_uncertain=true|false`
+  - `min_weight=<float>`
+  - `max_links=<int>`
 
 ## Format d'erreur generique
 
