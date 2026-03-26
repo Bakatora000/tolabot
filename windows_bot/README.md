@@ -7,6 +7,9 @@ Bot Twitch francophone qui :
 - garde une memoire locale courte des echanges recents
 - peut preparer une integration memoire distante via mem0
 
+Doc interne utile pour la structure runtime :
+- [runtime_architecture.md](C:/Users/xuanp/BotTwitch/tolabot/windows_bot/runtime_architecture.md)
+
 ## Prerequis
 
 - Windows
