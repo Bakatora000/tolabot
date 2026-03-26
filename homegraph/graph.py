@@ -130,8 +130,8 @@ def build_viewer_graph_payload(
         conn.close()
 
     viewer_label = (
-        str(profile["display_name"] or "").strip()
-        or str(profile["viewer_login"] or "").strip()
+        (str(profile["display_name"] or "").strip() if profile else "")
+        or (str(profile["viewer_login"] or "").strip() if profile else "")
         or viewer_id.split(":")[-1]
     )
     viewer_detail = str(profile["summary_short"] or "").strip() if profile else ""
