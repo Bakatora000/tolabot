@@ -87,6 +87,41 @@ async def send_channel_summary_reply(bot, payload, author: str, summary: str) ->
     bot.mark_replied(author)
 
 
+async def dispatch_incoming_message(
+    *,
+    payload,
+    recent_ids,
+    queue_worker_task,
+    enqueue_message_fn,
+    process_queued_message_fn,
+    queued_message_factory,
+    now_fn,
+    injection_checker=looks_like_prompt_injection,
+) -> None:
+    incoming = build_incoming_message_data(payload)
+    log_incoming_message(payload, incoming)
+
+    if should_ignore_incoming_message(
+        incoming=incoming,
+        recent_ids=recent_ids,
+        injection_checker=injection_checker,
+    ):
+        return
+
+    queued_message = queued_message_factory(
+        payload=payload,
+        text=incoming.text,
+        clean_viewer_message=incoming.clean_viewer_message,
+        author=incoming.author,
+        msg_id=incoming.msg_id,
+        received_at=now_fn(),
+    )
+    if queue_worker_task is None:
+        await process_queued_message_fn(queued_message)
+    else:
+        await enqueue_message_fn(queued_message)
+
+
 async def handle_non_model_decision(
     *,
     payload,

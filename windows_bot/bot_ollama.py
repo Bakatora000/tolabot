@@ -72,6 +72,7 @@ from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from runtime_pipeline import (
     build_incoming_message_data,
     build_runtime_context_bundle,
+    dispatch_incoming_message,
     handle_non_model_decision,
     handle_model_decision_pipeline,
     log_incoming_message,
@@ -855,27 +856,16 @@ class Bot(commands.Bot):
 
     async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
-            incoming = build_incoming_message_data(payload)
-            log_incoming_message(payload, incoming)
-
-            if should_ignore_incoming_message(
-                incoming=incoming,
-                recent_ids=self.recent_ids,
-                injection_checker=looks_like_prompt_injection,
-            ):
-                return
-            queued_message = QueuedMessage(
+            await dispatch_incoming_message(
                 payload=payload,
-                text=incoming.text,
-                clean_viewer_message=incoming.clean_viewer_message,
-                author=incoming.author,
-                msg_id=incoming.msg_id,
-                received_at=now_ts(),
+                recent_ids=self.recent_ids,
+                queue_worker_task=self.queue_worker_task,
+                enqueue_message_fn=self.enqueue_message,
+                process_queued_message_fn=self.process_queued_message,
+                queued_message_factory=QueuedMessage,
+                now_fn=now_ts,
+                injection_checker=looks_like_prompt_injection,
             )
-            if self.queue_worker_task is None:
-                await self.process_queued_message(queued_message)
-            else:
-                await self.enqueue_message(queued_message)
 
         except requests.HTTPError as exc:
             print(f"❌ Erreur HTTP : {type(exc).__name__}: {exc}", flush=True)
