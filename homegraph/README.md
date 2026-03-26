@@ -35,12 +35,14 @@ Socle V2 deja pose :
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
 - `homegraph/extraction_prompt_v1.md`
+- `homegraph/extraction_prompt_v2.md`
 - `homegraph/build_extraction_prompt.py`
 - `homegraph/merge_extraction.py`
 - `homegraph/extraction_output_example.json`
 - `homegraph/build_viewer_context.py`
 - `homegraph/viewer_context_contract_v1.md`
 - `homegraph/workflow_v1.md`
+- `homegraph/workflow_v2.md`
 
 ## Initialisation
 
@@ -86,6 +88,18 @@ Le prompt reutilise :
 
 ```text
 homegraph/extraction_prompt_v1.md
+```
+
+Version V2 avec `links` :
+
+```bash
+python3 homegraph/build_extraction_prompt.py homegraph/payloads/alice_gpt_payload.json --version v2
+```
+
+Template V2 :
+
+```text
+homegraph/extraction_prompt_v2.md
 ```
 
 ## Merge D'Une Extraction GPT

@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 PROMPT_TEMPLATE_PATH = Path("homegraph/extraction_prompt_v1.md")
+PROMPT_TEMPLATE_V2_PATH = Path("homegraph/extraction_prompt_v2.md")
 
 
 def parse_args() -> argparse.Namespace:
@@ -14,8 +15,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input_path", help="Path to the homegraph viewer payload JSON file.")
     parser.add_argument(
         "--template",
-        default=str(PROMPT_TEMPLATE_PATH),
+        default=None,
         help="Path to the extraction prompt template.",
+    )
+    parser.add_argument(
+        "--version",
+        choices=("v1", "v2"),
+        default="v1",
+        help="Prompt template version shortcut when --template is not provided.",
     )
     parser.add_argument(
         "--output",
@@ -28,7 +35,10 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     input_path = Path(args.input_path)
-    template_path = Path(args.template)
+    if args.template:
+        template_path = Path(args.template)
+    else:
+        template_path = PROMPT_TEMPLATE_V2_PATH if args.version == "v2" else PROMPT_TEMPLATE_PATH
 
     prompt = (
         template_path.read_text(encoding="utf-8").rstrip()
