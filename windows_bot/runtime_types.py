@@ -1,7 +1,83 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+from typing import Any, Protocol
+
+
+class BroadcasterLike(Protocol):
+    name: str
+
+
+class QueuedPayloadLike(Protocol):
+    broadcaster: BroadcasterLike
+
+
+class QueuedMessageLike(Protocol):
+    payload: QueuedPayloadLike
+    text: str
+    clean_viewer_message: str
+    author: str
+    msg_id: str | None
+    received_at: float
+
+
+class PersistLocalTurnFn(Protocol):
+    def __call__(
+        self,
+        *,
+        channel_name: str,
+        author: str,
+        clean_viewer_message: str,
+        bot_reply: str = "",
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool = False,
+        riddle_thread_close: bool = False,
+        store_reported_facts: bool = True,
+    ) -> None: ...
+
+
+class PersistLocalAndRemoteTurnFn(Protocol):
+    def __call__(
+        self,
+        *,
+        channel_name: str,
+        author: str,
+        clean_viewer_message: str,
+        bot_reply: str = "",
+        msg_id: str | None,
+        allow_remote: bool,
+        author_is_owner: bool,
+        event_type: str,
+        related_viewer: str,
+        related_message: str,
+        reply_to_turn_id: str,
+        related_turn_id: str,
+        riddle_thread_reset: bool = False,
+        riddle_thread_close: bool = False,
+        store_reported_facts: bool = True,
+    ) -> None: ...
+
+
+class RememberRemoteTurnFn(Protocol):
+    def __call__(
+        self,
+        channel_name: str,
+        author: str,
+        user_message: str,
+        *,
+        bot_reply: str = "",
+        message_id: str | None = None,
+        allow_remote: bool = True,
+        author_is_owner: bool = False,
+    ) -> bool: ...
+
+
+class BuildRuntimeContextBundleFn(Protocol):
+    def __call__(self, **kwargs: Any) -> "RuntimeContextBundle": ...
 
 
 @dataclass(slots=True)
@@ -90,15 +166,15 @@ class MessagePreparation:
 
 @dataclass(slots=True)
 class RuntimePipelineDeps:
-    persist_local_turn_fn: Callable[..., None]
-    persist_local_and_remote_turn_fn: Callable[..., None]
-    remember_remote_turn_fn: Callable[..., bool]
-    build_runtime_context_bundle_fn: Callable[..., RuntimeContextBundle]
+    persist_local_turn_fn: PersistLocalTurnFn
+    persist_local_and_remote_turn_fn: PersistLocalAndRemoteTurnFn
+    remember_remote_turn_fn: RememberRemoteTurnFn
+    build_runtime_context_bundle_fn: BuildRuntimeContextBundleFn
 
 
 @dataclass(slots=True)
 class QueuedMessageContext:
-    queued_message: Any
+    queued_message: QueuedMessageLike
     channel_name: str
     prepared: MessagePreparation
     decision: DecisionResult
