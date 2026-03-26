@@ -73,9 +73,11 @@ from runtime_pipeline import (
     build_incoming_message_data,
     build_runtime_context_bundle,
     dispatch_incoming_message,
+    enqueue_message as runtime_enqueue_message,
     handle_non_model_decision,
     handle_model_decision_pipeline,
     log_incoming_message,
+    message_queue_worker as runtime_message_queue_worker,
     persist_local_and_remote_turn,
     persist_local_turn,
     remember_remote_turn,
@@ -630,50 +632,22 @@ class Bot(commands.Bot):
         )
 
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
-        broadcaster_name = normalize_spaces(getattr(queued_message.payload.broadcaster, "name", "")).lower()
-        is_owner_message = (
-            normalize_spaces(queued_message.author).lower() == broadcaster_name
-            or self.is_owner_author(queued_message.author)
+        return await runtime_enqueue_message(
+            queued_message=queued_message,
+            message_queue=self.message_queue,
+            max_queue_size=CONFIG.message_queue_max_size,
+            is_owner_author_fn=self.is_owner_author,
+            normalize_spaces_fn=normalize_spaces,
         )
 
-        if self.message_queue.full():
-            try:
-                dropped = self.message_queue.get_nowait()
-                print(f"↪️ File pleine, ancien message supprimé : {dropped.author}", flush=True)
-            except asyncio.QueueEmpty:
-                pass
-
-        try:
-            self.message_queue.put_nowait(queued_message)
-            if is_owner_message and self.message_queue.qsize() > 1:
-                self.message_queue._queue.rotate(1)
-            print(
-                f"🧾 Message mis en file ({self.message_queue.qsize()}/{CONFIG.message_queue_max_size})"
-                + (" [priorité streamer]" if is_owner_message else ""),
-                flush=True,
-            )
-            return True
-        except asyncio.QueueFull:
-            print("↪️ File pleine, message ignoré", flush=True)
-            return False
-
     async def message_queue_worker(self) -> None:
-        while True:
-            queued_message = await self.message_queue.get()
-            try:
-                age_seconds = now_ts() - queued_message.received_at
-                if age_seconds > CONFIG.message_queue_max_age_seconds:
-                    print(f"↪️ Message expiré dans la file ({int(age_seconds)}s), ignoré", flush=True)
-                    continue
-
-                wait_seconds = self.seconds_until_ready(queued_message.author)
-                if wait_seconds > 0:
-                    print(f"⏳ Attente file avant traitement : {wait_seconds:.1f}s", flush=True)
-                    await asyncio.sleep(wait_seconds)
-
-                await self.process_queued_message(queued_message)
-            finally:
-                self.message_queue.task_done()
+        await runtime_message_queue_worker(
+            message_queue=self.message_queue,
+            process_queued_message_fn=self.process_queued_message,
+            seconds_until_ready_fn=self.seconds_until_ready,
+            now_fn=now_ts,
+            max_age_seconds=CONFIG.message_queue_max_age_seconds,
+        )
 
     async def process_queued_message(self, queued_message: QueuedMessage) -> None:
         payload = queued_message.payload

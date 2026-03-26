@@ -122,6 +122,70 @@ async def dispatch_incoming_message(
         await enqueue_message_fn(queued_message)
 
 
+async def enqueue_message(
+    *,
+    queued_message,
+    message_queue,
+    max_queue_size: int,
+    is_owner_author_fn,
+    normalize_spaces_fn,
+) -> bool:
+    broadcaster_name = normalize_spaces_fn(getattr(queued_message.payload.broadcaster, "name", "")).lower()
+    is_owner_message = (
+        normalize_spaces_fn(queued_message.author).lower() == broadcaster_name
+        or is_owner_author_fn(queued_message.author)
+    )
+
+    if message_queue.full():
+        try:
+            dropped = message_queue.get_nowait()
+            print(f"↪️ File pleine, ancien message supprimé : {dropped.author}", flush=True)
+        except Exception:
+            pass
+
+    try:
+        message_queue.put_nowait(queued_message)
+        if is_owner_message and message_queue.qsize() > 1:
+            message_queue._queue.rotate(1)
+        print(
+            f"🧾 Message mis en file ({message_queue.qsize()}/{max_queue_size})"
+            + (" [priorité streamer]" if is_owner_message else ""),
+            flush=True,
+        )
+        return True
+    except Exception:
+        print("↪️ File pleine, message ignoré", flush=True)
+        return False
+
+
+async def message_queue_worker(
+    *,
+    message_queue,
+    process_queued_message_fn,
+    seconds_until_ready_fn,
+    now_fn,
+    max_age_seconds: float,
+) -> None:
+    import asyncio
+
+    while True:
+        queued_message = await message_queue.get()
+        try:
+            age_seconds = now_fn() - queued_message.received_at
+            if age_seconds > max_age_seconds:
+                print(f"↪️ Message expiré dans la file ({int(age_seconds)}s), ignoré", flush=True)
+                continue
+
+            wait_seconds = seconds_until_ready_fn(queued_message.author)
+            if wait_seconds > 0:
+                print(f"⏳ Attente file avant traitement : {wait_seconds:.1f}s", flush=True)
+                await asyncio.sleep(wait_seconds)
+
+            await process_queued_message_fn(queued_message)
+        finally:
+            message_queue.task_done()
+
+
 async def handle_non_model_decision(
     *,
     payload,
