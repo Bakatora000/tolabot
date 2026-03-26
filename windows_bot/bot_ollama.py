@@ -40,15 +40,12 @@ from bot_logic import (
     load_chat_memory,
     load_history,
     looks_like_prompt_injection,
-    looks_like_memory_instruction,
     normalize_spaces,
     now_ts,
     output_is_suspicious,
-    normalize_web_sourced_reply,
     sanitize_user_text,
     smart_truncate,
     start_stream_session,
-    strip_trigger,
     viewer_recent_social_redundancy,
 )
 from conversation_graph import (
@@ -70,24 +67,20 @@ from facts_memory import (
 from memory_client import MemoryApiError, get_memory_context, is_mem0_enabled, store_memory_turn
 from ollama_client import ask_ollama, choose_model, summarize_channel_profile
 from runtime_pipeline import (
-    build_incoming_message_data,
     build_runtime_context_bundle,
     dispatch_incoming_message,
     enqueue_message as runtime_enqueue_message,
     handle_non_model_decision,
     handle_model_decision_pipeline,
-    log_incoming_message,
     message_queue_worker as runtime_message_queue_worker,
     persist_local_and_remote_turn,
     persist_local_turn,
     reply_about_channel_content as runtime_reply_about_channel_content,
     remember_remote_turn,
-    send_channel_summary_reply,
-    should_ignore_incoming_message,
 )
 from runtime_types import MessagePreparation, QueuedMessageContext, RuntimePipelineDeps
 from twitch_auth import run_oauth_flow
-from web_search_client import build_web_search_context, search_searxng, should_enable_web_search
+from web_search_client import build_web_search_context, search_searxng
 
 CONFIG = load_config()
 OLLAMA_MODEL = None
