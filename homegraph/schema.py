@@ -54,6 +54,52 @@ CREATE TABLE IF NOT EXISTS viewer_relations (
     FOREIGN KEY (viewer_id) REFERENCES viewer_profiles(viewer_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS graph_entities (
+    entity_id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    aliases_json TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS viewer_links (
+    link_id TEXT PRIMARY KEY,
+    viewer_id TEXT NOT NULL,
+    target_entity_id TEXT,
+    target_fallback_value TEXT,
+    relation_type TEXT NOT NULL,
+    strength REAL,
+    confidence REAL,
+    status TEXT NOT NULL DEFAULT 'active',
+    polarity TEXT NOT NULL DEFAULT 'neutral',
+    evidence_count INTEGER NOT NULL DEFAULT 0,
+    first_seen_at TEXT,
+    last_seen_at TEXT,
+    valid_from TEXT,
+    valid_to TEXT,
+    source_memory_ids_json TEXT NOT NULL DEFAULT '[]',
+    source_excerpt TEXT,
+    last_reviewed_at TEXT,
+    review_state TEXT NOT NULL DEFAULT 'auto',
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    FOREIGN KEY (viewer_id) REFERENCES viewer_profiles(viewer_id) ON DELETE CASCADE,
+    FOREIGN KEY (target_entity_id) REFERENCES graph_entities(entity_id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS link_evidence (
+    evidence_id TEXT PRIMARY KEY,
+    link_id TEXT NOT NULL,
+    memory_id TEXT NOT NULL,
+    excerpt TEXT,
+    weight REAL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    FOREIGN KEY (link_id) REFERENCES viewer_links(link_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS graph_jobs (
     job_id TEXT PRIMARY KEY,
     viewer_id TEXT,
@@ -94,6 +140,30 @@ CREATE INDEX IF NOT EXISTS idx_viewer_relations_viewer_id
 
 CREATE INDEX IF NOT EXISTS idx_viewer_relations_relation_type
     ON viewer_relations(relation_type);
+
+CREATE INDEX IF NOT EXISTS idx_graph_entities_entity_type
+    ON graph_entities(entity_type);
+
+CREATE INDEX IF NOT EXISTS idx_graph_entities_canonical_name
+    ON graph_entities(canonical_name);
+
+CREATE INDEX IF NOT EXISTS idx_viewer_links_viewer_id
+    ON viewer_links(viewer_id);
+
+CREATE INDEX IF NOT EXISTS idx_viewer_links_target_entity_id
+    ON viewer_links(target_entity_id);
+
+CREATE INDEX IF NOT EXISTS idx_viewer_links_relation_type
+    ON viewer_links(relation_type);
+
+CREATE INDEX IF NOT EXISTS idx_viewer_links_status
+    ON viewer_links(status);
+
+CREATE INDEX IF NOT EXISTS idx_link_evidence_link_id
+    ON link_evidence(link_id);
+
+CREATE INDEX IF NOT EXISTS idx_link_evidence_memory_id
+    ON link_evidence(memory_id);
 
 CREATE INDEX IF NOT EXISTS idx_graph_jobs_viewer_id
     ON graph_jobs(viewer_id);

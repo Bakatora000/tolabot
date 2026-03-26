@@ -12,6 +12,7 @@ Objectif :
 
 Disponible :
 - schema SQLite V1
+- premier socle Homegraph V2 avec couche liens SQLite
 - script d'initialisation de base
 - script d'inspection simple
 - script de construction d'un payload viewer pour extraction GPT
@@ -19,6 +20,12 @@ Disponible :
 - script de construction du prompt GPT
 - script de merge `GPT JSON -> SQLite`
 - script de construction du contexte viewer compact
+
+Socle V2 deja pose :
+- tables `graph_entities`, `viewer_links`, `link_evidence`
+- merge `links` en dual-write avec la V1
+- builder de contexte capable d'exploiter les liens V2
+- contrat Windows conserve (`text_block`, `summary_short`, etc.)
 
 ## Fichiers
 
@@ -91,6 +98,7 @@ Ce script :
 - upsert le profil viewer
 - upsert les facts
 - upsert les relations
+- upsert aussi les `links` V2 et leurs evidences si presents
 - trace l'operation dans `graph_jobs` et `graph_job_items`
 
 ## Construction Du Contexte Viewer Compact
@@ -114,3 +122,4 @@ homegraph/viewer_context_contract_v1.md
 - automatiser eventuellement l'appel GPT
 - brancher l'appel cote Windows
 - preparer `homegraph v2` avec une vraie couche liens sans quitter SQLite
+- enrichir progressivement le builder avec davantage de relation types V2 utiles au prompt

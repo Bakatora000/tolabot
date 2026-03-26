@@ -38,6 +38,29 @@
       "source_memory_ids": ["mem_3"]
     }
   ],
+  "links": [
+    {
+      "target_type": "game",
+      "target_value": "Satisfactory",
+      "relation_type": "plays",
+      "strength": 0.88,
+      "confidence": 0.92,
+      "status": "active",
+      "polarity": "positive",
+      "source_memory_ids": ["mem_1", "mem_2"],
+      "source_excerpt": "J'adore optimiser mes usines sur Satisfactory."
+    },
+    {
+      "target_type": "topic",
+      "target_value": "automation",
+      "relation_type": "likes",
+      "strength": 0.73,
+      "confidence": 0.74,
+      "status": "active",
+      "polarity": "positive",
+      "source_memory_ids": ["mem_3"]
+    }
+  ],
   "conflicts": [],
   "needs_human_review": []
 }

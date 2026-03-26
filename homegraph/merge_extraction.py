@@ -57,6 +57,14 @@ def normalize_source_memory_ids(value: Any) -> list[str]:
     return normalized
 
 
+def compact_slug(value: str) -> str:
+    lowered = value.strip().lower()
+    normalized = "".join(char if char.isalnum() else "_" for char in lowered)
+    while "__" in normalized:
+        normalized = normalized.replace("__", "_")
+    return normalized.strip("_") or "unknown"
+
+
 def stable_id(prefix: str, *parts: str) -> str:
     joined = "||".join(part.strip() for part in parts if part is not None)
     digest = hashlib.sha256(joined.encode("utf-8")).hexdigest()[:24]
@@ -70,6 +78,46 @@ def merge_source_memory_ids(existing_json: str | None, new_ids: list[str]) -> st
         if item not in merged:
             merged.append(item)
     return compact_json(merged)
+
+
+def build_entity_identity(link: dict[str, Any]) -> tuple[str, str, str]:
+    entity_type = str(link.get("target_type") or link.get("entity_type") or "").strip()
+    canonical_name = str(link.get("target_value") or link.get("canonical_name") or link.get("target_id_or_value") or "").strip()
+    entity_id = str(link.get("target_entity_id") or link.get("entity_id") or "").strip()
+    if not entity_type or not canonical_name:
+        raise ValueError("Each link requires non-empty 'target_type' and a target value/name.")
+    if not entity_id:
+        entity_id = f"{entity_type}:{compact_slug(canonical_name)}"
+    return entity_id, entity_type, canonical_name
+
+
+def upsert_entity(conn: sqlite3.Connection, link: dict[str, Any], now: str) -> str:
+    entity_id, entity_type, canonical_name = build_entity_identity(link)
+    aliases = link.get("aliases") if isinstance(link.get("aliases"), list) else []
+    status = str(link.get("entity_status") or link.get("status") or "active").strip() or "active"
+    conn.execute(
+        """
+        INSERT INTO graph_entities (
+            entity_id, entity_type, canonical_name, aliases_json, status, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(entity_id) DO UPDATE SET
+            entity_type=excluded.entity_type,
+            canonical_name=excluded.canonical_name,
+            aliases_json=excluded.aliases_json,
+            status=excluded.status,
+            updated_at=excluded.updated_at
+        """,
+        (
+            entity_id,
+            entity_type,
+            canonical_name,
+            compact_json(aliases),
+            status,
+            now,
+        ),
+    )
+    return entity_id
 
 
 def upsert_viewer_profile(conn: sqlite3.Connection, payload: dict[str, Any], now: str) -> None:
@@ -240,6 +288,121 @@ def upsert_relation(
     return relation_id
 
 
+def upsert_link(
+    conn: sqlite3.Connection,
+    viewer_id: str,
+    link: dict[str, Any],
+    now: str,
+) -> str:
+    target_entity_id = upsert_entity(conn, link, now)
+    _, _, canonical_name = build_entity_identity(link)
+    relation_type = str(link.get("relation_type") or "").strip()
+    if not relation_type:
+        raise ValueError("Each link requires non-empty 'relation_type'.")
+
+    link_id = str(link.get("link_id") or "").strip() or stable_id(
+        "link", viewer_id, target_entity_id, relation_type
+    )
+    strength = link.get("strength")
+    confidence = link.get("confidence")
+    status = str(link.get("status") or "active").strip() or "active"
+    polarity = str(link.get("polarity") or "neutral").strip() or "neutral"
+    valid_from = str(link.get("valid_from") or "").strip() or None
+    valid_to = str(link.get("valid_to") or "").strip() or None
+    first_seen_at = str(link.get("first_seen_at") or "").strip() or None
+    last_seen_at = str(link.get("last_seen_at") or "").strip() or None
+    source_memory_ids = normalize_source_memory_ids(link.get("source_memory_ids"))
+    source_excerpt = str(link.get("source_excerpt") or "").strip() or None
+    last_reviewed_at = str(link.get("last_reviewed_at") or "").strip() or None
+    review_state = str(link.get("review_state") or "auto").strip() or "auto"
+    evidence_count = int(link.get("evidence_count") or len(source_memory_ids) or 0)
+    target_fallback_value = str(link.get("target_fallback_value") or canonical_name).strip() or canonical_name
+
+    existing = conn.execute(
+        "SELECT source_memory_ids_json FROM viewer_links WHERE link_id = ?",
+        (link_id,),
+    ).fetchone()
+    merged_source_ids = merge_source_memory_ids(existing[0] if existing else None, source_memory_ids)
+
+    conn.execute(
+        """
+        INSERT INTO viewer_links (
+            link_id, viewer_id, target_entity_id, target_fallback_value,
+            relation_type, strength, confidence, status, polarity, evidence_count,
+            first_seen_at, last_seen_at, valid_from, valid_to, source_memory_ids_json,
+            source_excerpt, last_reviewed_at, review_state, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(link_id) DO UPDATE SET
+            viewer_id=excluded.viewer_id,
+            target_entity_id=excluded.target_entity_id,
+            target_fallback_value=excluded.target_fallback_value,
+            relation_type=excluded.relation_type,
+            strength=excluded.strength,
+            confidence=excluded.confidence,
+            status=excluded.status,
+            polarity=excluded.polarity,
+            evidence_count=excluded.evidence_count,
+            first_seen_at=COALESCE(viewer_links.first_seen_at, excluded.first_seen_at),
+            last_seen_at=COALESCE(excluded.last_seen_at, viewer_links.last_seen_at),
+            valid_from=excluded.valid_from,
+            valid_to=excluded.valid_to,
+            source_memory_ids_json=excluded.source_memory_ids_json,
+            source_excerpt=COALESCE(excluded.source_excerpt, viewer_links.source_excerpt),
+            last_reviewed_at=COALESCE(excluded.last_reviewed_at, viewer_links.last_reviewed_at),
+            review_state=excluded.review_state,
+            updated_at=excluded.updated_at
+        """,
+        (
+            link_id,
+            viewer_id,
+            target_entity_id,
+            target_fallback_value,
+            relation_type,
+            strength,
+            confidence,
+            status,
+            polarity,
+            evidence_count,
+            first_seen_at,
+            last_seen_at,
+            valid_from,
+            valid_to,
+            merged_source_ids,
+            source_excerpt,
+            last_reviewed_at,
+            review_state,
+            now,
+        ),
+    )
+    return link_id
+
+
+def upsert_link_evidence(
+    conn: sqlite3.Connection,
+    link_id: str,
+    memory_id: str,
+    excerpt: str | None,
+    weight: float | None,
+    now: str,
+) -> str:
+    evidence_id = stable_id("evidence", link_id, memory_id)
+    conn.execute(
+        """
+        INSERT INTO link_evidence (
+            evidence_id, link_id, memory_id, excerpt, weight, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(evidence_id) DO UPDATE SET
+            excerpt=COALESCE(excluded.excerpt, link_evidence.excerpt),
+            weight=COALESCE(excluded.weight, link_evidence.weight),
+            updated_at=excluded.updated_at
+        """,
+        (evidence_id, link_id, memory_id, excerpt, weight, now),
+    )
+    return evidence_id
+
+
 def create_job(
     conn: sqlite3.Connection,
     viewer_id: str,
@@ -308,6 +471,8 @@ def validate_payload(payload: dict[str, Any]) -> str:
         raise ValueError("'facts' must be a list when present.")
     if payload.get("relations") is not None and not isinstance(payload.get("relations"), list):
         raise ValueError("'relations' must be a list when present.")
+    if payload.get("links") is not None and not isinstance(payload.get("links"), list):
+        raise ValueError("'links' must be a list when present.")
     return viewer_id
 
 
@@ -347,6 +512,18 @@ def merge_payload(
                 add_job_item(conn, job_id, "relation", relation_id, relation)
                 merged_relations += 1
 
+            merged_links = 0
+            merged_evidence = 0
+            for link in payload.get("links", []):
+                link_id = upsert_link(conn, viewer_id, link, now)
+                add_job_item(conn, job_id, "link", link_id, link)
+                merged_links += 1
+                excerpt = str(link.get("source_excerpt") or "").strip() or None
+                weight = link.get("strength") or link.get("confidence")
+                for memory_id in normalize_source_memory_ids(link.get("source_memory_ids")):
+                    upsert_link_evidence(conn, link_id, memory_id, excerpt, float(weight) if weight is not None else None, now)
+                    merged_evidence += 1
+
             close_job(conn, job_id, status="completed", completed_at=utc_now())
             conn.commit()
         except Exception as exc:
@@ -360,6 +537,7 @@ def merge_payload(
         "viewer_id": viewer_id,
         "facts": len(payload.get("facts", [])),
         "relations": len(payload.get("relations", [])),
+        "links": len(payload.get("links", [])),
         "db_path": str(db_path),
     }
 
@@ -391,7 +569,7 @@ def main() -> None:
     )
     print(
         f"homegraph_merge_ok viewer_id={result['viewer_id']} facts={result['facts']} "
-        f"relations={result['relations']} db={result['db_path']}"
+        f"relations={result['relations']} links={result['links']} db={result['db_path']}"
     )
 
 

@@ -29,6 +29,9 @@ def main() -> None:
             "viewer_profiles",
             "viewer_facts",
             "viewer_relations",
+            "graph_entities",
+            "viewer_links",
+            "link_evidence",
             "graph_jobs",
             "graph_job_items",
         ]:

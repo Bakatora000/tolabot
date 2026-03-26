@@ -118,6 +118,7 @@ Graphiti V1 locale :
   - endpoint admin local pour recuperer ce contexte
   - durcissement qualite du `text_block` pour reduire les cas `too_short` / `low_value` / `empty`
   - bootstrap heuristique local depuis exports mem0 pour alimenter rapidement certains viewers avant l'automatisation GPT complete
+  - premier socle `homegraph v2` maintenant implemente avec tables de liens SQLite, merge `links` et builder capable de les exploiter
 
 ### Windows
 

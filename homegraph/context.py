@@ -85,6 +85,32 @@ def fetch_relations(conn: sqlite3.Connection, viewer_id: str) -> list[sqlite3.Ro
     return list(rows)
 
 
+def fetch_links(conn: sqlite3.Connection, viewer_id: str) -> list[sqlite3.Row]:
+    rows = conn.execute(
+        """
+        SELECT
+            l.target_fallback_value,
+            l.relation_type,
+            l.strength,
+            l.confidence,
+            l.status,
+            l.polarity,
+            l.updated_at,
+            e.entity_type,
+            e.canonical_name
+        FROM viewer_links l
+        LEFT JOIN graph_entities e ON e.entity_id = l.target_entity_id
+        WHERE l.viewer_id = ?
+        ORDER BY
+            COALESCE(l.strength, 0) DESC,
+            COALESCE(l.confidence, 0) DESC,
+            COALESCE(l.updated_at, '') DESC
+        """,
+        (viewer_id,),
+    ).fetchall()
+    return list(rows)
+
+
 def normalize_phrase(text: str) -> str:
     value = text.strip()
     if not value:
@@ -128,6 +154,33 @@ def relation_to_phrase(target_type: str, relation_type: str, target_value: str) 
     if target_type == "viewer" and relation_type == "knows":
         return f"semble connaitre {value}"
     return normalize_phrase(value)
+
+
+def link_to_phrase(entity_type: str, relation_type: str, canonical_name: str, target_value: str) -> str:
+    value = canonical_name.strip() or target_value.strip()
+    if not value:
+        return ""
+    if entity_type == "game" and relation_type == "plays":
+        return f"joue souvent a {value}"
+    if entity_type == "game" and relation_type == "likes":
+        return f"apprecie {value}"
+    if entity_type == "game" and relation_type == "dislikes":
+        return f"n'apprecie pas {value}"
+    if entity_type == "topic" and relation_type in {"returns_to", "talks_about"}:
+        return f"revient souvent sur {value}" if relation_type == "returns_to" else f"parle souvent de {value}"
+    if entity_type == "topic" and relation_type == "likes":
+        return f"s'interesse a {normalize_phrase(value)}"
+    if entity_type == "running_gag" and relation_type in {"jokes_about", "returns_to"}:
+        return f"revient souvent sur {value}"
+    if entity_type == "viewer" and relation_type == "knows":
+        return f"semble connaitre {value}"
+    if entity_type == "viewer" and relation_type == "compliments":
+        return f"complimente parfois {value}"
+    if entity_type == "stream_mode" and relation_type in {"likes", "plays_in_mode"}:
+        return f"s'interesse aux runs {normalize_phrase(value)}"
+    if entity_type == "object" and relation_type == "owns":
+        return f"a {normalize_phrase(value)}"
+    return relation_to_phrase(entity_type, relation_type, value)
 
 
 def build_text_block(
@@ -176,6 +229,7 @@ def build_viewer_context_payload(viewer_id: str, db_path: Path | str) -> dict[st
         profile = fetch_profile(conn, viewer_id)
         facts = fetch_facts(conn, viewer_id)
         relations = fetch_relations(conn, viewer_id)
+        links = fetch_links(conn, viewer_id)
     finally:
         conn.close()
 
@@ -232,6 +286,31 @@ def build_viewer_context_payload(viewer_id: str, db_path: Path | str) -> dict[st
         elif len(recent_relevant) < MAX_RECENT:
             recent_relevant.append(phrase)
             concrete_items += 1
+
+    for row in links:
+        phrase = link_to_phrase(
+            str(row["entity_type"] or "").strip(),
+            str(row["relation_type"] or "").strip(),
+            str(row["canonical_name"] or "").strip(),
+            str(row["target_fallback_value"] or "").strip(),
+        )
+        if not phrase:
+            continue
+        confidence = float(row["confidence"] or 0.0)
+        strength = float(row["strength"] or 0.0)
+        status = str(row["status"] or "").strip()
+        if phrase in facts_high_confidence or phrase in recent_relevant or phrase in uncertain_points:
+            continue
+        if status == "active" and confidence >= 0.75 and strength >= 0.7:
+            if len(facts_high_confidence) < MAX_FACTS:
+                facts_high_confidence.append(phrase)
+                concrete_items += 1
+            elif len(recent_relevant) < MAX_RECENT:
+                recent_relevant.append(phrase)
+                concrete_items += 1
+            continue
+        if (status == "uncertain" or confidence < 0.75 or strength < 0.7) and len(uncertain_points) < MAX_UNCERTAIN:
+            uncertain_points.append(phrase)
 
     text_block = build_text_block(
         summary_short=summary_short,

@@ -54,6 +54,7 @@ Taches Linux :
 | H7 | DONE | qualite du `text_block` Homegraph durcie pour eviter placeholders et blocs trop pauvres |
 | H8 | DONE | workflow reproductible `mem0 -> payload -> prompt GPT -> merge -> context` documente et outille |
 | H9 | DONE | bootstrap heuristique local depuis exports mem0 pour debloquer des viewers faibles sans attendre l'automatisation GPT complete |
+| H10 | IN_PROGRESS | socle `homegraph v2` pose : tables liens SQLite, merge `links`, builder capable d'exploiter ces liens sans changer le contrat Windows |
 
 ---
 
@@ -157,6 +158,20 @@ Bootstrap Homegraph local constate :
   - mais matiere encore trop pauvre pour produire un `text_block` utile
 - les donnees bootstrappees restent locales dans `homegraph.sqlite3` et ne sont pas versionnees dans Git
 
+Homegraph V2 demarre :
+- ajout des tables :
+  - `graph_entities`
+  - `viewer_links`
+  - `link_evidence`
+- `merge_extraction.py` accepte maintenant un champ `links`
+- le builder de contexte sait deja exploiter ces liens pour enrichir `facts_high_confidence`, `recent_relevant` et `uncertain_points`
+- le contrat retourne toujours `source=homegraph_v1` et le meme format JSON cote Windows
+- validation SQLite faite sur base de test :
+  - init DB OK
+  - merge d'un exemple avec `links` OK
+  - inspect DB OK
+  - build_viewer_context OK
+
 ---
 
 ## Decision Technique Provisoire
@@ -208,6 +223,7 @@ Decision admin V1 retenue :
 - surveiller les retours Windows sur la qualite reelle du `text_block`
 - automatiser si besoin l'appel GPT pour eviter l'etape manuelle
 - ameliorer encore les heuristiques Homegraph pour les viewers faibles ou tres bruites
+- enrichir les types de liens et la formulation V2 exploitee par le builder
 
 ---
 
