@@ -122,6 +122,49 @@ async def dispatch_incoming_message(
         await enqueue_message_fn(queued_message)
 
 
+async def reply_about_channel_content(
+    *,
+    bot,
+    payload,
+    author: str,
+    history,
+    ollama_url: str,
+    model,
+    request_timeout_seconds: float,
+    llm_provider: str,
+    openai_api_key: str,
+    max_output_chars: int,
+    extract_channel_profile_fn,
+    summarize_channel_profile_fn,
+    suspicious_output_checker,
+) -> None:
+    import asyncio
+
+    print("📺 Question sur le contenu de la chaîne", flush=True)
+
+    profile = extract_channel_profile_fn(history)
+    summary = await asyncio.to_thread(
+        summarize_channel_profile_fn,
+        profile,
+        ollama_url,
+        model,
+        request_timeout_seconds,
+        llm_provider,
+        openai_api_key,
+    )
+
+    summary = smart_truncate(summary, max_output_chars)
+    if not summary or is_no_reply_signal(summary):
+        print("↪️ Pas de résumé envoyé", flush=True)
+        return
+
+    if suspicious_output_checker(summary):
+        print("↪️ Résumé suspect bloqué", flush=True)
+        return
+
+    await send_channel_summary_reply(bot, payload, author, summary)
+
+
 async def enqueue_message(
     *,
     queued_message,

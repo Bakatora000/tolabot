@@ -80,6 +80,7 @@ from runtime_pipeline import (
     message_queue_worker as runtime_message_queue_worker,
     persist_local_and_remote_turn,
     persist_local_turn,
+    reply_about_channel_content as runtime_reply_about_channel_content,
     remember_remote_turn,
     send_channel_summary_reply,
     should_ignore_incoming_message,
@@ -812,29 +813,21 @@ class Bot(commands.Bot):
             return
 
     async def reply_about_channel_content(self, payload: twitchio.ChatMessage, author: str) -> None:
-        print("📺 Question sur le contenu de la chaîne", flush=True)
-
-        profile = extract_channel_profile(self.history)
-        summary = await asyncio.to_thread(
-            summarize_channel_profile,
-            profile,
-            CONFIG.ollama_url,
-            OLLAMA_MODEL,
-            CONFIG.request_timeout_seconds,
-            CONFIG.llm_provider,
-            CONFIG.openai_api_key,
+        await runtime_reply_about_channel_content(
+            bot=self,
+            payload=payload,
+            author=author,
+            history=self.history,
+            ollama_url=CONFIG.ollama_url,
+            model=OLLAMA_MODEL,
+            request_timeout_seconds=CONFIG.request_timeout_seconds,
+            llm_provider=CONFIG.llm_provider,
+            openai_api_key=CONFIG.openai_api_key,
+            max_output_chars=MAX_OUTPUT_CHARS,
+            extract_channel_profile_fn=extract_channel_profile,
+            summarize_channel_profile_fn=summarize_channel_profile,
+            suspicious_output_checker=output_is_suspicious,
         )
-
-        summary = smart_truncate(summary, MAX_OUTPUT_CHARS)
-        if not summary or is_no_reply_signal(summary):
-            print("↪️ Pas de résumé envoyé", flush=True)
-            return
-
-        if output_is_suspicious(summary):
-            print("↪️ Résumé suspect bloqué", flush=True)
-            return
-
-        await send_channel_summary_reply(self, payload, author, summary)
 
     async def event_message(self, payload: twitchio.ChatMessage) -> None:
         try:
