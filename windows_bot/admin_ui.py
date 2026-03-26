@@ -711,6 +711,10 @@ HTML_PAGE = """<!doctype html>
       );
     }
 
+    function setGraphStatus(message) {
+      document.getElementById('graph-stats').textContent = message;
+    }
+
     function ensureGraphInstance() {
       if (graphInstance) {
         return graphInstance;
@@ -728,6 +732,9 @@ HTML_PAGE = """<!doctype html>
         .onNodeClick((node) => {
           if (graphKind === 'homegraph') {
             homegraphCenterNodeId = node.id || '';
+            setError('');
+            setGraphStatus(`Chargement du sous-graphe centré sur ${homegraphCenterNodeId}...`);
+            renderGraphDetails(node);
             loadGraph();
             return;
           }
@@ -762,53 +769,59 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function loadGraph() {
-      const viewer = selectedViewerLabel || '';
-      const userId = selectedUserId || '';
-      const query = new URLSearchParams({
-        kind: graphKind,
-        viewer,
-        user_id: userId,
-      });
-      if (graphKind === 'homegraph') {
-        query.set('include_uncertain', String(homegraphIncludeUncertain));
-        if (homegraphMinWeight !== '') {
-          query.set('min_weight', String(homegraphMinWeight));
+      try {
+        const viewer = selectedViewerLabel || '';
+        const userId = selectedUserId || '';
+        const query = new URLSearchParams({
+          kind: graphKind,
+          viewer,
+          user_id: userId,
+        });
+        if (graphKind === 'homegraph') {
+          query.set('include_uncertain', String(homegraphIncludeUncertain));
+          if (homegraphMinWeight !== '') {
+            query.set('min_weight', String(homegraphMinWeight));
+          }
+          if (homegraphMaxLinks !== '') {
+            query.set('max_links', String(homegraphMaxLinks));
+          }
+          if (homegraphMaxDepth !== '') {
+            query.set('max_depth', String(homegraphMaxDepth));
+          }
+          if (homegraphMaxNodes !== '') {
+            query.set('max_nodes', String(homegraphMaxNodes));
+          }
+          if (homegraphCenterNodeId !== '') {
+            query.set('center_node_id', homegraphCenterNodeId);
+          }
         }
-        if (homegraphMaxLinks !== '') {
-          query.set('max_links', String(homegraphMaxLinks));
+        const response = await fetch(`/api/graph?${query.toString()}`);
+        const data = await response.json();
+        if (!data.ok) {
+          setError(data.error || 'Impossible de charger le graphe.');
+          return;
         }
-        if (homegraphMaxDepth !== '') {
-          query.set('max_depth', String(homegraphMaxDepth));
+        setError('');
+        focusedNodeId = null;
+        fullGraphData = {
+          nodes: data.nodes || [],
+          links: data.links || [],
+        };
+        if (graphKind === 'homegraph') {
+          homegraphRootNodeId = (data.meta && data.meta.root_node_id) ? data.meta.root_node_id : '';
         }
-        if (homegraphMaxNodes !== '') {
-          query.set('max_nodes', String(homegraphMaxNodes));
-        }
-        if (homegraphCenterNodeId !== '') {
-          query.set('center_node_id', homegraphCenterNodeId);
-        }
+        setGraphStatus(
+          `${data.kind} | ${data.stats.node_count} nœud(s) | ${data.stats.link_count} lien(s)` +
+          (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '') +
+          (graphKind === 'homegraph' && data.meta && data.meta.center_node_id ? ` | centre: ${data.meta.center_node_id}` : '') +
+          (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '')
+        );
+        renderGraphDetails(null);
+        applyGraphFocus();
+      } catch (error) {
+        setError(`graph_load_failed: ${error}`);
+        setGraphStatus('Chargement du graphe impossible.');
       }
-      const response = await fetch(`/api/graph?${query.toString()}`);
-      const data = await response.json();
-      if (!data.ok) {
-        setError(data.error || 'Impossible de charger le graphe.');
-        return;
-      }
-      setError('');
-      focusedNodeId = null;
-      fullGraphData = {
-        nodes: data.nodes || [],
-        links: data.links || [],
-      };
-      if (graphKind === 'homegraph') {
-        homegraphRootNodeId = (data.meta && data.meta.root_node_id) ? data.meta.root_node_id : '';
-      }
-      document.getElementById('graph-stats').textContent =
-        `${data.kind} | ${data.stats.node_count} nœud(s) | ${data.stats.link_count} lien(s)` +
-        (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '') +
-        (graphKind === 'homegraph' && data.meta && data.meta.center_node_id ? ` | centre: ${data.meta.center_node_id}` : '') +
-        (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '');
-      renderGraphDetails(null);
-      applyGraphFocus();
     }
 
     async function loadRecent(userId, viewerLabel = userId) {
