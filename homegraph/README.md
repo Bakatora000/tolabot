@@ -44,6 +44,7 @@ Socle V2 deja pose :
 - `homegraph/build_viewer_graph.py`
 - `homegraph/viewer_context_contract_v1.md`
 - `homegraph/viewer_graph_contract_v1.md`
+- `homegraph/viewer_graph_multihop_contract_v1.md`
 - `homegraph/workflow_v1.md`
 - `homegraph/workflow_v2.md`
 
@@ -162,6 +163,19 @@ Le contrat est documente ici :
 ```text
 homegraph/viewer_graph_contract_v1.md
 ```
+
+## Cible Multi-Hop
+
+La cible d'exploration multi-hop pour la vue 3D Windows est documentee ici :
+
+```text
+homegraph/viewer_graph_multihop_contract_v1.md
+```
+
+Cette doc decrit un sous-graphe borne centre sur un noeud explicite, pour permettre plus tard :
+- clic sur un noeud puis rechargement du voisinage
+- exploration multi-hop limitee
+- compatibilite avec le payload `nodes / links / stats / meta`
 
 ## Prochaine Etape
 
