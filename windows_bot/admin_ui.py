@@ -517,6 +517,7 @@ HTML_PAGE = """<!doctype html>
     let selectedViewerLabel = null;
     let editingUserId = null;
     let editingViewerLabel = null;
+    let knownUsers = [];
     let verboseEnabled = false;
     let reviewSeverity = 'balanced';
     let graphKind = 'conversation';
@@ -545,6 +546,10 @@ HTML_PAGE = """<!doctype html>
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function normalizeToken(value) {
+      return String(value || '').trim().toLowerCase();
     }
 
     function updateSelectionState() {
@@ -638,6 +643,7 @@ HTML_PAGE = """<!doctype html>
         usersNode.innerHTML = '<li class="muted">Aucun viewer retourné par l\\'API admin.</li>';
         return;
       }
+      knownUsers = Array.isArray(data.users) ? data.users : [];
       for (const user of data.users) {
         const item = document.createElement('li');
         const button = document.createElement('div');
@@ -666,6 +672,32 @@ HTML_PAGE = """<!doctype html>
         item.appendChild(button);
         usersNode.appendChild(item);
       }
+    }
+
+    function resolveHomegraphViewerUser(node) {
+      if (!node || node.kind !== 'viewer') {
+        return null;
+      }
+      const nodeId = String(node.id || '').trim();
+      const nodeLabel = String(node.label || '').trim();
+      const shortId = nodeId.startsWith('viewer:') ? nodeId.slice('viewer:'.length) : nodeId;
+
+      for (const user of knownUsers) {
+        if (normalizeToken(user.user_id) === normalizeToken(shortId)) {
+          return user;
+        }
+      }
+      for (const user of knownUsers) {
+        if (normalizeToken(user.viewer) === normalizeToken(shortId)) {
+          return user;
+        }
+      }
+      for (const user of knownUsers) {
+        if (normalizeToken(user.viewer) === normalizeToken(nodeLabel)) {
+          return user;
+        }
+      }
+      return null;
     }
 
     function cloneGraphData(data) {
@@ -773,13 +805,23 @@ HTML_PAGE = """<!doctype html>
         .linkColor((link) => link.color || '#94a3b8')
         .linkOpacity(0.75)
         .linkWidth((link) => link.kind === 'corrects' ? 2.5 : 1.2)
-        .onNodeClick((node) => {
+        .onNodeClick(async (node) => {
           if (graphKind === 'homegraph') {
+            const targetUser = resolveHomegraphViewerUser(node);
+            if (targetUser && normalizeToken(targetUser.user_id) !== normalizeToken(selectedUserId)) {
+              homegraphCenterNodeId = '';
+              homegraphRootNodeId = '';
+              setError('');
+              setGraphStatus(`Chargement du Homegraph de ${targetUser.viewer || targetUser.user_id}...`);
+              renderGraphDetails(node);
+              await loadRecent(targetUser.user_id, targetUser.viewer || targetUser.user_id);
+              return;
+            }
             homegraphCenterNodeId = node.id || '';
             setError('');
             setGraphStatus(`Chargement du sous-graphe centré sur ${homegraphCenterNodeId}...`);
             renderGraphDetails(node);
-            loadGraph();
+            await loadGraph();
             return;
           }
           focusedNodeId = node.id === focusedNodeId ? null : node.id;
