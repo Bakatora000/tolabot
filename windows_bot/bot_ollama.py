@@ -84,7 +84,7 @@ from runtime_pipeline import (
     send_channel_summary_reply,
     should_ignore_incoming_message,
 )
-from runtime_types import MessagePreparation
+from runtime_types import MessagePreparation, RuntimePipelineDeps
 from twitch_auth import run_oauth_flow
 from web_search_client import build_web_search_context, search_searxng, should_enable_web_search
 
@@ -631,6 +631,66 @@ class Bot(commands.Bot):
             repeated_social_count=repeated_social_count,
         )
 
+    def build_runtime_pipeline_deps(self) -> RuntimePipelineDeps:
+        def persist_local_turn_bound(**kwargs) -> None:
+            persist_local_turn(
+                **kwargs,
+                config=CONFIG,
+                facts_memory=self.facts_memory,
+                chat_memory=self.chat_memory,
+                conversation_graph=self.conversation_graph,
+                append_reported_facts_fn=append_reported_facts,
+                append_chat_turn_fn=append_chat_turn,
+                append_conversation_turn_fn=append_conversation_turn,
+            )
+
+        def persist_local_and_remote_turn_bound(**kwargs) -> None:
+            persist_local_and_remote_turn(
+                **kwargs,
+                config=CONFIG,
+                should_use_remote_memory=self.should_use_remote_memory(),
+                facts_memory=self.facts_memory,
+                chat_memory=self.chat_memory,
+                conversation_graph=self.conversation_graph,
+                append_reported_facts_fn=append_reported_facts,
+                append_chat_turn_fn=append_chat_turn,
+                append_conversation_turn_fn=append_conversation_turn,
+                store_memory_turn_fn=store_memory_turn,
+            )
+
+        def remember_remote_turn_bound(*args, **kwargs) -> bool:
+            return remember_remote_turn(
+                channel_name=args[0],
+                author=args[1],
+                user_message=args[2],
+                config=CONFIG,
+                should_use_remote_memory=self.should_use_remote_memory(),
+                bot_reply=kwargs.get("bot_reply", ""),
+                message_id=kwargs.get("message_id"),
+                allow_remote=kwargs.get("allow_remote", True),
+                author_is_owner=kwargs.get("author_is_owner", False),
+                store_memory_turn_fn=store_memory_turn,
+            )
+
+        def build_runtime_context_bundle_bound(**kwargs):
+            return build_runtime_context_bundle(
+                **kwargs,
+                config=CONFIG,
+                should_use_remote_memory=self.should_use_remote_memory_for_message(False),
+                get_specialized_local_context_fn=self.get_specialized_local_context,
+                get_context_with_fallback_fn=self.get_context_with_fallback,
+                build_web_search_decision_fn=build_web_search_decision,
+                build_web_search_context_fn=build_web_search_context,
+                search_searxng_fn=search_searxng,
+            )
+
+        return RuntimePipelineDeps(
+            persist_local_turn_fn=persist_local_turn_bound,
+            persist_local_and_remote_turn_fn=persist_local_and_remote_turn_bound,
+            remember_remote_turn_fn=remember_remote_turn_bound,
+            build_runtime_context_bundle_fn=build_runtime_context_bundle_bound,
+        )
+
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
         return await runtime_enqueue_message(
             queued_message=queued_message,
@@ -683,6 +743,7 @@ class Bot(commands.Bot):
             clean_viewer_message=clean_viewer_message,
             prepared=prepared,
         )
+        pipeline_deps = self.build_runtime_pipeline_deps()
 
         async with self.generation_lock:
             print(f"🧭 Décision : {decision.decision} [{decision.rule_id}]", flush=True)
@@ -704,40 +765,9 @@ class Bot(commands.Bot):
                 author_is_owner=author_is_owner,
                 reply_about_channel_content_fn=self.reply_about_channel_content,
                 send_chat_reply_fn=self.send_chat_reply,
-                persist_local_turn_fn=lambda **kwargs: persist_local_turn(
-                    **kwargs,
-                    config=CONFIG,
-                    facts_memory=self.facts_memory,
-                    chat_memory=self.chat_memory,
-                    conversation_graph=self.conversation_graph,
-                    append_reported_facts_fn=append_reported_facts,
-                    append_chat_turn_fn=append_chat_turn,
-                    append_conversation_turn_fn=append_conversation_turn,
-                ),
-                persist_local_and_remote_turn_fn=lambda **kwargs: persist_local_and_remote_turn(
-                    **kwargs,
-                    config=CONFIG,
-                    should_use_remote_memory=self.should_use_remote_memory(),
-                    facts_memory=self.facts_memory,
-                    chat_memory=self.chat_memory,
-                    conversation_graph=self.conversation_graph,
-                    append_reported_facts_fn=append_reported_facts,
-                    append_chat_turn_fn=append_chat_turn,
-                    append_conversation_turn_fn=append_conversation_turn,
-                    store_memory_turn_fn=store_memory_turn,
-                ),
-                remember_remote_turn_fn=lambda *args, **kwargs: remember_remote_turn(
-                    channel_name=args[0],
-                    author=args[1],
-                    user_message=args[2],
-                    config=CONFIG,
-                    should_use_remote_memory=self.should_use_remote_memory(),
-                    bot_reply=kwargs.get("bot_reply", ""),
-                    message_id=kwargs.get("message_id"),
-                    allow_remote=kwargs.get("allow_remote", True),
-                    author_is_owner=kwargs.get("author_is_owner", False),
-                    store_memory_turn_fn=store_memory_turn,
-                ),
+                persist_local_turn_fn=pipeline_deps.persist_local_turn_fn,
+                persist_local_and_remote_turn_fn=pipeline_deps.persist_local_and_remote_turn_fn,
+                remember_remote_turn_fn=pipeline_deps.remember_remote_turn_fn,
                 mark_replied_fn=self.mark_replied,
             ):
                 return
@@ -771,29 +801,9 @@ class Bot(commands.Bot):
                 partial_riddle_checker=is_partial_riddle_message,
                 riddle_refusal_checker=is_riddle_refusal_reply,
                 memory_context_checker=likely_needs_memory_context,
-                build_runtime_context_bundle_fn=lambda **kwargs: build_runtime_context_bundle(
-                    **kwargs,
-                    config=CONFIG,
-                    should_use_remote_memory=self.should_use_remote_memory_for_message(False),
-                    get_specialized_local_context_fn=self.get_specialized_local_context,
-                    get_context_with_fallback_fn=self.get_context_with_fallback,
-                    build_web_search_decision_fn=build_web_search_decision,
-                    build_web_search_context_fn=build_web_search_context,
-                    search_searxng_fn=search_searxng,
-                ),
+                build_runtime_context_bundle_fn=pipeline_deps.build_runtime_context_bundle_fn,
                 handle_model_no_reply_fn=self.handle_model_no_reply,
-                persist_local_and_remote_turn_fn=lambda **kwargs: persist_local_and_remote_turn(
-                    **kwargs,
-                    config=CONFIG,
-                    should_use_remote_memory=self.should_use_remote_memory(),
-                    facts_memory=self.facts_memory,
-                    chat_memory=self.chat_memory,
-                    conversation_graph=self.conversation_graph,
-                    append_reported_facts_fn=append_reported_facts,
-                    append_chat_turn_fn=append_chat_turn,
-                    append_conversation_turn_fn=append_conversation_turn,
-                    store_memory_turn_fn=store_memory_turn,
-                ),
+                persist_local_and_remote_turn_fn=pipeline_deps.persist_local_and_remote_turn_fn,
                 handle_model_reply_result_fn=self.handle_model_reply_result,
                 increment_memory_helpful_fn=lambda: increment_chat_memory_counter(
                     self.chat_memory,

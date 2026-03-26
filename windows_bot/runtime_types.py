@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 
 @dataclass(slots=True)
@@ -86,3 +86,11 @@ class MessagePreparation:
     riddle_thread_reset: bool
     riddle_thread_close: bool
     specialized_local_thread: bool
+
+
+@dataclass(slots=True)
+class RuntimePipelineDeps:
+    persist_local_turn_fn: Callable[..., None]
+    persist_local_and_remote_turn_fn: Callable[..., None]
+    remember_remote_turn_fn: Callable[..., bool]
+    build_runtime_context_bundle_fn: Callable[..., RuntimeContextBundle]
