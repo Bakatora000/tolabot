@@ -34,6 +34,7 @@ Code partage :
 - `context_codex_linux_graphiti.md` : cadrage du chantier Graphiti local/offline cote Linux
 - `graphiti/` : base de travail Graphiti V1 Linux locale/offline
 - `homegraph/homegraph_v2_links.md` : proposition de V2 centree sur une couche liens SQLite-compatible
+- `homegraph/viewer_graph_contract_v1.md` : contrat JSON stable du sous-graphe viewer pour la vue 2D/3D admin cote Windows
 
 ---
 
@@ -119,6 +120,8 @@ Graphiti V1 locale :
   - durcissement qualite du `text_block` pour reduire les cas `too_short` / `low_value` / `empty`
   - bootstrap heuristique local depuis exports mem0 pour alimenter rapidement certains viewers avant l'automatisation GPT complete
   - premier socle `homegraph v2` maintenant implemente avec tables de liens SQLite, merge `links` et builder capable de les exploiter
+  - workflow Homegraph prepare en une commande via `homegraph/prepare_viewer_extraction.py`
+  - contrat de sous-graphe viewer V1 avec builder Linux et endpoint admin local pour une vue 2D/3D
 
 ### Windows
 
@@ -143,17 +146,22 @@ Etat connu :
   - homegraph
   - mem0
   - local general
+- une vue 3D Windows du sous-graphe Homegraph peut maintenant viser :
+  - `GET /admin/homegraph/users/{user_id}/graph`
+  - meme tunnel admin que pour le reste
 - une voie de memoire ciblee reservee au streamer existe maintenant cote Windows pour injecter un fait durable sur un viewer cible directement dans mem0
 
-### Point De Reprise 2026-03-24 Soir
+### Point De Reprise 2026-03-26
 
 Etat de reprise recommande :
 - `homegraph` est maintenant la voie produit principale pour enrichir le prompt du bot
 - l'integration runtime Windows de `homegraph` est validee
-- la priorite actuelle n'est plus l'architecture, mais l'alimentation qualitative viewer-par-viewer cote Linux
+- la priorite actuelle n'est plus l'architecture, mais :
+  - l'alimentation qualitative viewer-par-viewer cote Linux
+  - l'observation du nouveau sous-graphe Homegraph cote Windows
 
 Dernier jalon Linux pousse :
-- commit `920d982` : bootstrap heuristique `homegraph` depuis exports mem0
+- commit `3e55587` : contrat de sous-graphe viewer Homegraph avec builder Linux et route admin locale
 
 Etat viewer observe apres bootstrap local Linux :
 - `twitch:expevay:viewer:expevay` : contexte utile
@@ -166,11 +174,19 @@ Important :
 - les donnees bootstrappees vivent dans `homegraph.sqlite3` sur l'hote Linux
 - elles ne sont pas versionnees dans Git
 - le code et la documentation du bootstrap, eux, sont bien pousses dans le depot partage
+- les liens sociaux `viewer -> viewer` reels pour `expevay` ont ete ajoutes dans `homegraph.sqlite3`
+- ils sont maintenant visibles dans :
+  - le contexte compact, sous forme resumee et prudente
+  - le sous-graphe viewer exporte en JSON
 
 Point de reprise recommande pour demain :
 - observer les nouveaux retours Windows viewer-par-viewer
 - corriger les formulations Homegraph encore trop brutes si besoin
 - enrichir ou automatiser progressivement l'alimentation Linux des viewers faibles
+- observer l'usage Windows de la vue 3D Homegraph et ajuster si besoin :
+  - filtrage
+  - details noeuds/liens
+  - kinds utiles a garder ou a masquer
 
 ---
 
@@ -193,6 +209,9 @@ Point de reprise recommande pour demain :
 - `graphiti/validate_local_kuzu.py`
 - `graphiti/export_viewer_memories.py`
 - `graphiti/import_viewer_memories.py`
+- `homegraph/prepare_viewer_extraction.py`
+- `homegraph/build_viewer_graph.py`
+- `homegraph/viewer_graph_contract_v1.md`
 
 ### Suivi Projet
 
@@ -263,6 +282,8 @@ Note importante :
 - reevaluer plus tard une action `merge` une fois le workflow stable
 - deployer Graphiti localement cote Linux pour experimentation offline a partir des exports mem0
 - definir ensuite le mode batch Linux -> Ollama Windows pour permettre un premier import Graphiti reel
+- observer le rendu Windows du contrat `nodes / links / stats / meta` sur plusieurs viewers
+- continuer le travail `homegraph v2` si le graphe 3D confirme une vraie valeur admin
 
 ---
 
@@ -278,5 +299,6 @@ Le projet Tolabot mem0 est maintenant operationnel :
 - socle Graphiti Linux V1 valide jusqu'au pipeline offline
 - Homegraph runtime maintenant consomme reellement par le bot Windows quand un `text_block` utile est disponible
 - memoire ciblee streamer -> viewer cible validee en runtime cote Windows et verifiee via l'API admin mem0
+- sous-graphe Homegraph viewer disponible en runtime via `GET /admin/homegraph/users/{user_id}/graph` pour la future vue 2D/3D Windows
 
 Le repo partage contient maintenant le code, la doc, les statuts separes et le contexte necessaire pour reprendre le projet rapidement.

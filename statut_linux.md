@@ -17,7 +17,7 @@ Il ne doit pas dupliquer toute la source de verite du projet.
 ## Etat Actuel
 
 Date de reference :
-- 2026-03-24
+- 2026-03-26
 
 Etat global Linux :
 - service HTTP MVP implemente
@@ -54,7 +54,9 @@ Taches Linux :
 | H7 | DONE | qualite du `text_block` Homegraph durcie pour eviter placeholders et blocs trop pauvres |
 | H8 | DONE | workflow reproductible `mem0 -> payload -> prompt GPT -> merge -> context` documente et outille |
 | H9 | DONE | bootstrap heuristique local depuis exports mem0 pour debloquer des viewers faibles sans attendre l'automatisation GPT complete |
-| H10 | IN_PROGRESS | socle `homegraph v2` pose : tables liens SQLite, merge `links`, builder capable d'exploiter ces liens sans changer le contrat Windows |
+| H10 | DONE | socle `homegraph v2` pose : tables liens SQLite, merge `links`, builder capable d'exploiter ces liens sans changer le contrat Windows |
+| H11 | DONE | workflow Homegraph prepare en une commande (`prepare_viewer_extraction.py`) pour exporter un viewer, construire le payload GPT et generer le prompt |
+| H12 | DONE | contrat JSON de sous-graphe viewer fige avec builder Linux et route admin locale `/admin/homegraph/users/{user_id}/graph` |
 
 ---
 
@@ -82,7 +84,8 @@ Backend `mem0` valide :
   - `GET /admin/users`
   - `GET /admin/users/{user_id}/recent`
   - `DELETE /admin/users/{user_id}`
-  - `GET /admin/homegraph/users/{user_id}/context`
+- `GET /admin/homegraph/users/{user_id}/context`
+  - `GET /admin/homegraph/users/{user_id}/graph`
   - auth `X-Admin-Key`
   - refus des acces proxifies publics via `admin_local_only`
 
@@ -171,6 +174,41 @@ Homegraph V2 demarre :
   - merge d'un exemple avec `links` OK
   - inspect DB OK
   - build_viewer_context OK
+- premiers liens viewer -> viewer reels ajoutes localement pour `twitch:expevay:viewer:expevay`
+- le builder compact sait maintenant resumer prudemment une partie des liens sociaux (`semble connaitre X et Y, entre autres`)
+
+Homegraph graph contract V1 valide :
+- sous-graphe viewer exportable localement via :
+  - `python3 homegraph/build_viewer_graph.py --viewer-id twitch:expevay:viewer:expevay`
+- contrat JSON fige :
+  - `nodes`
+  - `links`
+  - `stats`
+  - `meta`
+- kinds de noeuds stables :
+  - `viewer`
+  - `game`
+  - `topic`
+  - `running_gag`
+  - `trait`
+  - `stream_mode`
+  - `object`
+- kinds de liens stables :
+  - `plays`
+  - `likes`
+  - `dislikes`
+  - `talks_about`
+  - `returns_to`
+  - `knows`
+  - `compliments`
+  - `jokes_about`
+  - `interacts_with`
+  - `uses_build_style`
+  - `plays_in_mode`
+  - `owns`
+- route admin runtime validee sur l'hote :
+  - `GET /admin/homegraph/users/{user_id}/graph`
+  - topologie Windows attendue : tunnel admin existant vers `http://127.0.0.1:9000`
 
 ---
 
@@ -224,6 +262,7 @@ Decision admin V1 retenue :
 - automatiser si besoin l'appel GPT pour eviter l'etape manuelle
 - ameliorer encore les heuristiques Homegraph pour les viewers faibles ou tres bruites
 - enrichir les types de liens et la formulation V2 exploitee par le builder
+- observer l'usage Windows de la vue 3D Homegraph sur le nouveau contrat `nodes/links/stats/meta`
 
 ---
 
@@ -245,19 +284,23 @@ Decision admin V1 retenue :
   - import `--dry-run` valide
   - reverse tunnel Windows -> Linux valide
   - Ollama Windows vu depuis Linux
+- Homegraph cote Linux expose maintenant aussi un sous-graphe viewer stable pour l'admin Windows :
+  - `GET /admin/homegraph/users/{user_id}/graph`
+  - contrat detaille dans `homegraph/viewer_graph_contract_v1.md`
 
 ---
 
 ## Point De Reprise Session
 
 Dernier commit Linux pousse :
-- `920d982` — `Add heuristic homegraph viewer bootstrap`
+- `3e55587` — `Add Homegraph viewer graph contract`
 
 Etat de reprise recommande :
-- la priorite est maintenant le tuning `homegraph` viewer-par-viewer
+- la priorite reste le tuning `homegraph` viewer-par-viewer et l'observation de la vue 3D Windows
 - la chaine produit Windows -> admin tunnel -> Homegraph -> prompt bot est validee
-- trois viewers faibles ont ete debloques localement via bootstrap heuristique :
-  - `karramelle`
+- la route runtime de sous-graphe viewer est validee pour `twitch:expevay:viewer:expevay`
+- le workflow Homegraph Linux est maintenant plus simple a relancer :
+  - `prepare_viewer_extraction.py`
   - `arthii_tv`
   - `raptormekhong`
 - un viewer reste faible :
