@@ -94,3 +94,12 @@ class RuntimePipelineDeps:
     persist_local_and_remote_turn_fn: Callable[..., None]
     remember_remote_turn_fn: Callable[..., bool]
     build_runtime_context_bundle_fn: Callable[..., RuntimeContextBundle]
+
+
+@dataclass(slots=True)
+class QueuedMessageContext:
+    queued_message: Any
+    channel_name: str
+    prepared: MessagePreparation
+    decision: DecisionResult
+    pipeline_deps: RuntimePipelineDeps

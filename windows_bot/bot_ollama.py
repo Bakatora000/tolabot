@@ -84,7 +84,7 @@ from runtime_pipeline import (
     send_channel_summary_reply,
     should_ignore_incoming_message,
 )
-from runtime_types import MessagePreparation, RuntimePipelineDeps
+from runtime_types import MessagePreparation, QueuedMessageContext, RuntimePipelineDeps
 from twitch_auth import run_oauth_flow
 from web_search_client import build_web_search_context, search_searxng, should_enable_web_search
 
@@ -691,6 +691,29 @@ class Bot(commands.Bot):
             build_runtime_context_bundle_fn=build_runtime_context_bundle_bound,
         )
 
+    def build_queued_message_context(self, queued_message: QueuedMessage) -> QueuedMessageContext:
+        channel_name = normalize_spaces(queued_message.payload.broadcaster.name).lower()
+        prepared = self.prepare_message(
+            text=queued_message.text,
+            channel_name=channel_name,
+            author=queued_message.author,
+        )
+        self.log_prepared_message_state(prepared)
+        decision = self.build_runtime_decision(
+            msg_id=queued_message.msg_id,
+            channel_name=channel_name,
+            author=queued_message.author,
+            clean_viewer_message=queued_message.clean_viewer_message,
+            prepared=prepared,
+        )
+        return QueuedMessageContext(
+            queued_message=queued_message,
+            channel_name=channel_name,
+            prepared=prepared,
+            decision=decision,
+            pipeline_deps=self.build_runtime_pipeline_deps(),
+        )
+
     async def enqueue_message(self, queued_message: QueuedMessage) -> bool:
         return await runtime_enqueue_message(
             queued_message=queued_message,
@@ -710,40 +733,15 @@ class Bot(commands.Bot):
         )
 
     async def process_queued_message(self, queued_message: QueuedMessage) -> None:
-        payload = queued_message.payload
-        text = queued_message.text
-        clean_viewer_message = queued_message.clean_viewer_message
-        author = queued_message.author
-        msg_id = queued_message.msg_id
-        channel_name = normalize_spaces(payload.broadcaster.name).lower()
-        prepared = self.prepare_message(
-            text=text,
-            channel_name=channel_name,
-            author=author,
-        )
-        resolved_text = prepared.resolved_text
-        alias_context = prepared.alias_context
-        focus_context = prepared.focus_context
-        facts_context = prepared.facts_context
-        author_is_owner = prepared.author_is_owner
-        event_type = prepared.event_type
-        related_viewer = prepared.related_viewer
-        related_message = prepared.related_message
-        related_turn_id = prepared.related_turn_id
-        reply_to_turn_id = prepared.reply_to_turn_id
-        riddle_related = prepared.riddle_related
-        riddle_thread_reset = prepared.riddle_thread_reset
-        riddle_thread_close = prepared.riddle_thread_close
-        specialized_local_thread = prepared.specialized_local_thread
-        self.log_prepared_message_state(prepared)
-        decision = self.build_runtime_decision(
-            msg_id=msg_id,
-            channel_name=channel_name,
-            author=author,
-            clean_viewer_message=clean_viewer_message,
-            prepared=prepared,
-        )
-        pipeline_deps = self.build_runtime_pipeline_deps()
+        context = self.build_queued_message_context(queued_message)
+        payload = context.queued_message.payload
+        clean_viewer_message = context.queued_message.clean_viewer_message
+        author = context.queued_message.author
+        msg_id = context.queued_message.msg_id
+        channel_name = context.channel_name
+        prepared = context.prepared
+        decision = context.decision
+        pipeline_deps = context.pipeline_deps
 
         async with self.generation_lock:
             print(f"🧭 Décision : {decision.decision} [{decision.rule_id}]", flush=True)
@@ -755,14 +753,14 @@ class Bot(commands.Bot):
                 msg_id=msg_id,
                 decision=decision,
                 clean_viewer_message=clean_viewer_message,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-                riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-                author_is_owner=author_is_owner,
+                event_type=prepared.event_type,
+                related_viewer=prepared.related_viewer,
+                related_message=prepared.related_message,
+                reply_to_turn_id=prepared.reply_to_turn_id,
+                related_turn_id=prepared.related_turn_id,
+                riddle_thread_reset=prepared.riddle_thread_reset,
+                riddle_thread_close=prepared.riddle_thread_close,
+                author_is_owner=prepared.author_is_owner,
                 reply_about_channel_content_fn=self.reply_about_channel_content,
                 send_chat_reply_fn=self.send_chat_reply,
                 persist_local_turn_fn=pipeline_deps.persist_local_turn_fn,
@@ -777,22 +775,22 @@ class Bot(commands.Bot):
                 author=author,
                 channel_name=channel_name,
                 clean_viewer_message=clean_viewer_message,
-                resolved_text=resolved_text,
+                resolved_text=prepared.resolved_text,
                 msg_id=msg_id,
-                author_is_owner=author_is_owner,
-                event_type=event_type,
-                related_viewer=related_viewer,
-                related_message=related_message,
-                reply_to_turn_id=reply_to_turn_id,
-                related_turn_id=related_turn_id,
-                riddle_related=riddle_related,
-                riddle_thread_reset=riddle_thread_reset,
-                riddle_thread_close=riddle_thread_close,
-                specialized_local_thread=specialized_local_thread,
+                author_is_owner=prepared.author_is_owner,
+                event_type=prepared.event_type,
+                related_viewer=prepared.related_viewer,
+                related_message=prepared.related_message,
+                reply_to_turn_id=prepared.reply_to_turn_id,
+                related_turn_id=prepared.related_turn_id,
+                riddle_related=prepared.riddle_related,
+                riddle_thread_reset=prepared.riddle_thread_reset,
+                riddle_thread_close=prepared.riddle_thread_close,
+                specialized_local_thread=prepared.specialized_local_thread,
                 decision=decision,
-                alias_context=alias_context,
-                focus_context=focus_context,
-                facts_context=facts_context,
+                alias_context=prepared.alias_context,
+                focus_context=prepared.focus_context,
+                facts_context=prepared.facts_context,
                 config=CONFIG,
                 model=OLLAMA_MODEL,
                 ask_fn=ask_ollama,
