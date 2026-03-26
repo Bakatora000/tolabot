@@ -5,6 +5,7 @@ from admin_client import (
     AdminApiError,
     admin_healthcheck,
     delete_user_memories,
+    get_homegraph_multihop_graph,
     get_homegraph_user_graph,
     list_admin_users,
 )
@@ -134,6 +135,32 @@ class AdminClientTests(unittest.TestCase):
         self.assertIn("include_uncertain=false", args[1])
         self.assertIn("min_weight=0.7", args[1])
         self.assertIn("max_links=6", args[1])
+
+    @patch("admin_client.requests.request")
+    def test_get_homegraph_multihop_graph_passes_center_and_limits(self, mock_request):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"nodes": [], "links": [], "stats": {}, "meta": {}}
+        mock_request.return_value = response
+
+        get_homegraph_multihop_graph(
+            make_config(),
+            "game:valheim",
+            max_depth=2,
+            max_nodes=20,
+            max_links=30,
+            include_uncertain=False,
+            min_weight=0.7,
+        )
+
+        args, _kwargs = mock_request.call_args
+        self.assertIn("/admin/homegraph/graph?", args[1])
+        self.assertIn("center_node_id=game%3Avalheim", args[1])
+        self.assertIn("max_depth=2", args[1])
+        self.assertIn("max_nodes=20", args[1])
+        self.assertIn("max_links=30", args[1])
+        self.assertIn("include_uncertain=false", args[1])
+        self.assertIn("min_weight=0.7", args[1])
 
     @patch("admin_client.requests.request")
     def test_admin_client_raises_clear_error_on_http_failure(self, mock_request):

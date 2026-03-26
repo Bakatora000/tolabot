@@ -86,13 +86,15 @@ class AdminUiGraphTests(unittest.TestCase):
                 {"source": "viewer:alice", "target": "game:valheim", "kind": "plays"},
             ],
             "stats": {"node_count": 2, "link_count": 1},
-            "meta": {"version": "v1"},
+            "meta": {"version": "v1", "center_node_id": "game:valheim", "truncated": True},
         }
 
         payload = build_homegraph_payload(raw_payload, viewer_filter="alice")
 
         self.assertEqual(payload["kind"], "homegraph")
         self.assertEqual(payload["meta"]["version"], "v1")
+        self.assertEqual(payload["meta"]["center_node_id"], "game:valheim")
+        self.assertTrue(payload["meta"]["truncated"])
         self.assertEqual(payload["stats"]["node_count"], 2)
         self.assertTrue(any(node["color"] for node in payload["nodes"]))
         self.assertEqual(payload["links"][0]["label"], "plays")

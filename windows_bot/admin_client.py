@@ -153,6 +153,32 @@ def get_homegraph_user_graph(
     return response.json()
 
 
+def get_homegraph_multihop_graph(
+    config: AppConfig,
+    center_node_id: str,
+    *,
+    max_depth: int | None = None,
+    max_nodes: int | None = None,
+    max_links: int | None = None,
+    include_uncertain: bool | None = None,
+    min_weight: float | None = None,
+) -> dict[str, Any]:
+    query_params: dict[str, str] = {"center_node_id": center_node_id}
+    if max_depth is not None:
+        query_params["max_depth"] = str(max_depth)
+    if max_nodes is not None:
+        query_params["max_nodes"] = str(max_nodes)
+    if max_links is not None:
+        query_params["max_links"] = str(max_links)
+    if include_uncertain is not None:
+        query_params["include_uncertain"] = "true" if include_uncertain else "false"
+    if min_weight is not None:
+        query_params["min_weight"] = str(min_weight)
+
+    response = _request(config, "GET", f"/admin/homegraph/graph?{urlencode(query_params)}")
+    return response.json()
+
+
 def import_user_memories(config: AppConfig, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     response = _request(config, "POST", f"/admin/users/{user_id}/import", payload=payload)
     return response.json()

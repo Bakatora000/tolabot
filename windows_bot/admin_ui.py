@@ -15,6 +15,7 @@ from admin_client import (
     delete_memory,
     delete_user_memories,
     export_user_memories,
+    get_homegraph_multihop_graph,
     get_homegraph_user_graph,
     get_recent_memories,
     list_admin_users,
@@ -491,6 +492,10 @@ HTML_PAGE = """<!doctype html>
           <input id="homegraph-min-weight-input" type="number" min="0" max="1" step="0.1" placeholder="0.7" style="width:72px;" />
           <label for="homegraph-max-links-input">Liens max</label>
           <input id="homegraph-max-links-input" type="number" min="1" step="1" value="12" style="width:72px;" />
+          <label for="homegraph-max-depth-input">Profondeur</label>
+          <input id="homegraph-max-depth-input" type="number" min="1" step="1" value="2" style="width:72px;" />
+          <label for="homegraph-max-nodes-input">Nœuds max</label>
+          <input id="homegraph-max-nodes-input" type="number" min="1" step="1" value="20" style="width:72px;" />
         </span>
         <button id="graph-refresh-button" type="button">Charger</button>
         <button id="graph-reset-button" type="button">Réinitialiser le focus</button>
@@ -518,6 +523,10 @@ HTML_PAGE = """<!doctype html>
     let homegraphIncludeUncertain = true;
     let homegraphMinWeight = '';
     let homegraphMaxLinks = '12';
+    let homegraphMaxDepth = '2';
+    let homegraphMaxNodes = '20';
+    let homegraphCenterNodeId = '';
+    let homegraphRootNodeId = '';
     let graphInstance = null;
     let fullGraphData = { nodes: [], links: [] };
     let focusedNodeId = null;
@@ -684,7 +693,9 @@ HTML_PAGE = """<!doctype html>
     function renderGraphDetails(node) {
       const detailsNode = document.getElementById('graph-details');
       if (!node) {
-        detailsNode.textContent = 'Clique sur un nœud pour isoler ses liens.';
+        detailsNode.textContent = graphKind === 'homegraph'
+          ? 'Clique sur un nœud Homegraph pour recharger un sous-graphe centré sur ce nœud.'
+          : 'Clique sur un nœud pour isoler ses liens.';
         return;
       }
       const detail = node.detail || {};
@@ -715,6 +726,11 @@ HTML_PAGE = """<!doctype html>
         .linkOpacity(0.75)
         .linkWidth((link) => link.kind === 'corrects' ? 2.5 : 1.2)
         .onNodeClick((node) => {
+          if (graphKind === 'homegraph') {
+            homegraphCenterNodeId = node.id || '';
+            loadGraph();
+            return;
+          }
           focusedNodeId = node.id === focusedNodeId ? null : node.id;
           renderGraphDetails(node.id === focusedNodeId ? null : node);
           applyGraphFocus();
@@ -729,6 +745,9 @@ HTML_PAGE = """<!doctype html>
           }
         })
         .onBackgroundClick(() => {
+          if (graphKind === 'homegraph') {
+            return;
+          }
           focusedNodeId = null;
           renderGraphDetails(null);
           applyGraphFocus();
@@ -758,6 +777,15 @@ HTML_PAGE = """<!doctype html>
         if (homegraphMaxLinks !== '') {
           query.set('max_links', String(homegraphMaxLinks));
         }
+        if (homegraphMaxDepth !== '') {
+          query.set('max_depth', String(homegraphMaxDepth));
+        }
+        if (homegraphMaxNodes !== '') {
+          query.set('max_nodes', String(homegraphMaxNodes));
+        }
+        if (homegraphCenterNodeId !== '') {
+          query.set('center_node_id', homegraphCenterNodeId);
+        }
       }
       const response = await fetch(`/api/graph?${query.toString()}`);
       const data = await response.json();
@@ -771,9 +799,14 @@ HTML_PAGE = """<!doctype html>
         nodes: data.nodes || [],
         links: data.links || [],
       };
+      if (graphKind === 'homegraph') {
+        homegraphRootNodeId = (data.meta && data.meta.root_node_id) ? data.meta.root_node_id : '';
+      }
       document.getElementById('graph-stats').textContent =
         `${data.kind} | ${data.stats.node_count} nœud(s) | ${data.stats.link_count} lien(s)` +
-        (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '');
+        (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '') +
+        (graphKind === 'homegraph' && data.meta && data.meta.center_node_id ? ` | centre: ${data.meta.center_node_id}` : '') +
+        (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '');
       renderGraphDetails(null);
       applyGraphFocus();
     }
@@ -782,6 +815,8 @@ HTML_PAGE = """<!doctype html>
       const viewerChanged = selectedUserId !== userId;
       selectedUserId = userId;
       selectedViewerLabel = viewerLabel;
+      homegraphCenterNodeId = '';
+      homegraphRootNodeId = '';
       if (viewerChanged) {
         resetReviewPanel(`Aucune analyse lancée pour ${viewerLabel}.`);
       }
@@ -1070,6 +1105,11 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('verbose-button').onclick = toggleVerbose;
       document.getElementById('graph-refresh-button').onclick = loadGraph;
       document.getElementById('graph-reset-button').onclick = () => {
+        if (graphKind === 'homegraph' && homegraphCenterNodeId && homegraphCenterNodeId !== homegraphRootNodeId) {
+          homegraphCenterNodeId = homegraphRootNodeId || '';
+          loadGraph();
+          return;
+        }
         focusedNodeId = null;
         renderGraphDetails(null);
         applyGraphFocus();
@@ -1086,6 +1126,12 @@ HTML_PAGE = """<!doctype html>
       };
       document.getElementById('homegraph-max-links-input').onchange = (event) => {
         homegraphMaxLinks = event.target.value.trim();
+      };
+      document.getElementById('homegraph-max-depth-input').onchange = (event) => {
+        homegraphMaxDepth = event.target.value.trim();
+      };
+      document.getElementById('homegraph-max-nodes-input').onchange = (event) => {
+        homegraphMaxNodes = event.target.value.trim();
       };
       document.getElementById('severity-select').onchange = (event) => {
         reviewSeverity = event.target.value;
@@ -1167,9 +1213,25 @@ class AdminUiHandler(BaseHTTPRequestHandler):
                 include_uncertain = include_uncertain_param == "true"
             min_weight_param = (query.get("min_weight", [""])[0] or "").strip()
             max_links_param = (query.get("max_links", [""])[0] or "").strip()
+            max_depth_param = (query.get("max_depth", [""])[0] or "").strip()
+            max_nodes_param = (query.get("max_nodes", [""])[0] or "").strip()
+            center_node_id = (query.get("center_node_id", [""])[0] or "").strip()
             try:
                 if kind == "homegraph":
-                    if not user_id:
+                    if center_node_id:
+                        payload = build_homegraph_payload(
+                            get_homegraph_multihop_graph(
+                                self.server.config,
+                                center_node_id,
+                                include_uncertain=include_uncertain,
+                                min_weight=float(min_weight_param) if min_weight_param else None,
+                                max_links=int(max_links_param) if max_links_param else None,
+                                max_depth=int(max_depth_param) if max_depth_param else None,
+                                max_nodes=int(max_nodes_param) if max_nodes_param else None,
+                            ),
+                            viewer_filter=viewer,
+                        )
+                    elif not user_id:
                         self._send_json(
                             {
                                 "ok": True,
