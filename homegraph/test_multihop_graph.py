@@ -189,6 +189,7 @@ class MultiHopGraphTests(unittest.TestCase):
 
     def test_center_non_viewer_node_is_supported(self) -> None:
         payload = build_multihop_graph_payload("game:valheim", self.db_path, max_depth=1)
+        self.assertIsNone(payload["viewer_id"])
         self.assertEqual(payload["meta"]["center_node_id"], "game:valheim")
         self.assertEqual(payload["meta"]["root_node_id"], "game:valheim")
 
@@ -198,6 +199,18 @@ class MultiHopGraphTests(unittest.TestCase):
         self.assertEqual(payload["stats"]["link_count"], 0)
         self.assertEqual(payload["nodes"], [])
         self.assertEqual(payload["links"], [])
+
+    def test_filtered_center_node_is_preserved_as_singleton(self) -> None:
+        payload = build_multihop_graph_payload(
+            "viewer:misscouette76",
+            self.db_path,
+            max_depth=2,
+            include_uncertain=False,
+            min_weight=0.7,
+        )
+        self.assertEqual(payload["stats"]["node_count"], 1)
+        self.assertEqual(payload["stats"]["link_count"], 0)
+        self.assertEqual(payload["nodes"][0]["id"], "viewer:misscouette76")
 
 
 if __name__ == "__main__":

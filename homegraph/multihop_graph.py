@@ -84,7 +84,7 @@ def _load_graph_records(
     *,
     include_uncertain: bool,
     min_weight: float | None,
-) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], dict[str, dict[str, Any]]]:
     conn = sqlite3.connect(Path(db_path))
     conn.row_factory = sqlite3.Row
     try:
@@ -135,6 +135,7 @@ def _load_graph_records(
     finally:
         conn.close()
 
+    raw_nodes: dict[str, dict[str, Any]] = {}
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     existing_edge_ids: set[tuple[str, str, str]] = set()
@@ -150,21 +151,16 @@ def _load_graph_records(
             or viewer_id.split(":")[-1]
         )
         detail = str(row["summary_short"] or "").strip()
-        nodes[node_id] = _build_node(node_id, label, "viewer", detail=detail)
+        viewer_node = _build_node(node_id, label, "viewer", detail=detail)
+        raw_nodes[node_id] = viewer_node
+        nodes[node_id] = viewer_node
 
     for row in link_rows:
-        status = str(row["status"] or "").strip()
-        weight = float(row["strength"] if row["strength"] is not None else (row["confidence"] or 0.0))
-        if not include_uncertain and status == "uncertain":
-            continue
-        if min_weight is not None and weight < min_weight:
-            continue
-
         viewer_id = str(row["viewer_id"] or "").strip()
         if not viewer_id:
             continue
         source = _viewer_node_id(viewer_id)
-        nodes.setdefault(source, _build_node(source, viewer_id.split(":")[-1], "viewer"))
+        raw_nodes.setdefault(source, _build_node(source, viewer_id.split(":")[-1], "viewer"))
 
         entity_type = str(row["entity_type"] or "").strip() or "unknown"
         canonical_name = str(row["canonical_name"] or "").strip()
@@ -174,6 +170,16 @@ def _load_graph_records(
             continue
         target = str(row["entity_id"] or "").strip() or f"{entity_type}:{compact_slug(label)}"
         target_kind = entity_type if entity_type in STABLE_NODE_KINDS else entity_type or "unknown"
+        raw_nodes.setdefault(target, _build_node(target, label, target_kind))
+
+        status = str(row["status"] or "").strip()
+        weight = float(row["strength"] if row["strength"] is not None else (row["confidence"] or 0.0))
+        if not include_uncertain and status == "uncertain":
+            continue
+        if min_weight is not None and weight < min_weight:
+            continue
+
+        nodes.setdefault(source, _build_node(source, viewer_id.split(":")[-1], "viewer"))
         nodes.setdefault(target, _build_node(target, label, target_kind))
 
         source_memory_ids = _parse_json_list(row["source_memory_ids_json"])
@@ -219,6 +225,8 @@ def _load_graph_records(
         if (source, relation_type, target) in existing_edge_ids:
             continue
         target_kind = target_type if target_type in STABLE_NODE_KINDS else target_type or "unknown"
+        raw_nodes.setdefault(source, _build_node(source, viewer_id.split(":")[-1], "viewer"))
+        raw_nodes.setdefault(target, _build_node(target, target_value, target_kind))
         nodes.setdefault(source, _build_node(source, viewer_id.split(":")[-1], "viewer"))
         nodes.setdefault(target, _build_node(target, target_value, target_kind))
         edge = _build_edge(
@@ -231,7 +239,7 @@ def _load_graph_records(
         existing_edge_ids.add((source, relation_type, target))
         edges.append(edge)
 
-    return nodes, sorted(edges, key=_sort_edge_key)
+    return nodes, sorted(edges, key=_sort_edge_key), raw_nodes
 
 
 def build_multihop_graph_payload(
@@ -249,13 +257,13 @@ def build_multihop_graph_payload(
     bounded_nodes = max_nodes if max_nodes is None else max(1, int(max_nodes))
     bounded_links = max_links if max_links is None else max(1, int(max_links))
 
-    nodes_by_id, edges = _load_graph_records(
+    nodes_by_id, edges, raw_nodes = _load_graph_records(
         db_path,
         include_uncertain=include_uncertain,
         min_weight=min_weight,
     )
 
-    if center not in nodes_by_id:
+    if center not in raw_nodes:
         return {
             "ok": True,
             "viewer_id": center.removeprefix("viewer:") if center.startswith("viewer:") else None,
@@ -292,7 +300,7 @@ def build_multihop_graph_payload(
     for neighbors in adjacency.values():
         neighbors.sort(key=lambda item: _sort_edge_key(item[1]))
 
-    selected_nodes: dict[str, dict[str, Any]] = {center: nodes_by_id[center]}
+    selected_nodes: dict[str, dict[str, Any]] = {center: raw_nodes[center]}
     selected_edges: dict[tuple[str, str, str], dict[str, Any]] = {}
     depth_by_node: dict[str, int] = {center: 0}
     queue: deque[str] = deque([center])

@@ -199,7 +199,7 @@ class HomegraphGraphLink(BaseModel):
 
 class AdminHomegraphGraphResponse(BaseModel):
     ok: bool = True
-    viewer_id: str
+    viewer_id: str | None = None
     generated_at: str
     source: str
     meta: HomegraphGraphMeta
