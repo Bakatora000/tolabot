@@ -32,30 +32,27 @@ def split_user_id(user_id: str) -> tuple[str | None, str | None]:
     return None, None
 
 
-def main() -> None:
-    args = parse_args()
-    admin_key = os.getenv("MEM0_ADMIN_KEY", "").strip()
-    if not admin_key:
-        raise SystemExit("MEM0_ADMIN_KEY is required.")
-
-    encoded_user_id = quote(args.user_id, safe="")
+def export_viewer_memories(
+    user_id: str,
+    *,
+    base_url: str,
+    admin_key: str,
+    output_path: Path,
+) -> dict:
+    encoded_user_id = quote(user_id, safe="")
     response = requests.post(
-        f"{args.base_url}/users/{encoded_user_id}/export",
+        f"{base_url}/users/{encoded_user_id}/export",
         headers={"X-Admin-Key": admin_key},
         timeout=30,
     )
     response.raise_for_status()
     payload = response.json()
 
-    channel, viewer = split_user_id(args.user_id)
-    output_path = Path(
-        args.output
-        or os.getenv("GRAPHITI_EXPORT_OUTPUT", f"graphiti/imports/{(viewer or 'viewer')}.json")
-    )
+    channel, viewer = split_user_id(user_id)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     export_payload = {
-        "user_id": args.user_id,
+        "user_id": user_id,
         "channel": channel,
         "viewer": viewer,
         "count": payload.get("count", 0),
@@ -63,6 +60,24 @@ def main() -> None:
         "memories": payload.get("records", []),
     }
     output_path.write_text(json.dumps(export_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return export_payload
+
+
+def main() -> None:
+    args = parse_args()
+    admin_key = os.getenv("MEM0_ADMIN_KEY", "").strip()
+    if not admin_key:
+        raise SystemExit("MEM0_ADMIN_KEY is required.")
+
+    output_path = Path(
+        args.output or os.getenv("GRAPHITI_EXPORT_OUTPUT", f"graphiti/imports/{(split_user_id(args.user_id)[1] or 'viewer')}.json")
+    )
+    export_payload = export_viewer_memories(
+        args.user_id,
+        base_url=args.base_url,
+        admin_key=admin_key,
+        output_path=output_path,
+    )
     print(f"export_ok user_id={args.user_id} count={export_payload['count']} output={output_path}")
 
 

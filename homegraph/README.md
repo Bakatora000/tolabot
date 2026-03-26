@@ -34,6 +34,7 @@ Socle V2 deja pose :
 - `homegraph/init_db.py`
 - `homegraph/inspect_db.py`
 - `homegraph/build_viewer_payload.py`
+- `homegraph/prepare_viewer_extraction.py`
 - `homegraph/extraction_prompt_v1.md`
 - `homegraph/extraction_prompt_v2.md`
 - `homegraph/build_extraction_prompt.py`
@@ -69,6 +70,19 @@ Le fichier de sortie est ecrit sous :
 ```text
 homegraph/payloads/<viewer>_gpt_payload.json
 ```
+
+## Preparation Rapide D'Un Viewer
+
+Pour preparer en une commande l'export mem0, le payload GPT et le prompt :
+
+```bash
+env MEM0_ADMIN_KEY=... python3 homegraph/prepare_viewer_extraction.py twitch:streamer:viewer:alice --version v2
+```
+
+Ce workflow produit automatiquement :
+- `homegraph/payloads/<viewer>_export.json`
+- `homegraph/payloads/<viewer>_gpt_payload.json`
+- `homegraph/payloads/<viewer>_prompt_v2.txt`
 
 ## Format D'Extraction GPT Attendu
 

@@ -8,6 +8,19 @@ Rendre reproductible la chaine :
 
 La V2 ajoute explicitement une couche `links`.
 
+## Raccourci
+
+Les trois premieres etapes peuvent maintenant etre preparees en une commande :
+
+```bash
+env MEM0_ADMIN_KEY=... python3 homegraph/prepare_viewer_extraction.py twitch:streamer:viewer:alice --version v2
+```
+
+Cela produit :
+- l'export mem0 viewer
+- le payload Homegraph GPT
+- le prompt V2 pret a envoyer a GPT
+
 ## Etapes
 
 ### 1. Export mem0 viewer
