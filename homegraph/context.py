@@ -11,6 +11,7 @@ MAX_SUMMARY_LEN = 160
 MAX_FACTS = 4
 MAX_RECENT = 2
 MAX_UNCERTAIN = 2
+MAX_SOCIAL_LINK_NAMES = 2
 TEXT_BLOCK_HARD_LIMIT = 900
 TEXT_BLOCK_MIN_LEN = 60
 
@@ -188,6 +189,32 @@ def link_to_phrase(entity_type: str, relation_type: str, canonical_name: str, ta
     return relation_to_phrase(entity_type, relation_type, value)
 
 
+def summarize_social_links(links: list[sqlite3.Row]) -> str:
+    names: list[str] = []
+    for row in links:
+        entity_type = str(row["entity_type"] or "").strip()
+        relation_type = str(row["relation_type"] or "").strip()
+        status = str(row["status"] or "").strip()
+        confidence = float(row["confidence"] or 0.0)
+        if entity_type != "viewer" or relation_type != "knows":
+            continue
+        if status not in {"active", "uncertain"} or confidence < 0.55:
+            continue
+        name = str(row["canonical_name"] or row["target_fallback_value"] or "").strip()
+        if name and name not in names:
+            names.append(name)
+
+    if not names:
+        return ""
+
+    display_names = names[:MAX_SOCIAL_LINK_NAMES]
+    if len(display_names) == 1:
+        return f"semble connaitre {display_names[0]}"
+    if len(names) > MAX_SOCIAL_LINK_NAMES:
+        return f"semble connaitre {display_names[0]} et {display_names[1]}, entre autres"
+    return f"semble connaitre {display_names[0]} et {display_names[1]}"
+
+
 def build_text_block(
     summary_short: str,
     facts_high_confidence: list[str],
@@ -316,6 +343,16 @@ def build_viewer_context_payload(viewer_id: str, db_path: Path | str) -> dict[st
             continue
         if (status == "uncertain" or confidence < 0.75 or strength < 0.7) and len(uncertain_points) < MAX_UNCERTAIN:
             uncertain_points.append(phrase)
+
+    social_summary = summarize_social_links(links)
+    if social_summary and social_summary not in facts_high_confidence and social_summary not in recent_relevant:
+        if len(recent_relevant) < MAX_RECENT:
+            recent_relevant.append(social_summary)
+            concrete_items += 1
+        elif social_summary not in uncertain_points:
+            if len(uncertain_points) >= MAX_UNCERTAIN:
+                uncertain_points.pop()
+            uncertain_points.append(social_summary)
 
     text_block = build_text_block(
         summary_short=summary_short,
