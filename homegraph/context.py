@@ -86,28 +86,33 @@ def fetch_relations(conn: sqlite3.Connection, viewer_id: str) -> list[sqlite3.Ro
 
 
 def fetch_links(conn: sqlite3.Connection, viewer_id: str) -> list[sqlite3.Row]:
-    rows = conn.execute(
-        """
-        SELECT
-            l.target_fallback_value,
-            l.relation_type,
-            l.strength,
-            l.confidence,
-            l.status,
-            l.polarity,
-            l.updated_at,
-            e.entity_type,
-            e.canonical_name
-        FROM viewer_links l
-        LEFT JOIN graph_entities e ON e.entity_id = l.target_entity_id
-        WHERE l.viewer_id = ?
-        ORDER BY
-            COALESCE(l.strength, 0) DESC,
-            COALESCE(l.confidence, 0) DESC,
-            COALESCE(l.updated_at, '') DESC
-        """,
-        (viewer_id,),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            """
+            SELECT
+                l.target_fallback_value,
+                l.relation_type,
+                l.strength,
+                l.confidence,
+                l.status,
+                l.polarity,
+                l.updated_at,
+                e.entity_type,
+                e.canonical_name
+            FROM viewer_links l
+            LEFT JOIN graph_entities e ON e.entity_id = l.target_entity_id
+            WHERE l.viewer_id = ?
+            ORDER BY
+                COALESCE(l.strength, 0) DESC,
+                COALESCE(l.confidence, 0) DESC,
+                COALESCE(l.updated_at, '') DESC
+            """,
+            (viewer_id,),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if "no such table" in str(exc).lower():
+            return []
+        raise
     return list(rows)
 
 
