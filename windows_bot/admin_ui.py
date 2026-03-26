@@ -481,6 +481,17 @@ HTML_PAGE = """<!doctype html>
           <option value="facts">Faits</option>
           <option value="homegraph">Homegraph</option>
         </select>
+        <span id="homegraph-filter-group" style="display:none;">
+          <label for="homegraph-uncertain-select">Incertain</label>
+          <select id="homegraph-uncertain-select">
+            <option value="true" selected>Oui</option>
+            <option value="false">Non</option>
+          </select>
+          <label for="homegraph-min-weight-input">Poids min</label>
+          <input id="homegraph-min-weight-input" type="number" min="0" max="1" step="0.1" placeholder="0.7" style="width:72px;" />
+          <label for="homegraph-max-links-input">Liens max</label>
+          <input id="homegraph-max-links-input" type="number" min="1" step="1" value="12" style="width:72px;" />
+        </span>
         <button id="graph-refresh-button" type="button">Charger</button>
         <button id="graph-reset-button" type="button">Réinitialiser le focus</button>
         <span id="graph-selection" class="muted">Vue globale.</span>
@@ -504,6 +515,9 @@ HTML_PAGE = """<!doctype html>
     let verboseEnabled = false;
     let reviewSeverity = 'balanced';
     let graphKind = 'conversation';
+    let homegraphIncludeUncertain = true;
+    let homegraphMinWeight = '';
+    let homegraphMaxLinks = '12';
     let graphInstance = null;
     let fullGraphData = { nodes: [], links: [] };
     let focusedNodeId = null;
@@ -538,6 +552,7 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('graph-selection').textContent = selectedViewerLabel
         ? `Vue filtrée sur : ${selectedViewerLabel}`
         : 'Vue globale.';
+      document.getElementById('homegraph-filter-group').style.display = graphKind === 'homegraph' ? 'contents' : 'none';
     }
 
     function resetReviewPanel(message = 'Aucune analyse lancée.') {
@@ -730,9 +745,21 @@ HTML_PAGE = """<!doctype html>
     async function loadGraph() {
       const viewer = selectedViewerLabel || '';
       const userId = selectedUserId || '';
-      const response = await fetch(
-        `/api/graph?kind=${encodeURIComponent(graphKind)}&viewer=${encodeURIComponent(viewer)}&user_id=${encodeURIComponent(userId)}`
-      );
+      const query = new URLSearchParams({
+        kind: graphKind,
+        viewer,
+        user_id: userId,
+      });
+      if (graphKind === 'homegraph') {
+        query.set('include_uncertain', String(homegraphIncludeUncertain));
+        if (homegraphMinWeight !== '') {
+          query.set('min_weight', String(homegraphMinWeight));
+        }
+        if (homegraphMaxLinks !== '') {
+          query.set('max_links', String(homegraphMaxLinks));
+        }
+      }
+      const response = await fetch(`/api/graph?${query.toString()}`);
       const data = await response.json();
       if (!data.ok) {
         setError(data.error || 'Impossible de charger le graphe.');
@@ -1049,6 +1076,16 @@ HTML_PAGE = """<!doctype html>
       };
       document.getElementById('graph-kind-select').onchange = (event) => {
         graphKind = event.target.value;
+        updateSelectionState();
+      };
+      document.getElementById('homegraph-uncertain-select').onchange = (event) => {
+        homegraphIncludeUncertain = event.target.value !== 'false';
+      };
+      document.getElementById('homegraph-min-weight-input').onchange = (event) => {
+        homegraphMinWeight = event.target.value.trim();
+      };
+      document.getElementById('homegraph-max-links-input').onchange = (event) => {
+        homegraphMaxLinks = event.target.value.trim();
       };
       document.getElementById('severity-select').onchange = (event) => {
         reviewSeverity = event.target.value;
@@ -1124,6 +1161,12 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             kind = (query.get("kind", ["conversation"])[0] or "conversation").strip().lower()
             viewer = (query.get("viewer", [""])[0] or "").strip()
             user_id = (query.get("user_id", [""])[0] or "").strip()
+            include_uncertain_param = (query.get("include_uncertain", [""])[0] or "").strip().lower()
+            include_uncertain = None
+            if include_uncertain_param in {"true", "false"}:
+                include_uncertain = include_uncertain_param == "true"
+            min_weight_param = (query.get("min_weight", [""])[0] or "").strip()
+            max_links_param = (query.get("max_links", [""])[0] or "").strip()
             try:
                 if kind == "homegraph":
                     if not user_id:
@@ -1140,7 +1183,13 @@ class AdminUiHandler(BaseHTTPRequestHandler):
                         )
                         return
                     payload = build_homegraph_payload(
-                        get_homegraph_user_graph(self.server.config, user_id),
+                        get_homegraph_user_graph(
+                            self.server.config,
+                            user_id,
+                            include_uncertain=include_uncertain,
+                            min_weight=float(min_weight_param) if min_weight_param else None,
+                            max_links=int(max_links_param) if max_links_param else None,
+                        ),
                         viewer_filter=viewer,
                     )
                 elif kind == "facts":

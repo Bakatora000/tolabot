@@ -116,6 +116,26 @@ class AdminClientTests(unittest.TestCase):
         self.assertIn("/admin/homegraph/users/twitch:streamer:viewer:alice/graph", args[1])
 
     @patch("admin_client.requests.request")
+    def test_get_homegraph_user_graph_passes_optional_filters(self, mock_request):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"nodes": [], "links": [], "stats": {}, "meta": {}}
+        mock_request.return_value = response
+
+        get_homegraph_user_graph(
+            make_config(),
+            "twitch:streamer:viewer:alice",
+            include_uncertain=False,
+            min_weight=0.7,
+            max_links=6,
+        )
+
+        args, _kwargs = mock_request.call_args
+        self.assertIn("include_uncertain=false", args[1])
+        self.assertIn("min_weight=0.7", args[1])
+        self.assertIn("max_links=6", args[1])
+
+    @patch("admin_client.requests.request")
     def test_admin_client_raises_clear_error_on_http_failure(self, mock_request):
         response = Mock()
         response.status_code = 403

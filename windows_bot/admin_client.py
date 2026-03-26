@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
 
@@ -128,8 +129,27 @@ def export_user_memories(config: AppConfig, user_id: str) -> dict[str, Any]:
     return response.json()
 
 
-def get_homegraph_user_graph(config: AppConfig, user_id: str) -> dict[str, Any]:
-    response = _request(config, "GET", f"/admin/homegraph/users/{user_id}/graph")
+def get_homegraph_user_graph(
+    config: AppConfig,
+    user_id: str,
+    *,
+    include_uncertain: bool | None = None,
+    min_weight: float | None = None,
+    max_links: int | None = None,
+) -> dict[str, Any]:
+    query_params: dict[str, str] = {}
+    if include_uncertain is not None:
+        query_params["include_uncertain"] = "true" if include_uncertain else "false"
+    if min_weight is not None:
+        query_params["min_weight"] = str(min_weight)
+    if max_links is not None:
+        query_params["max_links"] = str(max_links)
+
+    path = f"/admin/homegraph/users/{user_id}/graph"
+    if query_params:
+        path = f"{path}?{urlencode(query_params)}"
+
+    response = _request(config, "GET", path)
     return response.json()
 
 
