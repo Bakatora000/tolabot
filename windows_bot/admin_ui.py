@@ -681,6 +681,8 @@ HTML_PAGE = """<!doctype html>
       const nodeId = String(node.id || '').trim();
       const nodeLabel = String(node.label || '').trim();
       const shortId = nodeId.startsWith('viewer:') ? nodeId.slice('viewer:'.length) : nodeId;
+      const currentUserParts = String(selectedUserId || '').split(':');
+      const currentChannel = currentUserParts.length >= 2 ? currentUserParts[1] : '';
 
       for (const user of knownUsers) {
         if (normalizeToken(user.user_id) === normalizeToken(shortId)) {
@@ -696,6 +698,13 @@ HTML_PAGE = """<!doctype html>
         if (normalizeToken(user.viewer) === normalizeToken(nodeLabel)) {
           return user;
         }
+      }
+      if (currentChannel && shortId && !shortId.includes(':')) {
+        return {
+          user_id: `twitch:${currentChannel}:viewer:${shortId}`,
+          channel: currentChannel,
+          viewer: nodeLabel || shortId,
+        };
       }
       return null;
     }
@@ -795,6 +804,7 @@ HTML_PAGE = """<!doctype html>
         .backgroundColor('#07111d')
         .nodeLabel((node) => `${node.label} (${node.kind})`)
         .nodeAutoColorBy(null)
+        .enableNodeDrag(false)
         .nodeColor((node) => node.color || '#8ecae6')
         .nodeVal((node) => {
           if (graphKind === 'homegraph' && homegraphCenterNodeId && node.id === homegraphCenterNodeId) {
@@ -839,6 +849,13 @@ HTML_PAGE = """<!doctype html>
           renderGraphDetails(null);
           applyGraphFocus();
         });
+      if (graphInstance.controls && window.THREE && window.THREE.MOUSE) {
+        graphInstance.controls().mouseButtons = {
+          LEFT: window.THREE.MOUSE.ROTATE,
+          MIDDLE: window.THREE.MOUSE.DOLLY,
+          RIGHT: window.THREE.MOUSE.PAN,
+        };
+      }
       return graphInstance;
     }
 
