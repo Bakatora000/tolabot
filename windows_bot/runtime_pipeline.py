@@ -13,6 +13,7 @@ from bot_logic import (
     strip_trigger,
 )
 from context_sources import build_auxiliary_context_sources, make_context_source_result, merge_context_text
+from memory_client import MemoryApiError, store_memory_turn
 from ollama_client import ask_ollama
 from runtime_types import RuntimeContextBundle
 from web_search_client import build_web_search_context, build_web_search_query, search_searxng
@@ -191,6 +192,164 @@ async def handle_non_model_decision(
         return True
 
     return False
+
+
+def remember_remote_turn(
+    *,
+    config,
+    should_use_remote_memory: bool,
+    channel_name: str,
+    author: str,
+    user_message: str,
+    bot_reply: str = "",
+    message_id: str | None = None,
+    allow_remote: bool = True,
+    author_is_owner: bool = False,
+    store_memory_turn_fn=store_memory_turn,
+) -> bool:
+    if not allow_remote or not should_use_remote_memory:
+        return False
+
+    metadata = {
+        "source": "twitch_chat",
+        "channel": channel_name,
+        "viewer": author,
+    }
+    if message_id:
+        metadata["message_id"] = str(message_id)
+
+    try:
+        store_memory_turn_fn(
+            config,
+            channel=channel_name,
+            viewer=author,
+            user_message=user_message,
+            bot_reply=bot_reply,
+            metadata=metadata,
+            author_is_owner=author_is_owner,
+        )
+        return True
+    except MemoryApiError as exc:
+        print(f"⚠️ Échec écriture mémoire distante : {exc}", flush=True)
+        return False
+
+
+def persist_local_turn(
+    *,
+    config,
+    facts_memory,
+    chat_memory,
+    conversation_graph,
+    channel_name: str,
+    author: str,
+    clean_viewer_message: str,
+    bot_reply: str = "",
+    event_type: str,
+    related_viewer: str,
+    related_message: str,
+    reply_to_turn_id: str,
+    related_turn_id: str,
+    riddle_thread_reset: bool = False,
+    riddle_thread_close: bool = False,
+    store_reported_facts: bool = True,
+    append_reported_facts_fn,
+    append_chat_turn_fn,
+    append_conversation_turn_fn,
+) -> None:
+    if store_reported_facts:
+        append_reported_facts_fn(
+            facts_memory,
+            channel_name,
+            author,
+            clean_viewer_message,
+            ttl_hours=config.chat_memory_ttl_hours,
+        )
+    append_chat_turn_fn(
+        chat_memory,
+        channel_name,
+        author,
+        clean_viewer_message,
+        bot_reply,
+        ttl_hours=config.chat_memory_ttl_hours,
+        thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
+        event_type=event_type,
+        related_viewer=related_viewer,
+        related_message=related_message,
+    )
+    append_conversation_turn_fn(
+        conversation_graph,
+        channel_name,
+        author,
+        clean_viewer_message,
+        bot_reply,
+        event_type=event_type,
+        reply_to_turn_id=reply_to_turn_id,
+        corrects_turn_id=related_turn_id,
+        target_viewers=[related_viewer] if related_viewer else [],
+        ttl_hours=config.chat_memory_ttl_hours,
+    )
+
+
+def persist_local_and_remote_turn(
+    *,
+    config,
+    should_use_remote_memory: bool,
+    facts_memory,
+    chat_memory,
+    conversation_graph,
+    channel_name: str,
+    author: str,
+    clean_viewer_message: str,
+    bot_reply: str = "",
+    msg_id: str | None,
+    allow_remote: bool,
+    author_is_owner: bool,
+    event_type: str,
+    related_viewer: str,
+    related_message: str,
+    reply_to_turn_id: str,
+    related_turn_id: str,
+    riddle_thread_reset: bool = False,
+    riddle_thread_close: bool = False,
+    store_reported_facts: bool = True,
+    append_reported_facts_fn,
+    append_chat_turn_fn,
+    append_conversation_turn_fn,
+    store_memory_turn_fn=store_memory_turn,
+) -> None:
+    persist_local_turn(
+        config=config,
+        facts_memory=facts_memory,
+        chat_memory=chat_memory,
+        conversation_graph=conversation_graph,
+        channel_name=channel_name,
+        author=author,
+        clean_viewer_message=clean_viewer_message,
+        bot_reply=bot_reply,
+        event_type=event_type,
+        related_viewer=related_viewer,
+        related_message=related_message,
+        reply_to_turn_id=reply_to_turn_id,
+        related_turn_id=related_turn_id,
+        riddle_thread_reset=riddle_thread_reset,
+        riddle_thread_close=riddle_thread_close,
+        store_reported_facts=store_reported_facts,
+        append_reported_facts_fn=append_reported_facts_fn,
+        append_chat_turn_fn=append_chat_turn_fn,
+        append_conversation_turn_fn=append_conversation_turn_fn,
+    )
+    remember_remote_turn(
+        config=config,
+        should_use_remote_memory=should_use_remote_memory,
+        channel_name=channel_name,
+        author=author,
+        user_message=clean_viewer_message,
+        bot_reply=bot_reply,
+        message_id=msg_id,
+        allow_remote=allow_remote,
+        author_is_owner=author_is_owner,
+        store_memory_turn_fn=store_memory_turn_fn,
+    )
 
 
 def log_runtime_context(*, config, context_bundle: RuntimeContextBundle, prefer_active_thread: bool, riddle_thread_reset: bool) -> None:

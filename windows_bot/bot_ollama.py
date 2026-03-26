@@ -75,6 +75,9 @@ from runtime_pipeline import (
     handle_non_model_decision,
     handle_model_decision_pipeline,
     log_incoming_message,
+    persist_local_and_remote_turn,
+    persist_local_turn,
+    remember_remote_turn,
     send_channel_summary_reply,
     should_ignore_incoming_message,
 )
@@ -287,42 +290,6 @@ class Bot(commands.Bot):
             context_label="local",
         )
 
-    def remember_remote_turn(
-        self,
-        channel_name: str,
-        author: str,
-        user_message: str,
-        bot_reply: str = "",
-        message_id: str | None = None,
-        allow_remote: bool = True,
-        author_is_owner: bool = False,
-    ) -> bool:
-        if not allow_remote or not self.should_use_remote_memory():
-            return False
-
-        metadata = {
-            "source": "twitch_chat",
-            "channel": channel_name,
-            "viewer": author,
-        }
-        if message_id:
-            metadata["message_id"] = str(message_id)
-
-        try:
-            store_memory_turn(
-                CONFIG,
-                channel=channel_name,
-                viewer=author,
-                user_message=user_message,
-                bot_reply=bot_reply,
-                metadata=metadata,
-                author_is_owner=author_is_owner,
-            )
-            return True
-        except MemoryApiError as exc:
-            print(f"⚠️ Échec écriture mémoire distante : {exc}", flush=True)
-            return False
-
     async def setup_hook(self) -> None:
         print("🔧 setup_hook démarré", flush=True)
         print("⏳ Création des souscriptions EventSub...", flush=True)
@@ -413,98 +380,6 @@ class Bot(commands.Bot):
             token_for=self.bot_id,
         )
 
-    def persist_local_turn(
-        self,
-        *,
-        channel_name: str,
-        author: str,
-        clean_viewer_message: str,
-        bot_reply: str = "",
-        event_type: str,
-        related_viewer: str,
-        related_message: str,
-        reply_to_turn_id: str,
-        related_turn_id: str,
-        riddle_thread_reset: bool = False,
-        riddle_thread_close: bool = False,
-        store_reported_facts: bool = True,
-    ) -> None:
-        if store_reported_facts:
-            append_reported_facts(
-                self.facts_memory,
-                channel_name,
-                author,
-                clean_viewer_message,
-                ttl_hours=CONFIG.chat_memory_ttl_hours,
-            )
-        append_chat_turn(
-            self.chat_memory,
-            channel_name,
-            author,
-            clean_viewer_message,
-            bot_reply,
-            ttl_hours=CONFIG.chat_memory_ttl_hours,
-            thread_boundary="start" if riddle_thread_reset else ("end" if riddle_thread_close else ""),
-            event_type=event_type,
-            related_viewer=related_viewer,
-            related_message=related_message,
-        )
-        append_conversation_turn(
-            self.conversation_graph,
-            channel_name,
-            author,
-            clean_viewer_message,
-            bot_reply,
-            event_type=event_type,
-            reply_to_turn_id=reply_to_turn_id,
-            corrects_turn_id=related_turn_id,
-            target_viewers=[related_viewer] if related_viewer else [],
-            ttl_hours=CONFIG.chat_memory_ttl_hours,
-        )
-
-    def persist_local_and_remote_turn(
-        self,
-        *,
-        channel_name: str,
-        author: str,
-        clean_viewer_message: str,
-        bot_reply: str = "",
-        msg_id: str | None,
-        allow_remote: bool,
-        author_is_owner: bool,
-        event_type: str,
-        related_viewer: str,
-        related_message: str,
-        reply_to_turn_id: str,
-        related_turn_id: str,
-        riddle_thread_reset: bool = False,
-        riddle_thread_close: bool = False,
-        store_reported_facts: bool = True,
-    ) -> None:
-        self.persist_local_turn(
-            channel_name=channel_name,
-            author=author,
-            clean_viewer_message=clean_viewer_message,
-            bot_reply=bot_reply,
-            event_type=event_type,
-            related_viewer=related_viewer,
-            related_message=related_message,
-            reply_to_turn_id=reply_to_turn_id,
-            related_turn_id=related_turn_id,
-            riddle_thread_reset=riddle_thread_reset,
-            riddle_thread_close=riddle_thread_close,
-            store_reported_facts=store_reported_facts,
-        )
-        self.remember_remote_turn(
-            channel_name,
-            author,
-            clean_viewer_message,
-            bot_reply,
-            message_id=msg_id,
-            allow_remote=allow_remote,
-            author_is_owner=author_is_owner,
-        )
-
     async def handle_model_no_reply(
         self,
         *,
@@ -525,7 +400,7 @@ class Bot(commands.Bot):
         riddle_thread_close: bool,
     ) -> bool:
         if not fallback_reply:
-            self.persist_local_and_remote_turn(
+            persist_local_and_remote_turn(
                 channel_name=channel_name,
                 author=author,
                 clean_viewer_message=clean_viewer_message,
@@ -539,12 +414,21 @@ class Bot(commands.Bot):
                 related_turn_id=related_turn_id,
                 riddle_thread_reset=riddle_thread_reset,
                 riddle_thread_close=riddle_thread_close,
+                config=CONFIG,
+                should_use_remote_memory=self.should_use_remote_memory(),
+                facts_memory=self.facts_memory,
+                chat_memory=self.chat_memory,
+                conversation_graph=self.conversation_graph,
+                append_reported_facts_fn=append_reported_facts,
+                append_chat_turn_fn=append_chat_turn,
+                append_conversation_turn_fn=append_conversation_turn,
+                store_memory_turn_fn=store_memory_turn,
             )
             print("↪️ Pas de réponse envoyée", flush=True)
             return True
 
         await self.send_chat_reply(payload.broadcaster, author, fallback_reply, log_prefix="📤 Fallback NO_REPLY")
-        self.persist_local_turn(
+        persist_local_turn(
             channel_name=channel_name,
             author=author,
             clean_viewer_message=clean_viewer_message,
@@ -556,6 +440,13 @@ class Bot(commands.Bot):
             related_turn_id=related_turn_id,
             riddle_thread_reset=riddle_thread_reset,
             riddle_thread_close=riddle_thread_close,
+            config=CONFIG,
+            facts_memory=self.facts_memory,
+            chat_memory=self.chat_memory,
+            conversation_graph=self.conversation_graph,
+            append_reported_facts_fn=append_reported_facts,
+            append_chat_turn_fn=append_chat_turn,
+            append_conversation_turn_fn=append_conversation_turn,
         )
         self.mark_replied(author)
         return True
@@ -580,7 +471,7 @@ class Bot(commands.Bot):
         riddle_thread_close: bool,
     ) -> None:
         await self.send_chat_reply(payload.broadcaster, author, final_reply)
-        self.persist_local_and_remote_turn(
+        persist_local_and_remote_turn(
             channel_name=channel_name,
             author=author,
             clean_viewer_message=clean_viewer_message,
@@ -595,6 +486,15 @@ class Bot(commands.Bot):
             related_turn_id=related_turn_id,
             riddle_thread_reset=riddle_thread_reset,
             riddle_thread_close=riddle_thread_close,
+            config=CONFIG,
+            should_use_remote_memory=self.should_use_remote_memory(),
+            facts_memory=self.facts_memory,
+            chat_memory=self.chat_memory,
+            conversation_graph=self.conversation_graph,
+            append_reported_facts_fn=append_reported_facts,
+            append_chat_turn_fn=append_chat_turn,
+            append_conversation_turn_fn=append_conversation_turn,
+            store_memory_turn_fn=store_memory_turn,
         )
         self.mark_replied(author)
 
@@ -829,9 +729,40 @@ class Bot(commands.Bot):
                 author_is_owner=author_is_owner,
                 reply_about_channel_content_fn=self.reply_about_channel_content,
                 send_chat_reply_fn=self.send_chat_reply,
-                persist_local_turn_fn=self.persist_local_turn,
-                persist_local_and_remote_turn_fn=self.persist_local_and_remote_turn,
-                remember_remote_turn_fn=self.remember_remote_turn,
+                persist_local_turn_fn=lambda **kwargs: persist_local_turn(
+                    **kwargs,
+                    config=CONFIG,
+                    facts_memory=self.facts_memory,
+                    chat_memory=self.chat_memory,
+                    conversation_graph=self.conversation_graph,
+                    append_reported_facts_fn=append_reported_facts,
+                    append_chat_turn_fn=append_chat_turn,
+                    append_conversation_turn_fn=append_conversation_turn,
+                ),
+                persist_local_and_remote_turn_fn=lambda **kwargs: persist_local_and_remote_turn(
+                    **kwargs,
+                    config=CONFIG,
+                    should_use_remote_memory=self.should_use_remote_memory(),
+                    facts_memory=self.facts_memory,
+                    chat_memory=self.chat_memory,
+                    conversation_graph=self.conversation_graph,
+                    append_reported_facts_fn=append_reported_facts,
+                    append_chat_turn_fn=append_chat_turn,
+                    append_conversation_turn_fn=append_conversation_turn,
+                    store_memory_turn_fn=store_memory_turn,
+                ),
+                remember_remote_turn_fn=lambda *args, **kwargs: remember_remote_turn(
+                    channel_name=args[0],
+                    author=args[1],
+                    user_message=args[2],
+                    config=CONFIG,
+                    should_use_remote_memory=self.should_use_remote_memory(),
+                    bot_reply=kwargs.get("bot_reply", ""),
+                    message_id=kwargs.get("message_id"),
+                    allow_remote=kwargs.get("allow_remote", True),
+                    author_is_owner=kwargs.get("author_is_owner", False),
+                    store_memory_turn_fn=store_memory_turn,
+                ),
                 mark_replied_fn=self.mark_replied,
             ):
                 return
@@ -876,7 +807,18 @@ class Bot(commands.Bot):
                     search_searxng_fn=search_searxng,
                 ),
                 handle_model_no_reply_fn=self.handle_model_no_reply,
-                persist_local_and_remote_turn_fn=self.persist_local_and_remote_turn,
+                persist_local_and_remote_turn_fn=lambda **kwargs: persist_local_and_remote_turn(
+                    **kwargs,
+                    config=CONFIG,
+                    should_use_remote_memory=self.should_use_remote_memory(),
+                    facts_memory=self.facts_memory,
+                    chat_memory=self.chat_memory,
+                    conversation_graph=self.conversation_graph,
+                    append_reported_facts_fn=append_reported_facts,
+                    append_chat_turn_fn=append_chat_turn,
+                    append_conversation_turn_fn=append_conversation_turn,
+                    store_memory_turn_fn=store_memory_turn,
+                ),
                 handle_model_reply_result_fn=self.handle_model_reply_result,
                 increment_memory_helpful_fn=lambda: increment_chat_memory_counter(
                     self.chat_memory,
