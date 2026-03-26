@@ -128,6 +128,11 @@ def export_user_memories(config: AppConfig, user_id: str) -> dict[str, Any]:
     return response.json()
 
 
+def get_homegraph_user_graph(config: AppConfig, user_id: str) -> dict[str, Any]:
+    response = _request(config, "GET", f"/admin/homegraph/users/{user_id}/graph")
+    return response.json()
+
+
 def import_user_memories(config: AppConfig, user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     response = _request(config, "POST", f"/admin/users/{user_id}/import", payload=payload)
     return response.json()

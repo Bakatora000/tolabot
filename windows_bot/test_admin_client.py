@@ -5,6 +5,7 @@ from admin_client import (
     AdminApiError,
     admin_healthcheck,
     delete_user_memories,
+    get_homegraph_user_graph,
     list_admin_users,
 )
 from bot_config import AppConfig
@@ -94,6 +95,25 @@ class AdminClientTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.deleted_count, 2)
         self.assertFalse(result.truncated)
+
+    @patch("admin_client.requests.request")
+    def test_get_homegraph_user_graph_returns_payload(self, mock_request):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "nodes": [{"id": "viewer:alice", "kind": "viewer", "label": "alice"}],
+            "links": [],
+            "stats": {"node_count": 1, "link_count": 0},
+            "meta": {"version": "v1"},
+        }
+        mock_request.return_value = response
+
+        payload = get_homegraph_user_graph(make_config(), "twitch:streamer:viewer:alice")
+
+        self.assertEqual(payload["stats"]["node_count"], 1)
+        self.assertEqual(payload["meta"]["version"], "v1")
+        args, _kwargs = mock_request.call_args
+        self.assertIn("/admin/homegraph/users/twitch:streamer:viewer:alice/graph", args[1])
 
     @patch("admin_client.requests.request")
     def test_admin_client_raises_clear_error_on_http_failure(self, mock_request):
