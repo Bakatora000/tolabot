@@ -113,6 +113,29 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         self.assertNotIn("Valkyrottes", viewer_targets)
         self.assertNotIn("Skarp", viewer_targets)
 
+    def test_heuristic_extract_keeps_k7vhs_as_viewer_and_topic(self) -> None:
+        payload = {
+            "user_id": "twitch:expevay:viewer:expevay",
+            "channel": "expevay",
+            "viewer": "expevay",
+            "memories": [
+                {
+                    "id": "mem_1",
+                    "memory": "tu peux répondre à K7VHS même s'il pose des questions bizarres",
+                },
+            ],
+        }
+
+        extraction = heuristic_extract(payload)
+        viewer_links = {
+            (item["target_type"], item["target_value"], item["relation_type"])
+            for item in extraction["links"]
+        }
+
+        self.assertIn(("viewer", "K7VHS", "knows"), viewer_links)
+        self.assertIn(("topic", "K7VHS", "returns_to"), viewer_links)
+        self.assertIn(("running_gag", "K7VHS", "returns_to"), viewer_links)
+
 
 if __name__ == "__main__":
     unittest.main()

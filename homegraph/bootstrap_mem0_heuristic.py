@@ -40,9 +40,13 @@ KNOWN_STREAM_MODES = [
     "cauchemar",
 ]
 
+AMBIGUOUS_VIEWER_LABELS = {
+    "k7vhs",
+}
+
 KNOWN_VIEWER_FALSE_POSITIVES = {
     *(item.lower() for item in KNOWN_GAMES),
-    *(item.lower() for item in KNOWN_TOPICS),
+    *(item.lower() for item in KNOWN_TOPICS if item.lower() not in AMBIGUOUS_VIEWER_LABELS),
     *(item.lower() for item in KNOWN_STREAM_MODES),
     "oui",
     "ich",
