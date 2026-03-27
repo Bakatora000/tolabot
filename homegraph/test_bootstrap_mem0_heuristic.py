@@ -41,6 +41,30 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         self.assertIn(("viewer", "Sarahp79", "compliments"), links)
         self.assertGreaterEqual(len(extraction["links"]), 5)
 
+    def test_heuristic_extract_does_not_promote_known_games_to_viewers(self) -> None:
+        payload = {
+            "user_id": "twitch:streamer:viewer:arthii_tv",
+            "channel": "streamer",
+            "viewer": "arthii_tv",
+            "memories": [
+                {
+                    "id": "mem_1",
+                    "memory": "Affirme être un builder compétent sur Satisfactory qui lit son chat pendant ses constructions et qui complimente parfois Sarahp79.",
+                },
+            ],
+        }
+
+        extraction = heuristic_extract(payload)
+        viewer_links = {
+            (item["target_value"], item["relation_type"])
+            for item in extraction["links"]
+            if item["target_type"] == "viewer"
+        }
+
+        self.assertIn(("Sarahp79", "compliments"), viewer_links)
+        self.assertNotIn(("Satisfactory", "compliments"), viewer_links)
+        self.assertNotIn(("Satisfactory", "knows"), viewer_links)
+
 
 if __name__ == "__main__":
     unittest.main()

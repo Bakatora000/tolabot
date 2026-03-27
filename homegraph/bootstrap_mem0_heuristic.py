@@ -40,6 +40,15 @@ KNOWN_STREAM_MODES = [
     "cauchemar",
 ]
 
+KNOWN_VIEWER_FALSE_POSITIVES = {
+    *(item.lower() for item in KNOWN_GAMES),
+    *(item.lower() for item in KNOWN_TOPICS),
+    *(item.lower() for item in KNOWN_STREAM_MODES),
+    "oui",
+    "ich",
+    "les",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -134,6 +143,19 @@ def find_viewers(text: str) -> list[str]:
         if viewer not in found:
             found.append(viewer)
     return found
+
+
+def filter_candidate_viewers(viewers: list[str]) -> list[str]:
+    filtered: list[str] = []
+    for viewer in viewers:
+        lowered = viewer.strip().lower()
+        if not lowered:
+            continue
+        if lowered in KNOWN_VIEWER_FALSE_POSITIVES:
+            continue
+        if viewer not in filtered:
+            filtered.append(viewer)
+    return filtered
 
 
 def build_fact(
@@ -259,7 +281,11 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
         games = find_games(text)
         topics = find_topics(text)
         stream_modes = find_stream_modes(text)
-        viewers = [viewer for viewer in find_viewers(text) if viewer.lower() != (viewer_login or "").lower()]
+        viewers = [
+            viewer
+            for viewer in filter_candidate_viewers(find_viewers(text))
+            if viewer.lower() != (viewer_login or "").lower()
+        ]
 
         for game in games:
             topic_counter[game] += 1
