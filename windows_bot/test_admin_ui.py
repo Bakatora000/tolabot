@@ -24,6 +24,36 @@ class AdminUiGraphTests(unittest.TestCase):
         self.assertIn('class="viewer-icon-button export-review-viewer-button"', HTML_PAGE)
         self.assertIn('class="viewer-icon-button viewer-icon-button-danger purge-viewer-button"', HTML_PAGE)
 
+    def test_html_page_uses_dynamic_homegraph_legend_items(self):
+        self.assertIn("function getHomegraphLegendModel()", HTML_PAGE)
+        self.assertIn("buildLegendItems(fullGraphData.links, 'kind', 'color', 'link')", HTML_PAGE)
+        self.assertIn("La légende Homegraph reflète les types réellement présents", HTML_PAGE)
+
+    def test_html_page_does_not_synthesize_channel_scoped_homegraph_viewers(self):
+        self.assertNotIn("twitch:${currentChannel}:viewer:${shortId}", HTML_PAGE)
+        self.assertIn("if (shortId && shortId.includes(':')) {", HTML_PAGE)
+        self.assertIn("if (!shortId.includes(':')) {", HTML_PAGE)
+        self.assertIn("if (matches.length === 1) {", HTML_PAGE)
+
+    def test_html_page_omits_viewer_filter_for_centered_homegraph_requests(self):
+        self.assertIn("const isCenteredHomegraph = graphKind === 'homegraph' && homegraphCenterNodeId !== '';", HTML_PAGE)
+        self.assertIn("if (!isCenteredHomegraph) {", HTML_PAGE)
+        self.assertIn("query.set('viewer', viewer);", HTML_PAGE)
+
+    def test_html_page_raises_depth_for_ambiguous_homegraph_viewers(self):
+        self.assertIn("if (homegraphCenterNodeId.startsWith('viewer:')) {", HTML_PAGE)
+        self.assertIn("if (!centeredViewerId.includes(':')) {", HTML_PAGE)
+        self.assertIn("homegraphMaxDepth = String(Math.max(2, parseInt(homegraphMaxDepth || '2', 10) || 2));", HTML_PAGE)
+
+    def test_html_page_keeps_ambiguous_homegraph_viewers_in_graph_navigation(self):
+        self.assertIn("function hasAmbiguousHomegraphLabel(node)", HTML_PAGE)
+        self.assertIn("if (targetUser && !hasAmbiguousHomegraphLabel(node)", HTML_PAGE)
+
+    def test_html_page_filters_centered_homegraph_to_connected_component(self):
+        self.assertIn("function getConnectedComponentGraphData(data, rootNodeId)", HTML_PAGE)
+        self.assertIn("if (graphKind === 'homegraph' && homegraphCenterNodeId) {", HTML_PAGE)
+        self.assertIn("data = getConnectedComponentGraphData(data, homegraphCenterNodeId);", HTML_PAGE)
+
     def test_build_conversation_graph_payload_links_turns_and_viewers(self):
         graph = {
             "channels": {

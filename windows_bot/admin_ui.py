@@ -1194,28 +1194,85 @@ HTML_PAGE = """<!doctype html>
       updateModeState();
     }
 
+    function formatLegendLabel(value, family = 'generic') {
+      const normalized = String(value || '').trim();
+      if (!normalized) {
+        return '';
+      }
+      const labelMap = {
+        viewer: 'Viewer',
+        game: 'Jeu',
+        topic: 'Sujet',
+        running_gag: 'Running gag',
+        stream_mode: 'Mode de jeu',
+        object: 'Objet',
+        other: 'Autre',
+        reported: 'reported',
+        about: 'about',
+      };
+      if (Object.prototype.hasOwnProperty.call(labelMap, normalized)) {
+        return labelMap[normalized];
+      }
+      if (family === 'link') {
+        return normalized;
+      }
+      return normalized
+        .split('_')
+        .filter(Boolean)
+        .map((part, index) => index === 0
+          ? part.charAt(0).toUpperCase() + part.slice(1)
+          : part.toLowerCase()
+        )
+        .join(' ');
+    }
+
+    function buildLegendItems(entries, kindField, colorField, family = 'generic') {
+      const seen = new Set();
+      const items = [];
+      for (const entry of (entries || [])) {
+        const kind = String(entry && entry[kindField] ? entry[kindField] : '').trim();
+        if (!kind || seen.has(kind)) {
+          continue;
+        }
+        seen.add(kind);
+        items.push({
+          label: formatLegendLabel(kind, family),
+          color: String(entry && entry[colorField] ? entry[colorField] : '#94a3b8'),
+        });
+      }
+      return items;
+    }
+
+    function getHomegraphLegendModel() {
+      const fallbackNodeItems = [
+        { label: 'Viewer', color: '#4F46E5' },
+        { label: 'Jeu', color: '#22C55E' },
+        { label: 'Sujet', color: '#0EA5E9' },
+        { label: 'Running gag', color: '#F97316' },
+        { label: 'Mode de jeu', color: '#EF4444' },
+        { label: 'Objet / autre', color: '#A855F7' },
+      ];
+      const fallbackLinkItems = [
+        { label: 'plays', color: '#22C55E' },
+        { label: 'likes', color: '#14B8A6' },
+        { label: 'talks_about', color: '#0EA5E9' },
+        { label: 'interacts_with', color: '#3B82F6' },
+        { label: 'compliments', color: '#F59E0B' },
+        { label: 'jokes_about', color: '#F97316' },
+      ];
+      const nodeItems = buildLegendItems(fullGraphData.nodes, 'kind', 'color', 'node');
+      const linkItems = buildLegendItems(fullGraphData.links, 'kind', 'color', 'link');
+      return {
+        mode: 'Homegraph',
+        nodeItems: nodeItems.length ? nodeItems : fallbackNodeItems,
+        linkItems: linkItems.length ? linkItems : fallbackLinkItems,
+        note: 'La légende Homegraph reflète les types réellement présents dans le sous-graphe courant.',
+      };
+    }
+
     function getGraphLegendModel() {
       if (graphKind === 'homegraph') {
-        return {
-          mode: 'Homegraph',
-          nodeItems: [
-            { label: 'Viewer', color: '#4F46E5' },
-            { label: 'Jeu', color: '#22C55E' },
-            { label: 'Sujet', color: '#0EA5E9' },
-            { label: 'Running gag', color: '#F97316' },
-            { label: 'Mode de jeu', color: '#EF4444' },
-            { label: 'Objet / autre', color: '#A855F7' },
-          ],
-          linkItems: [
-            { label: 'plays', color: '#22C55E' },
-            { label: 'likes', color: '#14B8A6' },
-            { label: 'talks_about', color: '#0EA5E9' },
-            { label: 'interacts_with', color: '#3B82F6' },
-            { label: 'compliments', color: '#F59E0B' },
-            { label: 'jokes_about', color: '#F97316' },
-          ],
-          note: 'Les couleurs portent le type des nœuds et des relations. Le libellé affiché près du nœud reste limité au nom.',
-        };
+        return getHomegraphLegendModel();
       }
       if (graphKind === 'facts') {
         return {
@@ -1430,28 +1487,25 @@ HTML_PAGE = """<!doctype html>
       const nodeId = String(node.id || '').trim();
       const nodeLabel = String(node.label || '').trim();
       const shortId = nodeId.startsWith('viewer:') ? nodeId.slice('viewer:'.length) : nodeId;
-      const currentUserParts = String(selectedUserId || '').split(':');
-      const currentChannel = currentUserParts.length >= 2 ? currentUserParts[1] : '';
-
       for (const user of knownUsers) {
         if (normalizeToken(user.user_id) === normalizeToken(shortId)) {
           return user;
         }
       }
-      for (const user of knownUsers) {
-        if (normalizeToken(user.viewer) === normalizeToken(shortId)) {
-          return user;
+      if (!shortId.includes(':')) {
+        const matches = knownUsers.filter((user) =>
+          normalizeToken(user.viewer) === normalizeToken(shortId) ||
+          normalizeToken(user.viewer) === normalizeToken(nodeLabel)
+        );
+        if (matches.length === 1) {
+          return matches[0];
         }
+        return null;
       }
-      for (const user of knownUsers) {
-        if (normalizeToken(user.viewer) === normalizeToken(nodeLabel)) {
-          return user;
-        }
-      }
-      if (currentChannel && shortId && !shortId.includes(':')) {
+      if (shortId && shortId.includes(':')) {
         return {
-          user_id: `twitch:${currentChannel}:viewer:${shortId}`,
-          channel: currentChannel,
+          user_id: shortId,
+          channel: '',
           viewer: nodeLabel || shortId,
         };
       }
@@ -1481,6 +1535,50 @@ HTML_PAGE = """<!doctype html>
         }
       }
       const nodes = (data.nodes || []).filter((node) => linkedNodeIds.has(node.id)).map((node) => ({ ...node }));
+      return { nodes, links };
+    }
+
+    function getConnectedComponentGraphData(data, rootNodeId) {
+      if (!rootNodeId) {
+        return cloneGraphData(data);
+      }
+      const rootNode = findNodeById(data, rootNodeId);
+      if (!rootNode) {
+        return { nodes: [], links: [] };
+      }
+      const adjacency = new Map();
+      const normalizedLinks = [];
+      for (const link of (data.links || [])) {
+        const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+        const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+        if (!sourceId || !targetId) {
+          continue;
+        }
+        normalizedLinks.push({ ...link, source: sourceId, target: targetId });
+        if (!adjacency.has(sourceId)) {
+          adjacency.set(sourceId, new Set());
+        }
+        if (!adjacency.has(targetId)) {
+          adjacency.set(targetId, new Set());
+        }
+        adjacency.get(sourceId).add(targetId);
+        adjacency.get(targetId).add(sourceId);
+      }
+      const visited = new Set([rootNodeId]);
+      const queue = [rootNodeId];
+      while (queue.length > 0) {
+        const currentId = queue.shift();
+        const neighbors = adjacency.get(currentId) || new Set();
+        for (const neighborId of neighbors) {
+          if (visited.has(neighborId)) {
+            continue;
+          }
+          visited.add(neighborId);
+          queue.push(neighborId);
+        }
+      }
+      const nodes = (data.nodes || []).filter((node) => visited.has(node.id)).map((node) => ({ ...node }));
+      const links = normalizedLinks.filter((link) => visited.has(link.source) && visited.has(link.target));
       return { nodes, links };
     }
 
@@ -1519,6 +1617,27 @@ HTML_PAGE = """<!doctype html>
         }
       }
       return null;
+    }
+
+    function hasAmbiguousHomegraphLabel(node) {
+      if (!node || graphKind !== 'homegraph') {
+        return false;
+      }
+      const label = normalizeToken(node.label || '');
+      if (!label) {
+        return false;
+      }
+      const kinds = new Set();
+      for (const candidate of (fullGraphData.nodes || [])) {
+        if (normalizeToken(candidate.label || '') !== label) {
+          continue;
+        }
+        const kind = String(candidate.kind || '').trim();
+        if (kind) {
+          kinds.add(kind);
+        }
+      }
+      return kinds.size > 1;
     }
 
     function computeGraphSignature(data) {
@@ -1730,7 +1849,7 @@ HTML_PAGE = """<!doctype html>
         .onNodeClick(async (node) => {
           if (graphKind === 'homegraph') {
             const targetUser = resolveHomegraphViewerUser(node);
-            if (targetUser && normalizeToken(targetUser.user_id) !== normalizeToken(selectedUserId)) {
+            if (targetUser && !hasAmbiguousHomegraphLabel(node) && normalizeToken(targetUser.user_id) !== normalizeToken(selectedUserId)) {
               homegraphCenterNodeId = '';
               homegraphRootNodeId = '';
               setError('');
@@ -1747,7 +1866,13 @@ HTML_PAGE = """<!doctype html>
               return;
             }
             homegraphCenterNodeId = node.id || '';
-            if (!homegraphCenterNodeId.startsWith('viewer:')) {
+            if (homegraphCenterNodeId.startsWith('viewer:')) {
+              const centeredViewerId = homegraphCenterNodeId.slice('viewer:'.length);
+              if (!centeredViewerId.includes(':')) {
+                homegraphMaxDepth = String(Math.max(2, parseInt(homegraphMaxDepth || '2', 10) || 2));
+                syncHomegraphDepthControls();
+              }
+            } else {
               homegraphMaxDepth = '1';
               syncHomegraphDepthControls();
             }
@@ -1792,7 +1917,10 @@ HTML_PAGE = """<!doctype html>
 
     function applyGraphFocus() {
       const graph = ensureGraphInstance();
-      const data = getFocusedGraphData(fullGraphData, focusedNodeId);
+      let data = getFocusedGraphData(fullGraphData, focusedNodeId);
+      if (graphKind === 'homegraph' && homegraphCenterNodeId) {
+        data = getConnectedComponentGraphData(data, homegraphCenterNodeId);
+      }
       displayedGraphData = data;
       renderGraphNodeLabels();
       graph.graphData(data);
@@ -1805,11 +1933,12 @@ HTML_PAGE = """<!doctype html>
       try {
         const viewer = selectedViewerLabel || '';
         const userId = selectedUserId || '';
-        const query = new URLSearchParams({
-          kind: graphKind,
-          viewer,
-          user_id: userId,
-        });
+        const query = new URLSearchParams({ kind: graphKind });
+        const isCenteredHomegraph = graphKind === 'homegraph' && homegraphCenterNodeId !== '';
+        if (!isCenteredHomegraph) {
+          query.set('viewer', viewer);
+          query.set('user_id', userId);
+        }
         if (graphKind === 'homegraph') {
           query.set('include_uncertain', String(homegraphIncludeUncertain));
           if (homegraphMinWeight !== '') {
