@@ -50,6 +50,10 @@ KNOWN_VIEWER_FALSE_POSITIVES = {
 }
 
 
+def normalize_name_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9_]+", "", str(value or "").strip().lower())
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Bootstrap a homegraph extraction JSON from a mem0 export using simple heuristics."
@@ -152,6 +156,15 @@ def find_viewers(text: str) -> list[str]:
         "labrador",
         "caniche",
     )
+    object_context_tokens = (
+        "bijou",
+        "bijoux",
+        "porte cle",
+        "porte clé",
+        "string",
+        "cotte de maille",
+        "haubergiste",
+    )
     for match in re.finditer(r"@?([A-Z][A-Za-z0-9_]{2,})", text or ""):
         viewer = match.group(1)
         lowered = viewer.lower()
@@ -172,6 +185,8 @@ def find_viewers(text: str) -> list[str]:
         local_context = (text or "")[local_window_start:local_window_end].lower()
         if any(token in local_context for token in animal_context_tokens) and not (preceded_by_at or has_twitch_shape):
             continue
+        if any(token in local_context for token in object_context_tokens) and not (preceded_by_at or has_twitch_shape):
+            continue
         if viewer not in found:
             found.append(viewer)
     return found
@@ -188,6 +203,66 @@ def filter_candidate_viewers(viewers: list[str]) -> list[str]:
         if viewer not in filtered:
             filtered.append(viewer)
     return filtered
+
+
+def find_viewer_alias_tokens(text: str) -> list[str]:
+    found: list[str] = []
+    for match in re.finditer(r"([A-Z][A-Za-z0-9_]{2,})", text or ""):
+        viewer = match.group(1)
+        if viewer not in found:
+            found.append(viewer)
+    return filter_candidate_viewers(found)
+
+
+def derive_viewer_alias_hints(
+    memories: list[dict[str, Any]],
+) -> tuple[dict[str, str], set[str]]:
+    alias_map: dict[str, str] = {}
+    non_viewer_keys: set[str] = set()
+
+    def register_aliases(canonical: str, alias_fragment: str) -> None:
+        canonical_candidates = filter_candidate_viewers([canonical])
+        if not canonical_candidates:
+            return
+        canonical_name = canonical_candidates[0]
+        canonical_key = normalize_name_key(canonical_name)
+        if not canonical_key:
+            return
+        alias_map[canonical_key] = canonical_name
+        for alias in find_viewer_alias_tokens(alias_fragment):
+            alias_key = normalize_name_key(alias)
+            if not alias_key or alias_key == canonical_key:
+                continue
+            alias_map[alias_key] = canonical_name
+
+    for memory in memories:
+        text = clean_memory_text(memory.get("memory", ""))
+        if not text:
+            continue
+
+        for match in re.finditer(r'\b(?:trio|groupe)\s+surnomm[ée]?\s+"?les\s+([A-Z][A-Za-z0-9_]{2,})', text, re.IGNORECASE):
+            non_viewer_keys.add(normalize_name_key(match.group(1)))
+        for match in re.finditer(r"\bLes\s+([A-Z][A-Za-z0-9_]{2,})\s+sont\s+(?:le|un)\s+(?:trio|groupe)\b", text, re.IGNORECASE):
+            non_viewer_keys.add(normalize_name_key(match.group(1)))
+
+        for match in re.finditer(
+            r"([A-Z][A-Za-z0-9_]{2,})\s+est\s+le\s+plus\s+souvent\s+appel[a-zéèêîïôûùç]*\s+([^.]+)",
+            text,
+            re.IGNORECASE,
+        ):
+            register_aliases(match.group(1), match.group(2))
+
+        for match in re.finditer(
+            r"([A-Z][A-Za-z0-9_]{2,})\s*,\s*surnomm[ée][^,]*\s+([^.]+)",
+            text,
+            re.IGNORECASE,
+        ):
+            register_aliases(match.group(1), match.group(2))
+
+        for match in re.finditer(r"([A-Z][A-Za-z0-9_]{2,})\s*\(([^)]+)\)", text):
+            register_aliases(match.group(1), match.group(2))
+
+    return alias_map, non_viewer_keys
 
 
 def build_fact(
@@ -300,6 +375,8 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
     links: list[dict[str, Any]] = []
     topic_counter: Counter[str] = Counter()
     question_like_count = 0
+    alias_map, non_viewer_keys = derive_viewer_alias_hints(payload.get("memories", []))
+    viewer_login_key = normalize_name_key(viewer_login or "")
 
     for memory in payload.get("memories", []):
         memory_id = str(memory.get("id") or "").strip()
@@ -313,11 +390,18 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
         games = find_games(text)
         topics = find_topics(text)
         stream_modes = find_stream_modes(text)
-        viewers = [
-            viewer
-            for viewer in filter_candidate_viewers(find_viewers(text))
-            if viewer.lower() != (viewer_login or "").lower()
-        ]
+        viewers: list[str] = []
+        for viewer in filter_candidate_viewers(find_viewers(text)):
+            normalized = alias_map.get(normalize_name_key(viewer), viewer)
+            normalized_key = normalize_name_key(normalized)
+            if not normalized_key:
+                continue
+            if normalized_key == viewer_login_key:
+                continue
+            if normalized_key in non_viewer_keys:
+                continue
+            if normalized not in viewers:
+                viewers.append(normalized)
 
         for game in games:
             topic_counter[game] += 1

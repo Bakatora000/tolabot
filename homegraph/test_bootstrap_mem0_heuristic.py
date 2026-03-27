@@ -71,6 +71,48 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         self.assertNotIn(("Satisfactory", "compliments"), viewer_links)
         self.assertNotIn(("Satisfactory", "knows"), viewer_links)
 
+    def test_heuristic_extract_normalizes_aliases_and_group_names(self) -> None:
+        payload = {
+            "user_id": "twitch:expevay:viewer:dame_gaby",
+            "channel": "expevay",
+            "viewer": "dame_gaby",
+            "memories": [
+                {
+                    "id": "mem_1",
+                    "memory": 'oui je joue à valheim, actuellement je joue avec Misscouette76 et Dae_3_7 où nous formons un trio surnommé "les Valkyrottes"',
+                },
+                {
+                    "id": "mem_2",
+                    "memory": "MissCouette76 est le plus souvent appelait MissCouette ou Cacaouette ou Caouette",
+                },
+                {
+                    "id": "mem_3",
+                    "memory": "Les Valkyrottes sont le trio Valheim formé par Dae_3_7 (Daé), MissCouette76 (Caouette/MissCouette) et Dame_Gaby (Gabichou).",
+                },
+                {
+                    "id": "mem_4",
+                    "memory": "MissCouette conçoit des bijoux et des porte clé appelé Skarp trop mignon.",
+                },
+            ],
+        }
+
+        extraction = heuristic_extract(payload)
+        viewer_links = {
+            (item["target_value"], item["relation_type"])
+            for item in extraction["links"]
+            if item["target_type"] == "viewer"
+        }
+        viewer_targets = {target for target, _ in viewer_links}
+
+        self.assertIn(("MissCouette76", "interacts_with"), viewer_links)
+        self.assertIn(("Dae_3_7", "interacts_with"), viewer_links)
+        self.assertNotIn("MissCouette", viewer_targets)
+        self.assertNotIn("Caouette", viewer_targets)
+        self.assertNotIn("Cacaouette", viewer_targets)
+        self.assertNotIn("Gabichou", viewer_targets)
+        self.assertNotIn("Valkyrottes", viewer_targets)
+        self.assertNotIn("Skarp", viewer_targets)
+
 
 if __name__ == "__main__":
     unittest.main()
