@@ -364,6 +364,7 @@ async def admin_homegraph_viewer_graph(
 async def admin_homegraph_multihop_graph(
     request: Request,
     center_node_id: str,
+    mode: str = "multihop",
     max_depth: int = 1,
     max_nodes: int | None = None,
     max_links: int | None = None,
@@ -374,6 +375,7 @@ async def admin_homegraph_multihop_graph(
     payload = build_multihop_graph_payload(
         center_node_id=center_node_id,
         db_path=settings_obj.homegraph_db_path,
+        mode=mode,
         max_depth=max_depth,
         max_nodes=max_nodes,
         max_links=max_links,

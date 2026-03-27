@@ -18,6 +18,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a Homegraph multi-hop graph JSON payload.")
     parser.add_argument("--center-node-id", required=True, help="Center node id, for example game:valheim")
     parser.add_argument(
+        "--mode",
+        choices=("multihop", "entity_focus"),
+        default="multihop",
+        help="Graph expansion mode.",
+    )
+    parser.add_argument(
         "--db",
         default=str(DEFAULT_DB_PATH),
         help="Path to the SQLite database file.",
@@ -46,6 +52,7 @@ def main() -> None:
         payload_as_json(
             args.center_node_id,
             Path(args.db),
+            mode=args.mode,
             max_depth=args.max_depth,
             max_nodes=args.max_nodes,
             max_links=args.max_links,

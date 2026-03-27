@@ -79,6 +79,107 @@ def _sort_edge_key(edge: dict[str, Any]) -> tuple[Any, ...]:
     )
 
 
+def _empty_payload(
+    center: str,
+    *,
+    source: str,
+    max_depth: int | None,
+    include_uncertain: bool,
+    min_weight: float | None,
+    max_nodes: int | None,
+    max_links: int | None,
+    mode: str,
+) -> dict[str, Any]:
+    return {
+        "ok": True,
+        "viewer_id": center.removeprefix("viewer:") if center.startswith("viewer:") else None,
+        "generated_at": utc_now_iso(),
+        "source": source,
+        "meta": {
+            "root_node_id": center,
+            "center_node_id": center,
+            "filtered_by_viewer": False,
+            "max_depth": max_depth,
+            "truncated": False,
+            "filters_applied": {
+                "mode": mode,
+                "include_uncertain": include_uncertain,
+                "min_weight": min_weight,
+                "max_nodes": max_nodes,
+                "max_links": max_links,
+            },
+            "stable_node_kinds": STABLE_NODE_KINDS,
+            "stable_link_kinds": STABLE_LINK_KINDS,
+        },
+        "stats": {
+            "node_count": 0,
+            "link_count": 0,
+            "node_kinds": {},
+            "link_kinds": {},
+        },
+        "nodes": [],
+        "links": [],
+    }
+
+
+def _finalize_payload(
+    center: str,
+    *,
+    source: str,
+    mode: str,
+    max_depth: int | None,
+    include_uncertain: bool,
+    min_weight: float | None,
+    max_nodes: int | None,
+    max_links: int | None,
+    truncated: bool,
+    selected_nodes: dict[str, dict[str, Any]],
+    selected_edges: dict[tuple[str, str, str], dict[str, Any]],
+) -> dict[str, Any]:
+    ordered_nodes = sorted(selected_nodes.values(), key=lambda item: (item["kind"], item["label"], item["id"]))
+    ordered_links = sorted(selected_edges.values(), key=_sort_edge_key)
+
+    node_kind_counts: dict[str, int] = {}
+    for node in ordered_nodes:
+        node_kind_counts[node["kind"]] = node_kind_counts.get(node["kind"], 0) + 1
+
+    link_kind_counts: dict[str, int] = {}
+    for edge in ordered_links:
+        link_kind_counts[edge["kind"]] = link_kind_counts.get(edge["kind"], 0) + 1
+
+    viewer_id = center.removeprefix("viewer:") if center.startswith("viewer:") else None
+    return {
+        "ok": True,
+        "viewer_id": viewer_id,
+        "generated_at": utc_now_iso(),
+        "source": source,
+        "meta": {
+            "root_node_id": center,
+            "center_node_id": center,
+            "filtered_by_viewer": False,
+            "max_depth": max_depth,
+            "truncated": truncated,
+            "filters_applied": {
+                "mode": mode,
+                "include_uncertain": include_uncertain,
+                "min_weight": min_weight,
+                "max_nodes": max_nodes,
+                "max_links": max_links,
+            },
+            "stable_node_kinds": STABLE_NODE_KINDS,
+            "stable_link_kinds": STABLE_LINK_KINDS,
+        },
+        "stats": {
+            "node_count": len(ordered_nodes),
+            "link_count": len(ordered_links),
+            "node_kinds": node_kind_counts,
+            "link_kinds": link_kind_counts,
+        },
+        "nodes": ordered_nodes,
+        "links": ordered_links,
+    }
+
+
 def _load_graph_records(
     db_path: Path | str,
     *,
@@ -246,6 +347,7 @@ def build_multihop_graph_payload(
     center_node_id: str,
     db_path: Path | str,
     *,
+    mode: str = "multihop",
     max_depth: int = 1,
     max_nodes: int | None = None,
     max_links: int | None = None,
@@ -253,6 +355,9 @@ def build_multihop_graph_payload(
     min_weight: float | None = None,
 ) -> dict[str, Any]:
     center = str(center_node_id or "").strip()
+    selected_mode = str(mode or "multihop").strip().lower() or "multihop"
+    if selected_mode not in {"multihop", "entity_focus"}:
+        selected_mode = "multihop"
     bounded_depth = max(0, int(max_depth))
     bounded_nodes = max_nodes if max_nodes is None else max(1, int(max_nodes))
     bounded_links = max_links if max_links is None else max(1, int(max_links))
@@ -263,36 +368,19 @@ def build_multihop_graph_payload(
         min_weight=min_weight,
     )
 
+    source = "homegraph_entity_focus_graph_v1" if selected_mode == "entity_focus" else "homegraph_multihop_graph_v1"
+
     if center not in raw_nodes:
-        return {
-            "ok": True,
-            "viewer_id": center.removeprefix("viewer:") if center.startswith("viewer:") else None,
-            "generated_at": utc_now_iso(),
-            "source": "homegraph_multihop_graph_v1",
-            "meta": {
-                "root_node_id": center,
-                "center_node_id": center,
-                "filtered_by_viewer": False,
-                "max_depth": bounded_depth,
-                "truncated": False,
-                "filters_applied": {
-                    "include_uncertain": include_uncertain,
-                    "min_weight": min_weight,
-                    "max_nodes": bounded_nodes,
-                    "max_links": bounded_links,
-                },
-                "stable_node_kinds": STABLE_NODE_KINDS,
-                "stable_link_kinds": STABLE_LINK_KINDS,
-            },
-            "stats": {
-                "node_count": 0,
-                "link_count": 0,
-                "node_kinds": {},
-                "link_kinds": {},
-            },
-            "nodes": [],
-            "links": [],
-        }
+        return _empty_payload(
+            center,
+            source=source,
+            max_depth=1 if selected_mode == "entity_focus" else bounded_depth,
+            include_uncertain=include_uncertain,
+            min_weight=min_weight,
+            max_nodes=bounded_nodes,
+            max_links=bounded_links,
+            mode=selected_mode,
+        )
 
     adjacency: dict[str, list[tuple[str, dict[str, Any]]]] = {}
     for edge in edges:
@@ -303,9 +391,57 @@ def build_multihop_graph_payload(
 
     selected_nodes: dict[str, dict[str, Any]] = {center: raw_nodes[center]}
     selected_edges: dict[tuple[str, str, str], dict[str, Any]] = {}
+    truncated = False
+
+    def try_add_neighbor(neighbor_id: str, edge: dict[str, Any]) -> bool:
+        nonlocal truncated
+        edge_id = (edge["source"], edge["kind"], edge["target"])
+        if neighbor_id not in selected_nodes:
+            if bounded_nodes is not None and len(selected_nodes) >= bounded_nodes:
+                truncated = True
+                return False
+            selected_nodes[neighbor_id] = nodes_by_id[neighbor_id]
+        if edge_id not in selected_edges:
+            if bounded_links is not None and len(selected_edges) >= bounded_links:
+                truncated = True
+                return False
+            selected_edges[edge_id] = edge
+        return True
+
+    if selected_mode == "entity_focus":
+        direct_viewers: list[str] = []
+        for neighbor_id, edge in adjacency.get(center, []):
+            if not try_add_neighbor(neighbor_id, edge):
+                continue
+            if nodes_by_id.get(neighbor_id, {}).get("kind") == "viewer":
+                direct_viewers.append(neighbor_id)
+
+        secondary_kinds = {"stream_mode", "topic", "running_gag"}
+        for viewer_id in direct_viewers:
+            for neighbor_id, edge in adjacency.get(viewer_id, []):
+                if neighbor_id == center:
+                    continue
+                neighbor_kind = nodes_by_id.get(neighbor_id, {}).get("kind")
+                if neighbor_kind not in secondary_kinds:
+                    continue
+                try_add_neighbor(neighbor_id, edge)
+
+        return _finalize_payload(
+            center,
+            source=source,
+            mode=selected_mode,
+            max_depth=1,
+            include_uncertain=include_uncertain,
+            min_weight=min_weight,
+            max_nodes=bounded_nodes,
+            max_links=bounded_links,
+            truncated=truncated,
+            selected_nodes=selected_nodes,
+            selected_edges=selected_edges,
+        )
+
     depth_by_node: dict[str, int] = {center: 0}
     queue: deque[str] = deque([center])
-    truncated = False
 
     while queue:
         current = queue.popleft()
@@ -330,53 +466,26 @@ def build_multihop_graph_payload(
                     continue
                 selected_edges[edge_id] = edge
 
-    ordered_nodes = sorted(selected_nodes.values(), key=lambda item: (item["kind"], item["label"], item["id"]))
-    ordered_links = sorted(selected_edges.values(), key=_sort_edge_key)
-
-    node_kind_counts: dict[str, int] = {}
-    for node in ordered_nodes:
-        node_kind_counts[node["kind"]] = node_kind_counts.get(node["kind"], 0) + 1
-
-    link_kind_counts: dict[str, int] = {}
-    for edge in ordered_links:
-        link_kind_counts[edge["kind"]] = link_kind_counts.get(edge["kind"], 0) + 1
-
-    viewer_id = center.removeprefix("viewer:") if center.startswith("viewer:") else None
-    return {
-        "ok": True,
-        "viewer_id": viewer_id,
-        "generated_at": utc_now_iso(),
-        "source": "homegraph_multihop_graph_v1",
-        "meta": {
-            "root_node_id": center,
-            "center_node_id": center,
-            "filtered_by_viewer": False,
-            "max_depth": bounded_depth,
-            "truncated": truncated,
-            "filters_applied": {
-                "include_uncertain": include_uncertain,
-                "min_weight": min_weight,
-                "max_nodes": bounded_nodes,
-                "max_links": bounded_links,
-            },
-            "stable_node_kinds": STABLE_NODE_KINDS,
-            "stable_link_kinds": STABLE_LINK_KINDS,
-        },
-        "stats": {
-            "node_count": len(ordered_nodes),
-            "link_count": len(ordered_links),
-            "node_kinds": node_kind_counts,
-            "link_kinds": link_kind_counts,
-        },
-        "nodes": ordered_nodes,
-        "links": ordered_links,
-    }
+    return _finalize_payload(
+        center,
+        source=source,
+        mode=selected_mode,
+        max_depth=bounded_depth,
+        include_uncertain=include_uncertain,
+        min_weight=min_weight,
+        max_nodes=bounded_nodes,
+        max_links=bounded_links,
+        truncated=truncated,
+        selected_nodes=selected_nodes,
+        selected_edges=selected_edges,
+    )
 
 
 def payload_as_json(
     center_node_id: str,
     db_path: Path | str,
     *,
+    mode: str = "multihop",
     max_depth: int = 1,
     max_nodes: int | None = None,
     max_links: int | None = None,
@@ -387,6 +496,7 @@ def payload_as_json(
         build_multihop_graph_payload(
             center_node_id,
             db_path,
+            mode=mode,
             max_depth=max_depth,
             max_nodes=max_nodes,
             max_links=max_links,

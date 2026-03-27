@@ -155,6 +155,25 @@ class MultiHopGraphTests(unittest.TestCase):
         self.assertIn("stream_mode:hardcore", node_ids)
         self.assertIn("object:long_bow", node_ids)
 
+    def test_entity_focus_from_game_keeps_star_and_useful_secondary_context(self) -> None:
+        payload = build_multihop_graph_payload(
+            "game:valheim",
+            self.db_path,
+            mode="entity_focus",
+            max_depth=2,
+        )
+        node_ids = {node["id"] for node in payload["nodes"]}
+        self.assertIn("game:valheim", node_ids)
+        self.assertIn("viewer:twitch:expevay:viewer:expevay", node_ids)
+        self.assertIn("viewer:twitch:expevay:viewer:arthii_tv", node_ids)
+        self.assertIn("viewer:twitch:expevay:viewer:karramelle", node_ids)
+        self.assertIn("stream_mode:no_death", node_ids)
+        self.assertIn("stream_mode:hardcore", node_ids)
+        self.assertNotIn("object:long_bow", node_ids)
+        self.assertNotIn("game:enshrouded", node_ids)
+        self.assertEqual(payload["meta"]["filters_applied"]["mode"], "entity_focus")
+        self.assertEqual(payload["source"], "homegraph_entity_focus_graph_v1")
+
     def test_include_uncertain_false_drops_uncertain_links(self) -> None:
         payload = build_multihop_graph_payload(
             "viewer:twitch:expevay:viewer:expevay",
