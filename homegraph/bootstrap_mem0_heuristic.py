@@ -97,11 +97,42 @@ def find_stream_modes(text: str) -> list[str]:
 
 def find_viewers(text: str) -> list[str]:
     found: list[str] = []
-    for match in re.findall(r"@?([A-Z][A-Za-z0-9_]{2,})", text or ""):
-        if match.lower() in {"reponse", "bot", "viewer"}:
+    stopwords = {
+        "reponse",
+        "bot",
+        "viewer",
+        "affirme",
+        "dit",
+        "pense",
+        "ajoute",
+        "explique",
+        "raconte",
+        "precise",
+        "précise",
+        "demande",
+        "aime",
+        "adore",
+        "deteste",
+        "déteste",
+        "joue",
+    }
+    for match in re.finditer(r"@?([A-Z][A-Za-z0-9_]{2,})", text or ""):
+        viewer = match.group(1)
+        lowered = viewer.lower()
+        if lowered in stopwords:
             continue
-        if match not in found:
-            found.append(match)
+        preceded_by_at = match.group(0).startswith("@")
+        has_twitch_shape = "_" in viewer or any(char.isdigit() for char in viewer)
+        is_sentence_initial_plain_word = (
+            not preceded_by_at
+            and not has_twitch_shape
+            and match.start() == 0
+            and viewer[1:].islower()
+        )
+        if is_sentence_initial_plain_word:
+            continue
+        if viewer not in found:
+            found.append(viewer)
     return found
 
 

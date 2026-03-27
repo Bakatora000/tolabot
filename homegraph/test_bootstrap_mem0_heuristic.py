@@ -1,9 +1,15 @@
 import unittest
 
-from homegraph.bootstrap_mem0_heuristic import heuristic_extract
+from homegraph.bootstrap_mem0_heuristic import find_viewers, heuristic_extract
 
 
 class BootstrapMem0HeuristicTests(unittest.TestCase):
+    def test_find_viewers_ignores_sentence_verbs_but_keeps_twitch_like_names(self) -> None:
+        viewers = find_viewers("Arthii_TV affirme que Satisfactory est un bon jeu.")
+
+        self.assertIn("Arthii_TV", viewers)
+        self.assertNotIn("Affirme", viewers)
+
     def test_heuristic_extract_emits_links_v2(self) -> None:
         payload = {
             "user_id": "twitch:streamer:viewer:alice",
