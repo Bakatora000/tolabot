@@ -44,6 +44,52 @@ AMBIGUOUS_VIEWER_LABELS = {
     "k7vhs",
 }
 
+QUESTION_FALSE_POSITIVES = {
+    "qui",
+    "quoi",
+    "quel",
+    "quels",
+    "quelle",
+    "quelles",
+    "ou",
+    "où",
+    "quand",
+    "comment",
+    "pourquoi",
+    "peut",
+    "puis",
+    "mais",
+    "une",
+}
+
+NON_VIEWER_ENTITY_LABELS = {
+    "atp",
+    "tennis",
+    "tessnis",
+    "reuters",
+    "lyon",
+    "villeurbanne",
+    "twitch",
+    "monde",
+    "hormuz",
+    "projet",
+    "mary",
+    "trump",
+    "wow",
+    "hollow",
+    "clair",
+    "obscur",
+    "knight",
+    "edge",
+    "dvd",
+    "grece",
+    "supercopter",
+    "k2000",
+    "tonnerre",
+    "vhs",
+    "dieu",
+}
+
 KNOWN_VIEWER_FALSE_POSITIVES = {
     *(item.lower() for item in KNOWN_GAMES),
     *(item.lower() for item in KNOWN_TOPICS if item.lower() not in AMBIGUOUS_VIEWER_LABELS),
@@ -51,6 +97,8 @@ KNOWN_VIEWER_FALSE_POSITIVES = {
     "oui",
     "ich",
     "les",
+    *QUESTION_FALSE_POSITIVES,
+    *NON_VIEWER_ENTITY_LABELS,
 }
 
 
@@ -169,6 +217,17 @@ def find_viewers(text: str) -> list[str]:
         "cotte de maille",
         "haubergiste",
     )
+    news_context_tokens = (
+        "reuters",
+        "monde",
+        "actualit",
+        "météo",
+        "meteo",
+        "cinéma",
+        "cinema",
+        "journal",
+        "classement",
+    )
     for match in re.finditer(r"@?([A-Z][A-Za-z0-9_]{2,})", text or ""):
         viewer = match.group(1)
         lowered = viewer.lower()
@@ -190,6 +249,12 @@ def find_viewers(text: str) -> list[str]:
         if any(token in local_context for token in animal_context_tokens) and not (preceded_by_at or has_twitch_shape):
             continue
         if any(token in local_context for token in object_context_tokens) and not (preceded_by_at or has_twitch_shape):
+            continue
+        if lowered in QUESTION_FALSE_POSITIVES:
+            continue
+        if lowered in NON_VIEWER_ENTITY_LABELS and not preceded_by_at:
+            continue
+        if any(token in local_context for token in news_context_tokens) and lowered in NON_VIEWER_ENTITY_LABELS:
             continue
         if viewer not in found:
             found.append(viewer)

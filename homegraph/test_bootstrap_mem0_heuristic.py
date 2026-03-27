@@ -136,6 +136,13 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         self.assertIn(("topic", "K7VHS", "returns_to"), viewer_links)
         self.assertIn(("running_gag", "K7VHS", "returns_to"), viewer_links)
 
+    def test_find_viewers_ignores_news_and_question_false_positives(self) -> None:
+        viewers = find_viewers(
+            "Qui est second au classement ATP de Tennis selon Reuters aujourd'hui a Lyon ?"
+        )
+
+        self.assertEqual(viewers, [])
+
 
 if __name__ == "__main__":
     unittest.main()
