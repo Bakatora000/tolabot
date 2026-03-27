@@ -70,6 +70,10 @@ def _build_edge(
     return payload
 
 
+def _normalized_label_key(value: str) -> str:
+    return compact_slug(str(value or "")).replace("_", "")
+
+
 def _sort_edge_key(edge: dict[str, Any]) -> tuple[Any, ...]:
     return (
         -float(edge.get("weight") or 0.0),
@@ -240,6 +244,7 @@ def _load_graph_records(
     nodes: dict[str, dict[str, Any]] = {}
     edges: list[dict[str, Any]] = []
     existing_edge_ids: set[tuple[str, str, str]] = set()
+    viewer_target_observations: dict[str, list[dict[str, Any]]] = {}
 
     for row in profiles:
         viewer_id = str(row["viewer_id"] or "").strip()
@@ -307,6 +312,14 @@ def _load_graph_records(
         if edge_id not in existing_edge_ids:
             existing_edge_ids.add(edge_id)
             edges.append(edge)
+            viewer_target_observations.setdefault(source, []).append(
+                {
+                    "node_id": target,
+                    "kind": target_kind,
+                    "label": label,
+                    "weight": weight,
+                }
+            )
 
     for row in relation_rows:
         viewer_id = str(row["viewer_id"] or "").strip()
@@ -339,6 +352,43 @@ def _load_graph_records(
         )
         existing_edge_ids.add((source, relation_type, target))
         edges.append(edge)
+
+    for source, observations in viewer_target_observations.items():
+        viewer_by_key: dict[str, dict[str, Any]] = {}
+        secondary_items: list[dict[str, Any]] = []
+        for item in observations:
+            key = _normalized_label_key(item["label"])
+            if not key:
+                continue
+            if item["kind"] == "viewer":
+                existing = viewer_by_key.get(key)
+                if existing is None or float(item["weight"] or 0.0) > float(existing["weight"] or 0.0):
+                    viewer_by_key[key] = item
+            elif item["kind"] in {"topic", "running_gag"}:
+                secondary_items.append(item)
+
+        for item in secondary_items:
+            key = _normalized_label_key(item["label"])
+            viewer_item = viewer_by_key.get(key)
+            if not viewer_item:
+                continue
+            if item["node_id"] == viewer_item["node_id"]:
+                continue
+            relation_type = "about_viewer" if item["kind"] == "topic" else "centers_on_viewer"
+            weight = min(float(item["weight"] or 0.0), float(viewer_item["weight"] or 0.0))
+            edge = _build_edge(
+                item["node_id"],
+                viewer_item["node_id"],
+                relation_type,
+                weight=weight,
+                detail=f"projected_from={source}",
+                target_kind="viewer",
+            )
+            edge_id = (edge["source"], edge["kind"], edge["target"])
+            if edge_id in existing_edge_ids:
+                continue
+            existing_edge_ids.add(edge_id)
+            edges.append(edge)
 
     return nodes, sorted(edges, key=_sort_edge_key), raw_nodes
 

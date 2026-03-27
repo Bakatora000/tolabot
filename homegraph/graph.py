@@ -41,6 +41,8 @@ STABLE_LINK_KINDS = [
     "uses_build_style",
     "plays_in_mode",
     "owns",
+    "about_viewer",
+    "centers_on_viewer",
 ]
 
 

@@ -75,6 +75,36 @@ class MultiHopGraphTests(unittest.TestCase):
                 "polarity": "neutral",
                 "source_memory_ids": ["m4"],
             },
+            {
+                "target_type": "viewer",
+                "target_value": "K7VHS",
+                "relation_type": "knows",
+                "strength": 0.68,
+                "confidence": 0.70,
+                "status": "active",
+                "polarity": "neutral",
+                "source_memory_ids": ["m5"],
+            },
+            {
+                "target_type": "topic",
+                "target_value": "K7VHS",
+                "relation_type": "returns_to",
+                "strength": 0.72,
+                "confidence": 0.76,
+                "status": "active",
+                "polarity": "neutral",
+                "source_memory_ids": ["m6"],
+            },
+            {
+                "target_type": "running_gag",
+                "target_value": "K7VHS",
+                "relation_type": "returns_to",
+                "strength": 0.70,
+                "confidence": 0.74,
+                "status": "active",
+                "polarity": "neutral",
+                "source_memory_ids": ["m7"],
+            },
         ]
 
         arthii = _base_payload(
@@ -213,6 +243,24 @@ class MultiHopGraphTests(unittest.TestCase):
         self.assertEqual(payload["meta"]["center_node_id"], "game:valheim")
         self.assertEqual(payload["meta"]["root_node_id"], "game:valheim")
         self.assertFalse(payload["meta"]["filtered_by_viewer"])
+
+    def test_topic_center_projects_to_matching_viewer_entity(self) -> None:
+        payload = build_multihop_graph_payload("topic:k7vhs", self.db_path, max_depth=2)
+        node_ids = {node["id"] for node in payload["nodes"]}
+        link_kinds = {(link["source"], link["kind"], link["target"]) for link in payload["links"]}
+
+        self.assertIn("topic:k7vhs", node_ids)
+        self.assertIn("viewer:k7vhs", node_ids)
+        self.assertIn(("topic:k7vhs", "about_viewer", "viewer:k7vhs"), link_kinds)
+
+    def test_running_gag_center_projects_to_matching_viewer_entity(self) -> None:
+        payload = build_multihop_graph_payload("running_gag:k7vhs", self.db_path, max_depth=2)
+        node_ids = {node["id"] for node in payload["nodes"]}
+        link_kinds = {(link["source"], link["kind"], link["target"]) for link in payload["links"]}
+
+        self.assertIn("running_gag:k7vhs", node_ids)
+        self.assertIn("viewer:k7vhs", node_ids)
+        self.assertIn(("running_gag:k7vhs", "centers_on_viewer", "viewer:k7vhs"), link_kinds)
 
     def test_unknown_center_returns_empty_graph(self) -> None:
         payload = build_multihop_graph_payload("game:unknown_game", self.db_path, max_depth=2)
