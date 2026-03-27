@@ -10,6 +10,12 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         self.assertIn("Arthii_TV", viewers)
         self.assertNotIn("Affirme", viewers)
 
+    def test_find_viewers_ignores_pronouns_and_pet_names(self) -> None:
+        viewers = find_viewers("Elle parle souvent de Dakota, son chien, sur le stream.")
+
+        self.assertNotIn("Elle", viewers)
+        self.assertNotIn("Dakota", viewers)
+
     def test_heuristic_extract_emits_links_v2(self) -> None:
         payload = {
             "user_id": "twitch:streamer:viewer:alice",

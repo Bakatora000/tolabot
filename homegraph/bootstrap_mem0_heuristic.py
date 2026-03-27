@@ -110,6 +110,20 @@ def find_viewers(text: str) -> list[str]:
         "reponse",
         "bot",
         "viewer",
+        "elle",
+        "il",
+        "ils",
+        "elles",
+        "lui",
+        "leur",
+        "leurs",
+        "on",
+        "nous",
+        "vous",
+        "tu",
+        "toi",
+        "je",
+        "j",
         "affirme",
         "dit",
         "pense",
@@ -125,6 +139,19 @@ def find_viewers(text: str) -> list[str]:
         "déteste",
         "joue",
     }
+    animal_context_tokens = (
+        "chien",
+        "chienne",
+        "chat",
+        "chatte",
+        "chiot",
+        "animal",
+        "bouledogue",
+        "berger",
+        "husky",
+        "labrador",
+        "caniche",
+    )
     for match in re.finditer(r"@?([A-Z][A-Za-z0-9_]{2,})", text or ""):
         viewer = match.group(1)
         lowered = viewer.lower()
@@ -139,6 +166,11 @@ def find_viewers(text: str) -> list[str]:
             and viewer[1:].islower()
         )
         if is_sentence_initial_plain_word:
+            continue
+        local_window_start = max(0, match.start() - 32)
+        local_window_end = min(len(text or ""), match.end() + 32)
+        local_context = (text or "")[local_window_start:local_window_end].lower()
+        if any(token in local_context for token in animal_context_tokens) and not (preceded_by_at or has_twitch_shape):
             continue
         if viewer not in found:
             found.append(viewer)
