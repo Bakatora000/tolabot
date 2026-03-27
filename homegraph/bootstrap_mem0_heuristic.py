@@ -90,6 +90,11 @@ NON_VIEWER_ENTITY_LABELS = {
     "dieu",
 }
 
+KNOWN_GROUP_LABELS = {
+    "valkyrottes",
+    "valkyrotes",
+}
+
 KNOWN_VIEWER_FALSE_POSITIVES = {
     *(item.lower() for item in KNOWN_GAMES),
     *(item.lower() for item in KNOWN_TOPICS if item.lower() not in AMBIGUOUS_VIEWER_LABELS),
@@ -99,11 +104,37 @@ KNOWN_VIEWER_FALSE_POSITIVES = {
     "les",
     *QUESTION_FALSE_POSITIVES,
     *NON_VIEWER_ENTITY_LABELS,
+    *KNOWN_GROUP_LABELS,
 }
 
 
 def normalize_name_key(value: str) -> str:
     return re.sub(r"[^a-z0-9_]+", "", str(value or "").strip().lower())
+
+
+def canonicalize_viewer_name(value: str) -> str:
+    raw = str(value or "").strip()
+    key = normalize_name_key(raw)
+    if not key:
+        return ""
+
+    if key in {"caouette", "cacaouette", "misscouette", "misscouette7", "misscouette76", "misscouette776", "missecouette"}:
+        return "MissCouette76"
+    if key in {"sarahp", "sarahp79", "sarahp7"}:
+        return "SarahP79"
+    if key in {"dae", "dae37", "dae_37", "dae_3_7", "daegaby", "dae_gaby"}:
+        return "Dae_3_7"
+    if key in {"gabichou", "damegaby", "dame_gaby"}:
+        return "Dame_Gaby"
+    if key in {"raptormehkong", "raptormekhong"}:
+        return "RAPTORmekhong"
+    if key in {"arthiitv", "arthii_tv"}:
+        return "Arthii_TV"
+    return raw
+
+
+def is_known_non_viewer_label(value: str) -> bool:
+    return normalize_name_key(value) in KNOWN_VIEWER_FALSE_POSITIVES
 
 
 def parse_args() -> argparse.Namespace:
@@ -264,13 +295,14 @@ def find_viewers(text: str) -> list[str]:
 def filter_candidate_viewers(viewers: list[str]) -> list[str]:
     filtered: list[str] = []
     for viewer in viewers:
-        lowered = viewer.strip().lower()
+        canonical = canonicalize_viewer_name(viewer)
+        lowered = canonical.strip().lower()
         if not lowered:
             continue
-        if lowered in KNOWN_VIEWER_FALSE_POSITIVES:
+        if is_known_non_viewer_label(canonical):
             continue
-        if viewer not in filtered:
-            filtered.append(viewer)
+        if canonical not in filtered:
+            filtered.append(canonical)
     return filtered
 
 

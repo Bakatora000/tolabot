@@ -1,6 +1,10 @@
 import unittest
 
-from homegraph.bootstrap_mem0_heuristic import find_viewers, heuristic_extract
+from homegraph.bootstrap_mem0_heuristic import (
+    canonicalize_viewer_name,
+    find_viewers,
+    heuristic_extract,
+)
 
 
 class BootstrapMem0HeuristicTests(unittest.TestCase):
@@ -142,6 +146,14 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         )
 
         self.assertEqual(viewers, [])
+
+    def test_canonicalize_viewer_name_handles_known_aliases(self) -> None:
+        self.assertEqual(canonicalize_viewer_name("Caouette"), "MissCouette76")
+        self.assertEqual(canonicalize_viewer_name("MissCouette"), "MissCouette76")
+        self.assertEqual(canonicalize_viewer_name("Gabichou"), "Dame_Gaby")
+        self.assertEqual(canonicalize_viewer_name("Dae_Gaby"), "Dae_3_7")
+        self.assertEqual(canonicalize_viewer_name("SarahP"), "SarahP79")
+        self.assertEqual(canonicalize_viewer_name("RaptorMehkong"), "RAPTORmekhong")
 
 
 if __name__ == "__main__":
