@@ -148,12 +148,17 @@ class BootstrapMem0HeuristicTests(unittest.TestCase):
         self.assertEqual(viewers, [])
 
     def test_canonicalize_viewer_name_handles_known_aliases(self) -> None:
+        self.assertEqual(canonicalize_viewer_name("Miss"), "MissCouette76")
         self.assertEqual(canonicalize_viewer_name("Caouette"), "MissCouette76")
         self.assertEqual(canonicalize_viewer_name("MissCouette"), "MissCouette76")
         self.assertEqual(canonicalize_viewer_name("Gabichou"), "Dame_Gaby")
         self.assertEqual(canonicalize_viewer_name("Dae_Gaby"), "Dae_3_7")
         self.assertEqual(canonicalize_viewer_name("SarahP"), "SarahP79")
         self.assertEqual(canonicalize_viewer_name("RaptorMehkong"), "RAPTORmekhong")
+
+    def test_find_viewers_ignores_pouet_onomatopoeia(self) -> None:
+        viewers = find_viewers('son cri de guerre est "Pouet pouet pouet!" je crois')
+        self.assertEqual(viewers, [])
 
 
 if __name__ == "__main__":

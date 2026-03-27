@@ -88,6 +88,7 @@ NON_VIEWER_ENTITY_LABELS = {
     "tonnerre",
     "vhs",
     "dieu",
+    "pouet",
 }
 
 KNOWN_GROUP_LABELS = {
@@ -118,7 +119,7 @@ def canonicalize_viewer_name(value: str) -> str:
     if not key:
         return ""
 
-    if key in {"caouette", "cacaouette", "misscouette", "misscouette7", "misscouette76", "misscouette776", "missecouette"}:
+    if key in {"caouette", "cacaouette", "miss", "misscouette", "misscouette7", "misscouette76", "misscouette776", "missecouette"}:
         return "MissCouette76"
     if key in {"sarahp", "sarahp79", "sarahp7"}:
         return "SarahP79"
