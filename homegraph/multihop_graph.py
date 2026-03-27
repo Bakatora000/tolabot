@@ -415,16 +415,44 @@ def build_multihop_graph_payload(
                 continue
             if nodes_by_id.get(neighbor_id, {}).get("kind") == "viewer":
                 direct_viewers.append(neighbor_id)
+        center_kind = raw_nodes.get(center, {}).get("kind")
 
-        secondary_kinds = {"stream_mode", "topic", "running_gag"}
-        for viewer_id in direct_viewers:
-            for neighbor_id, edge in adjacency.get(viewer_id, []):
-                if neighbor_id == center:
-                    continue
-                neighbor_kind = nodes_by_id.get(neighbor_id, {}).get("kind")
-                if neighbor_kind not in secondary_kinds:
-                    continue
-                try_add_neighbor(neighbor_id, edge)
+        if center_kind == "game":
+            allowed_mode_labels: set[str] = set()
+            for viewer_id in direct_viewers:
+                for neighbor_id, edge in adjacency.get(viewer_id, []):
+                    if neighbor_id == center:
+                        continue
+                    neighbor = nodes_by_id.get(neighbor_id, {})
+                    neighbor_kind = neighbor.get("kind")
+                    if neighbor_kind != "stream_mode":
+                        continue
+                    if not try_add_neighbor(neighbor_id, edge):
+                        continue
+                    allowed_mode_labels.add(str(neighbor.get("label") or "").strip().lower())
+
+            for viewer_id in direct_viewers:
+                for neighbor_id, edge in adjacency.get(viewer_id, []):
+                    if neighbor_id == center:
+                        continue
+                    neighbor = nodes_by_id.get(neighbor_id, {})
+                    neighbor_kind = neighbor.get("kind")
+                    neighbor_label = str(neighbor.get("label") or "").strip().lower()
+                    if neighbor_kind != "topic":
+                        continue
+                    if neighbor_label not in allowed_mode_labels:
+                        continue
+                    try_add_neighbor(neighbor_id, edge)
+        else:
+            secondary_kinds = {"stream_mode", "topic", "running_gag"}
+            for viewer_id in direct_viewers:
+                for neighbor_id, edge in adjacency.get(viewer_id, []):
+                    if neighbor_id == center:
+                        continue
+                    neighbor_kind = nodes_by_id.get(neighbor_id, {}).get("kind")
+                    if neighbor_kind not in secondary_kinds:
+                        continue
+                    try_add_neighbor(neighbor_id, edge)
 
         return _finalize_payload(
             center,

@@ -171,6 +171,7 @@ class MultiHopGraphTests(unittest.TestCase):
         self.assertIn("stream_mode:hardcore", node_ids)
         self.assertNotIn("object:long_bow", node_ids)
         self.assertNotIn("game:enshrouded", node_ids)
+        self.assertNotIn("running_gag:k7vhs", node_ids)
         self.assertEqual(payload["meta"]["filters_applied"]["mode"], "entity_focus")
         self.assertEqual(payload["source"], "homegraph_entity_focus_graph_v1")
 
