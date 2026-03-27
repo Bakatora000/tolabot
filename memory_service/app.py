@@ -16,6 +16,7 @@ from admin_service.models import (
     AdminExportResponse,
     AdminHomegraphEnrichmentRequest,
     AdminHomegraphEnrichmentResponse,
+    AdminHomegraphEnrichmentValidationResponse,
     AdminHomegraphGraphResponse,
     AdminHealthResponse,
     AdminHomegraphContextResponse,
@@ -32,7 +33,7 @@ from admin_service.models import (
     UserSummary,
 )
 from homegraph.context import build_viewer_context_payload
-from homegraph.graph import build_viewer_graph_payload
+from homegraph.graph import STABLE_NODE_KINDS, build_viewer_graph_payload
 from homegraph.merge_extraction import merge_payload as merge_homegraph_payload
 from homegraph.multihop_graph import build_multihop_graph_payload
 from memory_service.auth import admin_key_dependency, api_key_dependency
@@ -191,6 +192,96 @@ def admin_auth_dependencies(expected_key: str):
         Depends(admin_key_dependency(expected_key)),
         Depends(admin_local_only_dependency),
     ]
+
+
+def validate_enrichment_route_user(user_id: str, payload: AdminHomegraphEnrichmentRequest) -> None:
+    if payload.viewer_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "ok": False,
+                "error": "viewer_id_mismatch",
+                "detail": "Payload viewer_id must match the route user_id.",
+            },
+        )
+
+
+def build_enrichment_counts(payload: AdminHomegraphEnrichmentRequest) -> dict[str, int]:
+    return {
+        "facts": len(payload.facts),
+        "relations": len(payload.relations),
+        "links": len(payload.links),
+    }
+
+
+def validate_enrichment_payload(payload: AdminHomegraphEnrichmentRequest) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    if not any(
+        [
+            (payload.summary_short or "").strip(),
+            (payload.summary_long or "").strip(),
+            payload.facts,
+            payload.relations,
+            payload.links,
+        ]
+    ):
+        errors.append("Payload contains no mergeable Homegraph content.")
+
+    if not payload.model_name:
+        warnings.append("model_name is missing; GPT provenance will be less traceable.")
+    if not payload.source_ref:
+        warnings.append("source_ref is missing; merge provenance will be less traceable.")
+
+    seen_fact_keys: set[tuple[str, str]] = set()
+    for fact in payload.facts:
+        key = (fact.kind.strip().lower(), fact.value.strip().lower())
+        if key in seen_fact_keys:
+            warnings.append(f"Duplicate fact detected: {fact.kind} / {fact.value}")
+        seen_fact_keys.add(key)
+        if not fact.source_memory_ids:
+            warnings.append(f"Fact without source_memory_ids: {fact.kind} / {fact.value}")
+
+    seen_relation_keys: set[tuple[str, str, str]] = set()
+    for relation in payload.relations:
+        key = (
+            relation.target_type.strip().lower(),
+            relation.target_id_or_value.strip().lower(),
+            relation.relation_type.strip().lower(),
+        )
+        if key in seen_relation_keys:
+            warnings.append(
+                f"Duplicate relation detected: {relation.target_type} / {relation.target_id_or_value} / {relation.relation_type}"
+            )
+        seen_relation_keys.add(key)
+        if relation.target_type not in STABLE_NODE_KINDS:
+            warnings.append(f"Relation target_type is not a stable Homegraph kind: {relation.target_type}")
+        if not relation.source_memory_ids:
+            warnings.append(
+                f"Relation without source_memory_ids: {relation.target_type} / {relation.target_id_or_value} / {relation.relation_type}"
+            )
+
+    seen_link_keys: set[tuple[str, str, str]] = set()
+    for link in payload.links:
+        key = (
+            link.target_type.strip().lower(),
+            link.target_value.strip().lower(),
+            link.relation_type.strip().lower(),
+        )
+        if key in seen_link_keys:
+            warnings.append(
+                f"Duplicate link detected: {link.target_type} / {link.target_value} / {link.relation_type}"
+            )
+        seen_link_keys.add(key)
+        if link.target_type not in STABLE_NODE_KINDS:
+            warnings.append(f"Link target_type is not a stable Homegraph kind: {link.target_type}")
+        if not link.source_memory_ids:
+            warnings.append(
+                f"Link without source_memory_ids: {link.target_type} / {link.target_value} / {link.relation_type}"
+            )
+
+    return errors, warnings
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -363,6 +454,26 @@ async def admin_homegraph_viewer_graph(
 
 
 @app.post(
+    "/admin/homegraph/users/{user_id}/enrichment/validate",
+    response_model=AdminHomegraphEnrichmentValidationResponse,
+    dependencies=admin_auth_dependencies(settings.admin_key),
+)
+async def admin_homegraph_validate_enrichment(
+    user_id: str,
+    payload: AdminHomegraphEnrichmentRequest,
+):
+    validate_enrichment_route_user(user_id, payload)
+    errors, warnings = validate_enrichment_payload(payload)
+    return AdminHomegraphEnrichmentValidationResponse(
+        viewer_id=user_id,
+        mergeable=not errors,
+        counts=build_enrichment_counts(payload),
+        errors=errors,
+        warnings=warnings,
+    )
+
+
+@app.post(
     "/admin/homegraph/users/{user_id}/enrichment",
     response_model=AdminHomegraphEnrichmentResponse,
     dependencies=admin_auth_dependencies(settings.admin_key),
@@ -373,15 +484,7 @@ async def admin_homegraph_merge_enrichment(
     request: Request,
     dry_run: bool = False,
 ):
-    if payload.viewer_id != user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "ok": False,
-                "error": "viewer_id_mismatch",
-                "detail": "Payload viewer_id must match the route user_id.",
-            },
-        )
+    validate_enrichment_route_user(user_id, payload)
 
     settings_obj = getattr(request.app.state, "settings", settings)
     payload_dict = payload.model_dump(exclude_none=True, exclude={"model_name", "source_ref"})

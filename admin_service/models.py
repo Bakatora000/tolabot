@@ -301,3 +301,13 @@ class AdminHomegraphEnrichmentResponse(BaseModel):
     context: HomegraphContextContent
     text_block: str
     graph_stats: HomegraphGraphStats
+
+
+class AdminHomegraphEnrichmentValidationResponse(BaseModel):
+    ok: bool = True
+    viewer_id: str
+    source: str = "homegraph_enrichment_validation_v1"
+    mergeable: bool
+    counts: HomegraphMergeCounts
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)

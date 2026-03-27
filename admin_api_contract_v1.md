@@ -139,6 +139,7 @@ Reponse `200` :
 - `POST /admin/users/{user_id}/import`
 - `POST /admin/users/{user_id}/remember`
 - `GET /admin/homegraph/users/{user_id}/context`
+- `POST /admin/homegraph/users/{user_id}/enrichment/validate`
 - `POST /admin/homegraph/users/{user_id}/enrichment`
 
 ## Endpoint Homegraph V1
@@ -358,6 +359,45 @@ Notes :
 - `model_name` et `source_ref` sont optionnels mais recommandes pour tracer une analyse GPT
 - la reponse renvoie un apercu direct du contexte et des stats de graphe pour l'UI Windows
 - si `dry_run=true`, Linux merge sur une copie temporaire de la base et ne persiste rien
+
+### `POST /admin/homegraph/users/{user_id}/enrichment/validate`
+
+Route de validation legere avant preview ou merge.
+
+Headers :
+- `X-Admin-Key`
+
+Body :
+- meme contrat que `POST /admin/homegraph/users/{user_id}/enrichment`
+
+Reponse `200` :
+
+```json
+{
+  "ok": true,
+  "viewer_id": "twitch:streamer:viewer:alice",
+  "source": "homegraph_enrichment_validation_v1",
+  "mergeable": true,
+  "counts": {
+    "facts": 1,
+    "relations": 1,
+    "links": 1
+  },
+  "errors": [],
+  "warnings": [
+    "source_ref is missing; merge provenance will be less traceable."
+  ]
+}
+```
+
+Notes :
+- cette route ne persiste rien
+- elle sert a detecter rapidement :
+  - payload vide
+  - `viewer_id` incoherent
+  - doublons simples
+  - absence de provenance memoire
+- `mergeable=false` signifie qu'il y a au moins une erreur bloquante
 /admin/homegraph/graph?center_node_id=game:valheim&max_depth=2&max_nodes=20&max_links=30&include_uncertain=false&min_weight=0.7
 ```
 

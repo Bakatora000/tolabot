@@ -18,6 +18,12 @@ L'objectif produit est simple :
 POST /admin/homegraph/users/{user_id}/enrichment
 ```
 
+Validation rapide :
+
+```text
+POST /admin/homegraph/users/{user_id}/enrichment/validate
+```
+
 Auth :
 
 ```http
@@ -160,6 +166,10 @@ Exemple :
   - `Fusionner dans Homegraph`
 
 ### Preview conseillee
+
+- Windows peut d'abord appeler :
+  - `POST /admin/homegraph/users/{user_id}/enrichment/validate`
+- si `mergeable=false`, on reste dans l'UI de correction et on ne propose pas le merge
 
 - Windows peut d'abord appeler :
   - `POST /admin/homegraph/users/{user_id}/enrichment?dry_run=true`
