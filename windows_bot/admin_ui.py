@@ -400,82 +400,563 @@ HTML_PAGE = """<!doctype html>
   <title>Mem0 Admin</title>
   <script src="https://unpkg.com/3d-force-graph@1.76.2/dist/3d-force-graph.min.js"></script>
   <style>
-    body { font-family: sans-serif; margin: 24px; max-width: 1280px; }
-    .toolbar { display: flex; gap: 12px; align-items: center; margin: 16px 0 24px; }
-    .row { display: flex; gap: 24px; align-items: flex-start; }
-    .panel { border: 1px solid #ccc; border-radius: 8px; padding: 16px; flex: 1; }
-    .panel-left { max-width: 360px; }
-    .status-line { margin-bottom: 12px; font-weight: 600; }
-    .muted { color: #666; }
-    .error { color: #a40000; margin-top: 12px; }
-    button { padding: 8px 12px; cursor: pointer; }
-    button:disabled { cursor: default; opacity: 0.6; }
+    :root {
+      --bg: #f4efe7;
+      --panel: rgba(255, 250, 243, 0.92);
+      --panel-strong: #fffdf8;
+      --line: #d9cbb7;
+      --line-strong: #b79f7f;
+      --text: #24190f;
+      --muted: #6a5848;
+      --accent: #0d4f4d;
+      --accent-soft: #dceceb;
+      --accent-2: #b85c38;
+      --danger: #ab2d2d;
+      --success: #226a3d;
+      --shadow: 0 20px 50px rgba(54, 34, 18, 0.12);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(13, 79, 77, 0.16), transparent 28%),
+        radial-gradient(circle at top right, rgba(184, 92, 56, 0.16), transparent 24%),
+        linear-gradient(180deg, #f7f1e8 0%, var(--bg) 100%);
+    }
+    .app-shell {
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 28px 24px 40px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+    .title-block h1 {
+      margin: 0;
+      font-size: 2.1rem;
+      letter-spacing: 0.01em;
+    }
+    .title-block p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      max-width: 720px;
+    }
+    .status-chip {
+      min-width: 280px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.72);
+      box-shadow: var(--shadow);
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    .status-line { font-weight: 600; }
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin: 0 0 22px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+    .toolbar-spacer {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .analysis-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin: -6px 0 22px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(13, 79, 77, 0.22);
+      background: linear-gradient(135deg, rgba(13, 79, 77, 0.1), rgba(220, 236, 235, 0.78));
+      box-shadow: var(--shadow);
+    }
+    .analysis-banner[hidden] { display: none; }
+    .analysis-banner-main {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+    .analysis-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(13, 79, 77, 0.14);
+      color: var(--accent);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .analysis-pill::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--accent);
+      box-shadow: 0 0 0 0 rgba(13, 79, 77, 0.35);
+      animation: analysis-pulse 1.4s ease-out infinite;
+    }
+    .analysis-banner-text strong {
+      display: block;
+      margin-bottom: 2px;
+    }
+    .analysis-banner-text div {
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+    @keyframes analysis-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(13, 79, 77, 0.35); }
+      70% { box-shadow: 0 0 0 10px rgba(13, 79, 77, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(13, 79, 77, 0); }
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 22px;
+      align-items: start;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 2px);
+      padding: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .panel-left {
+      position: sticky;
+      top: 20px;
+      max-height: calc(100vh - 40px);
+      overflow: auto;
+    }
+    .muted { color: var(--muted); }
+    .error {
+      color: var(--danger);
+      margin-top: 16px;
+      padding: 12px 14px;
+      border: 1px solid rgba(171, 45, 45, 0.24);
+      border-radius: 12px;
+      background: rgba(171, 45, 45, 0.08);
+    }
+    button, select, input, textarea {
+      font: inherit;
+    }
+    button {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #fffdf9;
+      color: var(--text);
+      transition: 120ms ease;
+    }
+    button:hover { transform: translateY(-1px); border-color: var(--line-strong); }
+    button:disabled { cursor: default; opacity: 0.55; transform: none; }
+    .primary-button {
+      background: var(--accent);
+      color: #f6fffe;
+      border-color: var(--accent);
+    }
+    .primary-button:hover { background: #0b4341; border-color: #0b4341; }
     ul { list-style: none; padding: 0; margin: 0; }
-    li { margin: 8px 0; }
-    .user-item { border: 1px solid #ddd; border-radius: 6px; padding: 10px 12px; cursor: pointer; }
-    .user-item.active { border-color: #1d70b8; background: #eef6ff; }
-    .user-item:hover { background: #f7f7f7; }
-    .user-item-header { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; }
+    li { margin: 10px 0; }
+    .viewer-column-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      margin-bottom: 14px;
+    }
+    .viewer-column-title h2,
+    .main-card-title h2,
+    .section-head h2,
+    .graph-card-title h3,
+    .graph-sidebar h3 { margin: 0; }
+    .viewer-count {
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .user-item {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px 14px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.75);
+      transition: 140ms ease;
+    }
+    .user-item.active {
+      border-color: var(--accent);
+      background: linear-gradient(135deg, rgba(13, 79, 77, 0.12), rgba(255, 255, 255, 0.92));
+      box-shadow: inset 0 0 0 1px rgba(13, 79, 77, 0.12);
+    }
+    .user-item:hover { background: rgba(255, 255, 255, 0.96); border-color: var(--line-strong); }
+    .user-item-header { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
     .user-item-main { flex: 1; min-width: 0; }
+    .user-item-main strong { display: block; margin-bottom: 2px; }
+    .viewer-item-actions {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .viewer-icon-button {
+      min-width: 34px;
+      height: 34px;
+      padding: 0 8px;
+      border-radius: 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      background: rgba(13, 79, 77, 0.05);
+      border-color: rgba(13, 79, 77, 0.16);
+    }
+    .viewer-icon-button svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+      stroke-width: 1.85;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .viewer-icon-button-edit {
+      color: #1f5f8b;
+      background: rgba(31, 95, 139, 0.08);
+      border-color: rgba(31, 95, 139, 0.18);
+    }
+    .viewer-icon-button-export {
+      color: var(--accent);
+    }
+    .viewer-icon-button-review {
+      color: #8b5a1f;
+      background: rgba(139, 90, 31, 0.08);
+      border-color: rgba(139, 90, 31, 0.18);
+    }
+    .viewer-icon-button-danger {
+      color: var(--danger);
+      border-color: rgba(171, 45, 45, 0.28);
+      background: rgba(171, 45, 45, 0.05);
+    }
     .edit-panel { margin-top: 24px; }
-    .scroll-box { max-height: 420px; overflow-y: auto; padding-right: 6px; }
-    pre { white-space: pre-wrap; word-break: break-word; background: #f7f7f7; padding: 12px; border-radius: 6px; margin: 0; }
-    .memory-card { border: 1px solid #e1e1e1; border-radius: 6px; padding: 12px; margin: 10px 0; background: #fafafa; }
-    .memory-meta { color: #666; font-size: 0.9rem; margin-top: 8px; }
-    .actions { display: flex; gap: 8px; margin-top: 12px; }
-    .proposal-accepted { border-color: #1f7a1f; background: #eef9ee; }
-    .proposal-rejected { border-color: #a40000; background: #fdeeee; }
-    .btn-accept-selected { background: #1f7a1f; color: white; border-color: #1f7a1f; }
-    .btn-reject-selected { background: #a40000; color: white; border-color: #a40000; }
-    .graph-toolbar { display:flex; gap:12px; align-items:center; margin: 12px 0; flex-wrap: wrap; }
-    .graph-layout { display:flex; gap:16px; align-items: stretch; }
-    .graph-stage { min-height: 520px; flex: 1; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; background: radial-gradient(circle at top, #10223a 0%, #07111d 70%); }
-    .graph-sidebar { width: 320px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; }
+    .scroll-box { max-height: 520px; overflow-y: auto; padding-right: 6px; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(247, 241, 233, 0.92);
+      padding: 12px;
+      border-radius: 12px;
+      margin: 0;
+      border: 1px solid rgba(183, 159, 127, 0.18);
+    }
+    .memory-card {
+      border: 1px solid rgba(183, 159, 127, 0.28);
+      border-radius: 16px;
+      padding: 14px;
+      margin: 12px 0;
+      background: rgba(255, 255, 255, 0.84);
+    }
+    .memory-meta { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .proposal-accepted { border-color: rgba(34, 106, 61, 0.4); background: rgba(34, 106, 61, 0.08); }
+    .proposal-rejected { border-color: rgba(171, 45, 45, 0.38); background: rgba(171, 45, 45, 0.08); }
+    .btn-accept-selected { background: var(--success); color: white; border-color: var(--success); }
+    .btn-reject-selected { background: var(--danger); color: white; border-color: var(--danger); }
+    .graph-toolbar {
+      display:flex;
+      gap:12px;
+      align-items:center;
+      margin: 12px 0 16px;
+      flex-wrap: wrap;
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(183, 159, 127, 0.24);
+    }
+    .graph-toolbar label {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .range-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 180px;
+    }
+    .range-wrap input[type="range"] {
+      width: 120px;
+      accent-color: var(--accent);
+    }
+    .range-value {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 28px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(13, 79, 77, 0.1);
+      color: var(--accent);
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+    .graph-toolbar select,
+    .graph-toolbar input,
+    .toolbar select {
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fffdf9;
+      color: var(--text);
+    }
+    .graph-layout { display:grid; grid-template-columns: minmax(0, 1fr) 360px; gap:16px; align-items: stretch; }
+    .graph-stage-shell {
+      min-height: clamp(420px, 68vh, 780px);
+      height: clamp(420px, 68vh, 780px);
+      position: relative;
+      flex: 1;
+    }
+    .graph-stage {
+      width: 100%;
+      height: 100%;
+      border: 1px solid rgba(11, 48, 56, 0.25);
+      border-radius: 20px;
+      overflow: hidden;
+      background: radial-gradient(circle at top, #15324e 0%, #08121d 74%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+    }
+    .graph-label-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 3;
+    }
+    .graph-node-label {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(8, 18, 29, 0.72);
+      color: #f8fafc;
+      font-size: 12px;
+      line-height: 1.2;
+      white-space: nowrap;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+      border: 1px solid rgba(255,255,255,0.12);
+      text-shadow: 0 1px 0 rgba(0,0,0,0.26);
+    }
+    .graph-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border: 1px solid rgba(183, 159, 127, 0.24);
+      border-radius: 20px;
+      padding: 14px;
+      background: rgba(255, 252, 247, 0.88);
+    }
     .graph-sidebar pre { min-height: 180px; }
-    .graph-caption { color:#666; font-size:0.95rem; }
-    .memory-form { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 14px; background: #fff; }
-    .memory-form textarea { width: 100%; min-height: 92px; resize: vertical; }
+    .graph-caption { color: var(--muted); font-size:0.95rem; }
+    .graph-card {
+      padding: 14px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(183, 159, 127, 0.22);
+    }
+    .graph-card-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 10px;
+    }
+    .graph-legend-grid {
+      display: grid;
+      gap: 10px;
+    }
+    .graph-legend-section {
+      display: grid;
+      gap: 8px;
+    }
+    .graph-legend-section strong {
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+    .legend-list {
+      display: grid;
+      gap: 8px;
+    }
+    .legend-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      font-size: 0.92rem;
+    }
+    .legend-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .legend-swatch,
+    .legend-line {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+    .legend-line {
+      height: 4px;
+      width: 20px;
+      border-radius: 999px;
+      border: none;
+    }
+    .legend-note {
+      font-size: 0.9rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .memory-form { border: 1px solid rgba(183, 159, 127, 0.22); border-radius: 16px; padding: 14px; margin-bottom: 14px; background: rgba(255,255,255,0.86); }
+    .memory-form textarea {
+      width: 100%;
+      min-height: 92px;
+      resize: vertical;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fffdf9;
+    }
     .memory-form-row { display:flex; gap:10px; flex-wrap: wrap; margin: 10px 0; }
-    .memory-form-row label { display:flex; flex-direction:column; gap:4px; font-size: 0.95rem; }
+    .memory-form-row label { display:flex; flex-direction:column; gap:4px; font-size: 0.95rem; color: var(--muted); }
     .memory-form-row select { min-width: 140px; }
-    .modebar { display:flex; gap:10px; margin: 0 0 18px; }
-    .mode-button { padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; }
-    .mode-button.active { background: #10223a; color: #fff; border-color: #10223a; }
+    .modebar {
+      display:flex;
+      gap:10px;
+      margin: 0 0 18px;
+      padding: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--line);
+      width: fit-content;
+      box-shadow: var(--shadow);
+    }
+    .mode-button {
+      padding: 10px 16px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+    }
+    .mode-button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
     .mode-panel[hidden] { display:none; }
-    .section-head { display:flex; align-items:center; gap:12px; margin: 0 0 12px; }
+    .main-card-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: baseline;
+      margin-bottom: 6px;
+    }
+    .section-head { display:flex; align-items:center; justify-content: space-between; gap:12px; margin: 0 0 12px; }
+    .section-kicker {
+      color: var(--accent-2);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
+    }
+    @media (max-width: 1120px) {
+      .row { grid-template-columns: 1fr; }
+      .panel-left { position: static; max-height: none; }
+      .graph-layout { grid-template-columns: 1fr; }
+      .topbar { flex-direction: column; }
+      .status-chip { min-width: 0; width: 100%; }
+    }
   </style>
 </head>
 <body>
-  <h1>Mem0 Admin</h1>
-  <div id="status" class="status-line">Chargement…</div>
-  <div class="toolbar">
-    <button id="refresh-button" type="button">Rafraîchir</button>
-    <button id="export-button" type="button" disabled>Exporter ce viewer</button>
-    <button id="export-review-button" type="button" disabled>Exporter pour revue</button>
-    <button id="analyze-button" type="button" disabled>Analyser avec GPT</button>
-    <button id="purge-button" type="button" disabled>Purger ce viewer</button>
-    <label for="severity-select">Sévérité</label>
-    <select id="severity-select">
-      <option value="conservative">Conservateur</option>
-      <option value="balanced" selected>Équilibré</option>
-      <option value="aggressive">Agressif</option>
-    </select>
-    <span id="selection" class="muted">Aucun viewer sélectionné.</span>
-  </div>
-  <div class="modebar">
-    <button id="mode-global-button" class="mode-button active" type="button">Global</button>
-    <button id="mode-steward-button" class="mode-button" type="button">Data Steward</button>
-  </div>
-  <div class="row">
-    <div class="panel panel-left">
-      <h2>Viewers</h2>
-      <ul id="users"></ul>
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="title-block">
+        <div class="section-kicker">Console Interne</div>
+        <h1>Mem0 Admin Workspace</h1>
+        <p>Pilotage global, data stewardship et inspection visuelle des graphes conversationnels, factuels et Homegraph.</p>
+      </div>
+      <div class="status-chip">
+        <div class="section-kicker">Health</div>
+        <div id="status" class="status-line">Chargement…</div>
+      </div>
     </div>
-    <div class="panel">
+    <div class="toolbar">
+      <button id="refresh-button" class="primary-button" type="button">Rafraîchir</button>
+      <label for="severity-select">Sévérité</label>
+      <select id="severity-select">
+        <option value="conservative">Conservateur</option>
+        <option value="balanced" selected>Équilibré</option>
+        <option value="aggressive">Agressif</option>
+      </select>
+      <span id="selection" class="toolbar-spacer">Aucun viewer sélectionné.</span>
+    </div>
+    <div id="analysis-banner" class="analysis-banner" hidden>
+      <div class="analysis-banner-main">
+        <span class="analysis-pill">Analyse GPT</span>
+        <div class="analysis-banner-text">
+          <strong id="analysis-banner-title">Analyse en cours</strong>
+          <div id="analysis-banner-detail">La navigation est temporairement verrouillée.</div>
+        </div>
+      </div>
+      <div id="analysis-banner-target" class="muted"></div>
+    </div>
+    <div class="modebar">
+      <button id="mode-global-button" class="mode-button active" type="button">Global</button>
+      <button id="mode-steward-button" class="mode-button" type="button">Data Steward</button>
+    </div>
+    <div class="row">
+      <div class="panel panel-left">
+        <div class="viewer-column-title">
+          <h2>Viewers</h2>
+          <span id="viewer-count" class="viewer-count">0 items</span>
+        </div>
+        <ul id="users"></ul>
+      </div>
+      <div class="panel">
+        <div class="main-card-title">
+          <div>
+            <div class="section-kicker">Workspace</div>
+            <h2>Inspection et opérations</h2>
+          </div>
+          <div class="muted">Navigation rapide entre exploration globale et stewardship.</div>
+        </div>
       <div id="global-panel" class="mode-panel">
         <div class="section-head">
-          <h2 style="margin:0;">Graph 3D</h2>
-          <span class="muted">Exploration globale et navigation Homegraph.</span>
+          <div>
+            <div class="section-kicker">Exploration</div>
+            <h2>Graph 3D</h2>
+          </div>
+          <span class="muted">Exploration globale, drill-down Homegraph et inspection des liens.</span>
         </div>
         <div class="graph-toolbar">
           <label for="graph-kind-select">Graphe</label>
@@ -494,8 +975,12 @@ HTML_PAGE = """<!doctype html>
             <input id="homegraph-min-weight-input" type="number" min="0" max="1" step="0.1" placeholder="0.7" style="width:72px;" />
             <label for="homegraph-max-links-input">Liens max</label>
             <input id="homegraph-max-links-input" type="number" min="1" step="1" value="12" style="width:72px;" />
-            <label for="homegraph-max-depth-input">Profondeur</label>
-            <input id="homegraph-max-depth-input" type="number" min="1" step="1" value="2" style="width:72px;" />
+            <label for="homegraph-depth-slider">Profondeur</label>
+            <span class="range-wrap">
+              <input id="homegraph-depth-slider" type="range" min="1" max="4" step="1" value="1" />
+              <span id="homegraph-depth-value" class="range-value">1</span>
+            </span>
+            <input id="homegraph-max-depth-input" type="number" min="1" step="1" value="1" style="width:72px;" />
             <label for="homegraph-max-nodes-input">Nœuds max</label>
             <input id="homegraph-max-nodes-input" type="number" min="1" step="1" value="20" style="width:72px;" />
           </span>
@@ -504,35 +989,63 @@ HTML_PAGE = """<!doctype html>
           <span id="graph-selection" class="muted">Vue globale.</span>
         </div>
         <div class="graph-layout">
-          <div class="graph-stage" id="graph-stage"></div>
+          <div class="graph-stage-shell">
+            <div class="graph-stage" id="graph-stage"></div>
+            <div class="graph-label-layer" id="graph-label-layer"></div>
+          </div>
           <div class="graph-sidebar">
-            <div class="graph-caption" id="graph-stats">Aucune donnée chargée.</div>
-            <h3>Détails</h3>
-            <pre id="graph-details">Clique sur un nœud pour isoler ses liens.</pre>
+            <div class="graph-card">
+              <div class="graph-card-title">
+                <h3>État</h3>
+                <span class="muted">Live</span>
+              </div>
+              <div class="graph-caption" id="graph-stats">Aucune donnée chargée.</div>
+            </div>
+            <div class="graph-card">
+              <div class="graph-card-title">
+                <h3>Légende</h3>
+                <span class="muted" id="graph-legend-mode">Conversation</span>
+              </div>
+              <div id="graph-legend" class="graph-legend-grid"></div>
+            </div>
+            <div class="graph-card">
+              <div class="graph-card-title">
+                <h3>Détails</h3>
+                <span class="muted">Nœud actif</span>
+              </div>
+              <pre id="graph-details">Clique sur un nœud pour isoler ses liens.</pre>
+            </div>
           </div>
         </div>
       </div>
       <div id="steward-panel" class="mode-panel" hidden>
         <div class="section-head">
-          <h2 style="margin:0;">Recent</h2>
+          <div>
+            <div class="section-kicker">Stewardship</div>
+            <h2>Recent</h2>
+          </div>
           <span class="muted">Inspection, édition et revue des souvenirs.</span>
         </div>
         <div id="recent">Sélectionne un viewer.</div>
         <div class="edit-panel">
           <div class="section-head" style="margin-top:24px;">
-            <h2 style="margin:0;">Édition</h2>
+            <h2>Édition</h2>
             <span id="editor-selection" class="muted">Aucun viewer ouvert en édition.</span>
           </div>
           <div id="editor" class="muted">Clique sur “Éditer” pour afficher toute la mémoire d’un viewer.</div>
         </div>
         <div class="section-head" style="margin-top:24px;">
-          <h2 style="margin:0;">Review</h2>
-          <button id="verbose-button" type="button">Verbose: OFF</button>
+          <h2>Review</h2>
+          <div class="actions" style="margin-top:0;">
+            <button id="analyze-button" type="button" disabled>Analyser avec GPT</button>
+            <button id="verbose-button" type="button">Verbose: OFF</button>
+          </div>
         </div>
         <div id="review" class="muted">Aucune analyse lancée.</div>
       </div>
       <div id="error" class="error"></div>
     </div>
+  </div>
   </div>
   <script>
     let selectedUserId = null;
@@ -546,17 +1059,21 @@ HTML_PAGE = """<!doctype html>
     let homegraphIncludeUncertain = true;
     let homegraphMinWeight = '';
     let homegraphMaxLinks = '12';
-    let homegraphMaxDepth = '2';
+    let homegraphMaxDepth = '1';
     let homegraphMaxNodes = '20';
     let homegraphCenterNodeId = '';
     let homegraphRootNodeId = '';
+    let homegraphDepthReloadTimer = null;
     let graphInstance = null;
+    let graphResizeObserver = null;
     let fullGraphData = { nodes: [], links: [] };
+    let displayedGraphData = { nodes: [], links: [] };
     let lastGraphSignature = '';
     let focusedNodeId = null;
     let adminMode = 'global';
     window.currentAnalysis = null;
     window.proposalDecisions = {};
+    window.analysisInFlight = null;
 
     function setError(message) {
       document.getElementById('error').textContent = message || '';
@@ -575,6 +1092,72 @@ HTML_PAGE = """<!doctype html>
       return String(value || '').trim().toLowerCase();
     }
 
+    function getAnalysisInFlight() {
+      const state = window.analysisInFlight;
+      if (!state || !state.userId) {
+        return null;
+      }
+      return state;
+    }
+
+    function isAnalysisPending() {
+      return !!getAnalysisInFlight();
+    }
+
+    function setAnalysisInFlight(userId, viewerLabel) {
+      window.analysisInFlight = {
+        userId: userId || '',
+        viewerLabel: viewerLabel || userId || '',
+      };
+    }
+
+    function clearAnalysisInFlight(userId = '') {
+      const pending = getAnalysisInFlight();
+      if (!pending) {
+        return;
+      }
+      if (userId && normalizeToken(pending.userId) !== normalizeToken(userId)) {
+        return;
+      }
+      window.analysisInFlight = null;
+    }
+
+    function canOpenViewer(targetUserId, targetViewerLabel = targetUserId) {
+      const pending = getAnalysisInFlight();
+      if (!pending) {
+        return true;
+      }
+      if (normalizeToken(pending.userId) === normalizeToken(targetUserId)) {
+        return true;
+      }
+      setError(
+        `Analyse GPT en cours pour ${pending.viewerLabel || pending.userId}. Attends la fin avant d’ouvrir ${targetViewerLabel || targetUserId}.`
+      );
+      return false;
+    }
+
+    function updateAnalysisBanner() {
+      const bannerNode = document.getElementById('analysis-banner');
+      const titleNode = document.getElementById('analysis-banner-title');
+      const detailNode = document.getElementById('analysis-banner-detail');
+      const targetNode = document.getElementById('analysis-banner-target');
+      if (!bannerNode || !titleNode || !detailNode || !targetNode) {
+        return;
+      }
+      const pending = getAnalysisInFlight();
+      if (!pending) {
+        bannerNode.hidden = true;
+        titleNode.textContent = 'Analyse en cours';
+        detailNode.textContent = 'La navigation est temporairement verrouillée.';
+        targetNode.textContent = '';
+        return;
+      }
+      bannerNode.hidden = false;
+      titleNode.textContent = `Analyse GPT en cours pour ${pending.viewerLabel || pending.userId}`;
+      detailNode.textContent = 'Attends le résultat avant d’ouvrir un autre viewer ou une autre édition.';
+      targetNode.textContent = pending.userId || '';
+    }
+
     function updateModeState() {
       const globalButton = document.getElementById('mode-global-button');
       const stewardButton = document.getElementById('mode-steward-button');
@@ -587,16 +1170,17 @@ HTML_PAGE = """<!doctype html>
     }
 
     function updateSelectionState() {
+      const pendingAnalysis = getAnalysisInFlight();
       document.getElementById('selection').textContent = selectedViewerLabel
         ? `Viewer sélectionné : ${selectedViewerLabel}`
         : 'Aucun viewer sélectionné.';
       document.getElementById('editor-selection').textContent = editingViewerLabel
         ? `Édition ouverte : ${editingViewerLabel}`
         : 'Aucun viewer ouvert en édition.';
-      document.getElementById('export-button').disabled = !selectedUserId;
-      document.getElementById('export-review-button').disabled = !selectedUserId;
-      document.getElementById('analyze-button').disabled = !selectedUserId;
-      document.getElementById('purge-button').disabled = !selectedUserId;
+      document.getElementById('analyze-button').disabled = !selectedUserId || !!pendingAnalysis;
+      document.getElementById('analyze-button').title = pendingAnalysis
+        ? `Analyse GPT en cours pour ${pendingAnalysis.viewerLabel || pendingAnalysis.userId}.`
+        : '';
       document.getElementById('verbose-button').textContent = `Verbose: ${verboseEnabled ? 'ON' : 'OFF'}`;
       document.getElementById('graph-selection').textContent = selectedViewerLabel
         ? `Vue filtrée sur : ${selectedViewerLabel}`
@@ -605,7 +1189,93 @@ HTML_PAGE = """<!doctype html>
         document.getElementById('graph-selection').textContent += ` | centre: ${homegraphCenterNodeId}`;
       }
       document.getElementById('homegraph-filter-group').style.display = graphKind === 'homegraph' ? 'contents' : 'none';
+      renderGraphLegend();
+      updateAnalysisBanner();
       updateModeState();
+    }
+
+    function getGraphLegendModel() {
+      if (graphKind === 'homegraph') {
+        return {
+          mode: 'Homegraph',
+          nodeItems: [
+            { label: 'Viewer', color: '#4F46E5' },
+            { label: 'Jeu', color: '#22C55E' },
+            { label: 'Sujet', color: '#0EA5E9' },
+            { label: 'Running gag', color: '#F97316' },
+            { label: 'Mode de jeu', color: '#EF4444' },
+            { label: 'Objet / autre', color: '#A855F7' },
+          ],
+          linkItems: [
+            { label: 'plays', color: '#22C55E' },
+            { label: 'likes', color: '#14B8A6' },
+            { label: 'talks_about', color: '#0EA5E9' },
+            { label: 'interacts_with', color: '#3B82F6' },
+            { label: 'compliments', color: '#F59E0B' },
+            { label: 'jokes_about', color: '#F97316' },
+          ],
+          note: 'Les couleurs portent le type des nœuds et des relations. Le libellé affiché près du nœud reste limité au nom.',
+        };
+      }
+      if (graphKind === 'facts') {
+        return {
+          mode: 'Faits',
+          nodeItems: [
+            { label: 'Sujet', color: '#FFB703' },
+            { label: 'Viewer source', color: '#219EBC' },
+            { label: 'Fait', color: '#8ECAE6' },
+          ],
+          linkItems: [
+            { label: 'reported', color: '#219EBC' },
+            { label: 'about', color: '#FFB703' },
+          ],
+          note: 'Le graphe de faits sépare le sujet, la source et l’assertion mémorisée.',
+        };
+      }
+      return {
+        mode: 'Conversation',
+        nodeItems: [
+          { label: 'Viewer', color: '#FFB703' },
+          { label: 'Tour', color: '#219EBC' },
+          { label: 'Correction', color: '#8ECAE6' },
+        ],
+        linkItems: [
+          { label: 'authored', color: '#FFB703' },
+          { label: 'reply_to', color: '#90BE6D' },
+          { label: 'corrects', color: '#F94144' },
+          { label: 'targets', color: '#FB8500' },
+        ],
+        note: 'Le graphe conversationnel montre les tours, leurs auteurs, les réponses et les corrections.',
+      };
+    }
+
+    function renderGraphLegend() {
+      const legendNode = document.getElementById('graph-legend');
+      const legendModeNode = document.getElementById('graph-legend-mode');
+      if (!legendNode || !legendModeNode) {
+        return;
+      }
+      const model = getGraphLegendModel();
+      legendModeNode.textContent = model.mode;
+      const renderItems = (items, swatchClass) => items.map((item) => `
+        <div class="legend-item">
+          <span class="legend-chip">
+            <span class="${swatchClass}" style="background:${item.color};"></span>
+            <span>${escapeHtml(item.label)}</span>
+          </span>
+        </div>
+      `).join('');
+      legendNode.innerHTML = `
+        <div class="graph-legend-section">
+          <strong>Nœuds</strong>
+          <div class="legend-list">${renderItems(model.nodeItems, 'legend-swatch')}</div>
+        </div>
+        <div class="graph-legend-section">
+          <strong>Liens</strong>
+          <div class="legend-list">${renderItems(model.linkItems, 'legend-line')}</div>
+        </div>
+        <div class="legend-note">${escapeHtml(model.note)}</div>
+      `;
     }
 
     function resetReviewPanel(message = 'Aucune analyse lancée.') {
@@ -669,21 +1339,32 @@ HTML_PAGE = """<!doctype html>
       const data = await response.json();
       setError(data.ok ? '' : (data.error || 'Erreur lors du chargement des viewers.'));
       const usersNode = document.getElementById('users');
+      const viewerCountNode = document.getElementById('viewer-count');
       usersNode.innerHTML = '';
       if (!data.ok) {
+        if (viewerCountNode) {
+          viewerCountNode.textContent = '0 items';
+        }
         usersNode.innerHTML = '<li class="muted">Impossible de charger les viewers.</li>';
         return;
       }
       if (!data.users || data.users.length === 0) {
+        if (viewerCountNode) {
+          viewerCountNode.textContent = '0 items';
+        }
         usersNode.innerHTML = '<li class="muted">Aucun viewer retourné par l\\'API admin.</li>';
         return;
       }
       knownUsers = Array.isArray(data.users) ? data.users : [];
+      if (viewerCountNode) {
+        viewerCountNode.textContent = `${knownUsers.length} items`;
+      }
       for (const user of data.users) {
         const item = document.createElement('li');
         const button = document.createElement('div');
         const viewerLabel = user.viewer || user.user_id;
         button.className = 'user-item';
+        button.title = user.user_id || viewerLabel;
         if (user.user_id === selectedUserId) {
           button.classList.add('active');
         }
@@ -691,9 +1372,21 @@ HTML_PAGE = """<!doctype html>
           <div class="user-item-header">
             <div class="user-item-main">
               <strong>${escapeHtml(viewerLabel)}</strong>
-              <div class="muted">${escapeHtml(user.user_id)}</div>
             </div>
-            <button type="button" class="edit-viewer-button">Éditer</button>
+            <div class="viewer-item-actions">
+              <button type="button" class="viewer-icon-button viewer-icon-button-edit edit-viewer-button" title="Éditer ${escapeHtml(viewerLabel)}" aria-label="Éditer ${escapeHtml(viewerLabel)}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              </button>
+              <button type="button" class="viewer-icon-button viewer-icon-button-export export-viewer-button" title="Exporter ${escapeHtml(viewerLabel)}" aria-label="Exporter ${escapeHtml(viewerLabel)}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+              </button>
+              <button type="button" class="viewer-icon-button viewer-icon-button-review export-review-viewer-button" title="Exporter pour revue ${escapeHtml(viewerLabel)}" aria-label="Exporter pour revue ${escapeHtml(viewerLabel)}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14l4-3h10a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/></svg>
+              </button>
+              <button type="button" class="viewer-icon-button viewer-icon-button-danger purge-viewer-button" title="Purger ${escapeHtml(viewerLabel)}" aria-label="Purger ${escapeHtml(viewerLabel)}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+              </button>
+            </div>
           </div>
         `;
         const editButton = button.querySelector('.edit-viewer-button');
@@ -701,6 +1394,27 @@ HTML_PAGE = """<!doctype html>
           editButton.onclick = (event) => {
             event.stopPropagation();
             openEditor(user.user_id, viewerLabel);
+          };
+        }
+        const exportButton = button.querySelector('.export-viewer-button');
+        if (exportButton) {
+          exportButton.onclick = (event) => {
+            event.stopPropagation();
+            exportUser(user.user_id, viewerLabel);
+          };
+        }
+        const exportReviewButton = button.querySelector('.export-review-viewer-button');
+        if (exportReviewButton) {
+          exportReviewButton.onclick = (event) => {
+            event.stopPropagation();
+            exportUserForReview(user.user_id, viewerLabel);
+          };
+        }
+        const purgeButton = button.querySelector('.purge-viewer-button');
+        if (purgeButton) {
+          purgeButton.onclick = (event) => {
+            event.stopPropagation();
+            purgeUser(user.user_id, viewerLabel);
           };
         }
         button.onclick = () => loadRecent(user.user_id, user.viewer || user.user_id);
@@ -845,26 +1559,174 @@ HTML_PAGE = """<!doctype html>
       };
     }
 
+    function resetGraphInteractionState() {
+      if (!graphInstance || !graphInstance.controls) {
+        return;
+      }
+      const controls = graphInstance.controls();
+      const stage = document.getElementById('graph-stage');
+      if (stage) {
+        stage.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        stage.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+        stage.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+      }
+      if (!controls) {
+        return;
+      }
+      controls.enabled = false;
+      window.setTimeout(() => {
+        controls.enabled = true;
+        applyGraphMouseConfig();
+        if (typeof controls.update === 'function') {
+          controls.update();
+        }
+      }, 0);
+    }
+
+    function getNodeVisualSize(node) {
+      if (graphKind === 'homegraph' && homegraphCenterNodeId && node.id === homegraphCenterNodeId) {
+        return 12;
+      }
+      return node.kind === 'turn' || node.kind === 'fact' ? 4 : 7;
+    }
+
+    function getHomegraphRequestMode() {
+      if (!homegraphCenterNodeId) {
+        return '';
+      }
+      if (homegraphCenterNodeId.startsWith('viewer:')) {
+        return 'multihop';
+      }
+      const depthValue = Math.max(1, parseInt(homegraphMaxDepth || '1', 10) || 1);
+      return depthValue <= 1 ? 'entity_focus' : 'multihop';
+    }
+
+    function syncHomegraphDepthControls() {
+      const sliderNode = document.getElementById('homegraph-depth-slider');
+      const inputNode = document.getElementById('homegraph-max-depth-input');
+      const valueNode = document.getElementById('homegraph-depth-value');
+      const depthValue = String(Math.max(1, parseInt(homegraphMaxDepth || '1', 10) || 1));
+      homegraphMaxDepth = depthValue;
+      if (sliderNode) {
+        sliderNode.value = depthValue;
+      }
+      if (inputNode) {
+        inputNode.value = depthValue;
+      }
+      if (valueNode) {
+        valueNode.textContent = depthValue;
+      }
+    }
+
+    function scheduleHomegraphReload() {
+      if (graphKind !== 'homegraph' || !selectedUserId) {
+        return;
+      }
+      if (homegraphDepthReloadTimer) {
+        window.clearTimeout(homegraphDepthReloadTimer);
+      }
+      homegraphDepthReloadTimer = window.setTimeout(() => {
+        homegraphDepthReloadTimer = null;
+        loadGraph();
+      }, 120);
+    }
+
+    function renderGraphNodeLabels() {
+      const layer = document.getElementById('graph-label-layer');
+      if (!layer) {
+        return;
+      }
+      const nodes = (displayedGraphData && Array.isArray(displayedGraphData.nodes)) ? displayedGraphData.nodes : [];
+      layer.innerHTML = nodes.map((node) => {
+        const label = escapeHtml(String(node.label || '').trim());
+        if (!label) {
+          return '';
+        }
+        return `<div class="graph-node-label" data-node-id="${escapeHtml(String(node.id || ''))}" style="display:none;">${label}</div>`;
+      }).join('');
+    }
+
+    function updateGraphNodeLabelPositions() {
+      if (!graphInstance) {
+        return;
+      }
+      const layer = document.getElementById('graph-label-layer');
+      const stage = document.getElementById('graph-stage');
+      if (!layer || !stage || typeof graphInstance.graph2ScreenCoords !== 'function') {
+        return;
+      }
+      const width = stage.clientWidth || 0;
+      const height = stage.clientHeight || 0;
+      if (!width || !height) {
+        return;
+      }
+      const graphData = graphInstance && typeof graphInstance.graphData === 'function'
+        ? graphInstance.graphData()
+        : displayedGraphData;
+      const nodes = (graphData && Array.isArray(graphData.nodes)) ? graphData.nodes : [];
+      const labels = layer.querySelectorAll('.graph-node-label');
+      for (const labelNode of labels) {
+        const nodeId = labelNode.getAttribute('data-node-id') || '';
+        const node = nodes.find((item) => String(item.id || '') === nodeId);
+        if (!node || typeof node.x !== 'number' || typeof node.y !== 'number' || typeof node.z !== 'number') {
+          labelNode.style.display = 'none';
+          continue;
+        }
+        const projected = graphInstance.graph2ScreenCoords(node.x, node.y, node.z);
+        if (!projected || !Number.isFinite(projected.x) || !Number.isFinite(projected.y)) {
+          labelNode.style.display = 'none';
+          continue;
+        }
+        const x = projected.x;
+        const y = projected.y - getNodeVisualSize(node) - 8;
+        const outOfBounds = x < -48 || y < -32 || x > width + 48 || y > height + 32;
+        if (outOfBounds) {
+          labelNode.style.display = 'none';
+          continue;
+        }
+        labelNode.style.left = `${x}px`;
+        labelNode.style.top = `${y}px`;
+        labelNode.style.display = 'block';
+      }
+    }
+
+    function syncGraphViewport() {
+      if (!graphInstance) {
+        return;
+      }
+      const stage = document.getElementById('graph-stage');
+      if (!stage) {
+        return;
+      }
+      const width = Math.max(320, Math.floor(stage.clientWidth || 0));
+      const height = Math.max(320, Math.floor(stage.clientHeight || 0));
+      graphInstance.width(width);
+      graphInstance.height(height);
+      updateGraphNodeLabelPositions();
+    }
+
     function ensureGraphInstance() {
       if (graphInstance) {
+        syncGraphViewport();
         return graphInstance;
       }
       const stage = document.getElementById('graph-stage');
       graphInstance = ForceGraph3D()(stage)
         .backgroundColor('#07111d')
-        .nodeLabel((node) => `${node.label} (${node.kind})`)
+        .nodeLabel((node) => `${node.label}`)
         .nodeAutoColorBy(null)
         .enableNodeDrag(true)
         .nodeColor((node) => node.color || '#8ecae6')
-        .nodeVal((node) => {
-          if (graphKind === 'homegraph' && homegraphCenterNodeId && node.id === homegraphCenterNodeId) {
-            return 12;
-          }
-          return node.kind === 'turn' || node.kind === 'fact' ? 4 : 7;
-        })
+        .nodeVal((node) => getNodeVisualSize(node))
         .linkColor((link) => link.color || '#94a3b8')
         .linkOpacity(0.75)
         .linkWidth((link) => link.kind === 'corrects' ? 2.5 : 1.2)
+        .onEngineTick(() => {
+          updateGraphNodeLabelPositions();
+        })
+        .onEngineStop(() => {
+          updateGraphNodeLabelPositions();
+        })
         .onNodeClick(async (node) => {
           if (graphKind === 'homegraph') {
             const targetUser = resolveHomegraphViewerUser(node);
@@ -885,8 +1747,12 @@ HTML_PAGE = """<!doctype html>
               return;
             }
             homegraphCenterNodeId = node.id || '';
+            if (!homegraphCenterNodeId.startsWith('viewer:')) {
+              homegraphMaxDepth = '1';
+              syncHomegraphDepthControls();
+            }
             setError('');
-            setGraphStatus(`Chargement du sous-graphe centré sur ${homegraphCenterNodeId}...`);
+            setGraphStatus(`Chargement du sous-graphe centré sur ${homegraphCenterNodeId} (${getHomegraphRequestMode() || 'homegraph'})...`);
             renderGraphDetails(node);
             await loadGraph();
             return;
@@ -906,6 +1772,20 @@ HTML_PAGE = """<!doctype html>
           renderGraphDetails(null);
           applyGraphFocus();
         });
+      syncGraphViewport();
+      if (typeof ResizeObserver !== 'undefined' && !graphResizeObserver) {
+        graphResizeObserver = new ResizeObserver(() => {
+          syncGraphViewport();
+        });
+        graphResizeObserver.observe(stage);
+      } else if (!graphResizeObserver) {
+        window.addEventListener('resize', syncGraphViewport);
+        graphResizeObserver = { disconnect() {} };
+      }
+      const controls = graphInstance.controls ? graphInstance.controls() : null;
+      if (controls && typeof controls.addEventListener === 'function') {
+        controls.addEventListener('change', updateGraphNodeLabelPositions);
+      }
       applyGraphMouseConfig();
       return graphInstance;
     }
@@ -913,8 +1793,12 @@ HTML_PAGE = """<!doctype html>
     function applyGraphFocus() {
       const graph = ensureGraphInstance();
       const data = getFocusedGraphData(fullGraphData, focusedNodeId);
+      displayedGraphData = data;
+      renderGraphNodeLabels();
       graph.graphData(data);
       applyGraphMouseConfig();
+      updateGraphNodeLabelPositions();
+      resetGraphInteractionState();
     }
 
     async function loadGraph() {
@@ -942,6 +1826,10 @@ HTML_PAGE = """<!doctype html>
           }
           if (homegraphCenterNodeId !== '') {
             query.set('center_node_id', homegraphCenterNodeId);
+            const requestMode = getHomegraphRequestMode();
+            if (requestMode) {
+              query.set('mode', requestMode);
+            }
           }
         }
         const response = await fetch(`/api/graph?${query.toString()}`);
@@ -966,12 +1854,14 @@ HTML_PAGE = """<!doctype html>
           `${data.kind} | ${data.stats.node_count} nœud(s) | ${data.stats.link_count} lien(s)` +
           (data.viewer_filter ? ` | filtre: ${data.viewer_filter}` : '') +
           (graphKind === 'homegraph' && data.meta && data.meta.center_node_id ? ` | centre: ${data.meta.center_node_id}` : '') +
+          (graphKind === 'homegraph' && homegraphCenterNodeId ? ` | mode: ${getHomegraphRequestMode() || 'viewer'}` : '') +
           (graphKind === 'homegraph' && data.meta && data.meta.truncated ? ' | tronqué' : '');
         if (graphKind === 'homegraph' && previousSignature && previousSignature === lastGraphSignature) {
           graphStatus += ' | sous-graphe inchangé';
         }
         setGraphStatus(graphStatus);
         applyGraphFocus();
+        resetGraphInteractionState();
         if (graphKind === 'homegraph' && homegraphCenterNodeId) {
           const centerNode = findNodeById(fullGraphData, homegraphCenterNodeId);
           renderGraphDetails(centerNode);
@@ -985,6 +1875,9 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function loadRecent(userId, viewerLabel = userId) {
+      if (!canOpenViewer(userId, viewerLabel)) {
+        return;
+      }
       const viewerChanged = selectedUserId !== userId;
       selectedUserId = userId;
       selectedViewerLabel = viewerLabel;
@@ -1022,6 +1915,9 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function openEditor(userId, viewerLabel = userId) {
+      if (!canOpenViewer(userId, viewerLabel)) {
+        return;
+      }
       adminMode = 'steward';
       editingUserId = userId;
       editingViewerLabel = viewerLabel;
@@ -1202,24 +2098,38 @@ HTML_PAGE = """<!doctype html>
       await openEditor(userId, viewerLabel || userId);
     }
 
-    async function purgeSelectedUser() {
-      if (!selectedUserId) {
+    function triggerJsonDownload(payload, filename) {
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    }
+
+    async function purgeUser(userId, viewerLabel = userId) {
+      if (!userId) {
         return;
       }
-      const confirmed = window.confirm(`Purger toute la mémoire de ${selectedViewerLabel || selectedUserId} ?`);
+      const confirmed = window.confirm(`Purger toute la mémoire de ${viewerLabel || userId} ?`);
       if (!confirmed) {
         return;
       }
       setError('');
-      const response = await fetch(`/api/users/${encodeURIComponent(selectedUserId)}/purge`, { method: 'POST' });
+      const response = await fetch(`/api/users/${encodeURIComponent(userId)}/purge`, { method: 'POST' });
       const data = await response.json();
       if (!data.ok) {
         setError(data.error || 'Échec de la purge.');
         return;
       }
-      document.getElementById('recent').innerHTML =
-        `<div class="muted">Purge effectuée : ${escapeHtml(data.deleted_count ?? 0)} souvenir(s) supprimé(s).</div>`;
-      if (editingUserId === selectedUserId) {
+      if (selectedUserId === userId) {
+        document.getElementById('recent').innerHTML =
+          `<div class="muted">Purge effectuée : ${escapeHtml(data.deleted_count ?? 0)} souvenir(s) supprimé(s).</div>`;
+      }
+      if (editingUserId === userId) {
         editingUserId = null;
         editingViewerLabel = null;
         document.getElementById('editor').innerHTML = '<div class="muted">La mémoire complète a été purgée.</div>';
@@ -1229,103 +2139,102 @@ HTML_PAGE = """<!doctype html>
       await loadGraph();
     }
 
-    async function exportSelectedUser() {
-      if (!selectedUserId) {
+    async function exportUser(userId, viewerLabel = userId) {
+      if (!userId) {
         return;
       }
       setError('');
-      const response = await fetch(`/api/users/${encodeURIComponent(selectedUserId)}/export`, { method: 'POST' });
+      const response = await fetch(`/api/users/${encodeURIComponent(userId)}/export`, { method: 'POST' });
       const data = await response.json();
       if (!data.ok) {
         setError(data.error || 'Échec de l’export.');
         return;
       }
 
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const safeViewer = (selectedViewerLabel || 'viewer').replaceAll(/[^a-zA-Z0-9_-]/g, '_');
-      link.href = url;
-      link.download = `${safeViewer}_mem0_export.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      const safeViewer = (viewerLabel || 'viewer').replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+      triggerJsonDownload(data, `${safeViewer}_mem0_export.json`);
     }
 
-    async function exportSelectedUserForReview() {
-      if (!selectedUserId) {
+    async function exportUserForReview(userId, viewerLabel = userId) {
+      if (!userId) {
         return;
       }
       setError('');
-      const response = await fetch(`/api/users/${encodeURIComponent(selectedUserId)}/export-review`, { method: 'POST' });
+      const response = await fetch(`/api/users/${encodeURIComponent(userId)}/export-review`, { method: 'POST' });
       const data = await response.json();
       if (!data.ok) {
         setError(data.error || 'Échec de l’export review.');
         return;
       }
 
-      const blob = new Blob([JSON.stringify(data.review_export, null, 2)], { type: 'application/json' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const safeViewer = (selectedViewerLabel || 'viewer').replaceAll(/[^a-zA-Z0-9_-]/g, '_');
-      link.href = url;
-      link.download = `${safeViewer}_mem0_review_export.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
+      const safeViewer = (viewerLabel || 'viewer').replaceAll(/[^a-zA-Z0-9_-]/g, '_');
+      triggerJsonDownload(data.review_export, `${safeViewer}_mem0_review_export.json`);
     }
 
     async function analyzeSelectedUser() {
-      if (!selectedUserId) {
+      if (!selectedUserId || isAnalysisPending()) {
         return;
       }
+      const analysisUserId = selectedUserId;
+      const analysisViewerLabel = selectedViewerLabel || selectedUserId;
       setError('');
-      document.getElementById('review').innerHTML = '<div class="muted">Analyse en cours…</div>';
-      const response = await fetch(
-        `/api/users/${encodeURIComponent(selectedUserId)}/analyze?severity=${encodeURIComponent(reviewSeverity)}`,
-        { method: 'POST' }
-      );
-      const data = await response.json();
-      if (!data.ok) {
-        setError(data.error || 'Échec de l’analyse GPT.');
-        document.getElementById('review').innerHTML = '<div class="muted">Analyse indisponible.</div>';
-        return;
-      }
-
-      const proposals = data.analysis.proposals || [];
-      const summary = data.analysis.summary || '';
-      const counts = { keep: 0, delete: 0, rewrite: 0, review: 0 };
-      for (const item of proposals) {
-        if (Object.prototype.hasOwnProperty.call(counts, item.action)) {
-          counts[item.action] += 1;
+      setAnalysisInFlight(analysisUserId, analysisViewerLabel);
+      updateSelectionState();
+      document.getElementById('review').innerHTML = `
+        <div class="memory-card">
+          <strong>Analyse GPT en cours</strong>
+          <pre>Viewer: ${escapeHtml(analysisViewerLabel)}</pre>
+          <div class="muted">La navigation vers un autre viewer est temporairement verrouillée jusqu’au résultat.</div>
+        </div>
+      `;
+      try {
+        const response = await fetch(
+          `/api/users/${encodeURIComponent(analysisUserId)}/analyze?severity=${encodeURIComponent(reviewSeverity)}`,
+          { method: 'POST' }
+        );
+        const data = await response.json();
+        if (!data.ok) {
+          setError(data.error || 'Échec de l’analyse GPT.');
+          document.getElementById('review').innerHTML = '<div class="muted">Analyse indisponible.</div>';
+          return;
         }
-      }
-      if (proposals.length === 0) {
-        document.getElementById('review').innerHTML = `<div class="muted">${escapeHtml(summary || 'Aucune proposition.')}</div>`;
-        return;
-      }
 
-      window.proposalDecisions = {};
-      document.getElementById('review').innerHTML =
-        renderCommitToolbar() +
-        `<div class="memory-card"><strong>Répartition</strong><pre>keep: ${counts.keep} | rewrite: ${counts.rewrite} | review: ${counts.review} | delete: ${counts.delete}</pre></div>` +
-        `<div class="memory-card"><strong>Résumé</strong><pre>${escapeHtml(summary)}</pre></div>` +
-        proposals.map((item, index) => `
-          <div class="memory-card" id="proposal-${index}">
-            <div><strong>${escapeHtml(item.memory_id || '')}</strong></div>
-            <div class="memory-meta">action: ${escapeHtml(item.action || '')}</div>
-            <pre>${escapeHtml(item.reason || '')}</pre>
-            ${item.proposed_text ? `<div class="memory-meta">proposed_text</div><pre>${escapeHtml(item.proposed_text)}</pre>` : ''}
-            <div class="actions">
-              <button id="proposal-accept-${index}" type="button" onclick="acceptProposal(${index})">Valider</button>
-              <button id="proposal-reject-${index}" type="button" onclick="rejectProposal(${index})">Refuser</button>
+        const proposals = data.analysis.proposals || [];
+        const summary = data.analysis.summary || '';
+        const counts = { keep: 0, delete: 0, rewrite: 0, review: 0 };
+        for (const item of proposals) {
+          if (Object.prototype.hasOwnProperty.call(counts, item.action)) {
+            counts[item.action] += 1;
+          }
+        }
+        if (proposals.length === 0) {
+          document.getElementById('review').innerHTML = `<div class="muted">${escapeHtml(summary || 'Aucune proposition.')}</div>`;
+          return;
+        }
+
+        window.proposalDecisions = {};
+        document.getElementById('review').innerHTML =
+          renderCommitToolbar() +
+          `<div class="memory-card"><strong>Répartition</strong><pre>keep: ${counts.keep} | rewrite: ${counts.rewrite} | review: ${counts.review} | delete: ${counts.delete}</pre></div>` +
+          `<div class="memory-card"><strong>Résumé</strong><pre>${escapeHtml(summary)}</pre></div>` +
+          proposals.map((item, index) => `
+            <div class="memory-card" id="proposal-${index}">
+              <div><strong>${escapeHtml(item.memory_id || '')}</strong></div>
+              <div class="memory-meta">action: ${escapeHtml(item.action || '')}</div>
+              <pre>${escapeHtml(item.reason || '')}</pre>
+              ${item.proposed_text ? `<div class="memory-meta">proposed_text</div><pre>${escapeHtml(item.proposed_text)}</pre>` : ''}
+              <div class="actions">
+                <button id="proposal-accept-${index}" type="button" onclick="acceptProposal(${index})">Valider</button>
+                <button id="proposal-reject-${index}" type="button" onclick="rejectProposal(${index})">Refuser</button>
+              </div>
             </div>
-          </div>
-        `).join('') +
-        renderCommitToolbar();
-      window.currentAnalysis = data.analysis;
+          `).join('') +
+          renderCommitToolbar();
+        window.currentAnalysis = data.analysis;
+      } finally {
+        clearAnalysisInFlight(analysisUserId);
+        updateSelectionState();
+      }
     }
 
     function acceptProposal(index) {
@@ -1396,10 +2305,7 @@ HTML_PAGE = """<!doctype html>
         updateModeState();
       };
       document.getElementById('refresh-button').onclick = refreshAll;
-      document.getElementById('export-button').onclick = exportSelectedUser;
-      document.getElementById('export-review-button').onclick = exportSelectedUserForReview;
       document.getElementById('analyze-button').onclick = analyzeSelectedUser;
-      document.getElementById('purge-button').onclick = purgeSelectedUser;
       document.getElementById('verbose-button').onclick = toggleVerbose;
       document.getElementById('graph-refresh-button').onclick = loadGraph;
       document.getElementById('graph-reset-button').onclick = () => {
@@ -1426,7 +2332,14 @@ HTML_PAGE = """<!doctype html>
         homegraphMaxLinks = event.target.value.trim();
       };
       document.getElementById('homegraph-max-depth-input').onchange = (event) => {
-        homegraphMaxDepth = event.target.value.trim();
+        homegraphMaxDepth = event.target.value.trim() || '1';
+        syncHomegraphDepthControls();
+        scheduleHomegraphReload();
+      };
+      document.getElementById('homegraph-depth-slider').oninput = (event) => {
+        homegraphMaxDepth = event.target.value.trim() || '1';
+        syncHomegraphDepthControls();
+        scheduleHomegraphReload();
       };
       document.getElementById('homegraph-max-nodes-input').onchange = (event) => {
         homegraphMaxNodes = event.target.value.trim();
@@ -1434,6 +2347,7 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('severity-select').onchange = (event) => {
         reviewSeverity = event.target.value;
       };
+      syncHomegraphDepthControls();
       resetReviewPanel();
       updateSelectionState();
       await refreshAll();
@@ -1518,6 +2432,7 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             max_depth_param = (query.get("max_depth", [""])[0] or "").strip()
             max_nodes_param = (query.get("max_nodes", [""])[0] or "").strip()
             center_node_id = (query.get("center_node_id", [""])[0] or "").strip()
+            graph_mode = (query.get("mode", [""])[0] or "").strip()
             try:
                 if kind == "homegraph":
                     if center_node_id:
@@ -1525,6 +2440,7 @@ class AdminUiHandler(BaseHTTPRequestHandler):
                             get_homegraph_multihop_graph(
                                 self.server.config,
                                 center_node_id,
+                                mode=graph_mode or None,
                                 include_uncertain=include_uncertain,
                                 min_weight=float(min_weight_param) if min_weight_param else None,
                                 max_links=int(max_links_param) if max_links_param else None,

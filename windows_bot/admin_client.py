@@ -168,6 +168,7 @@ def get_homegraph_multihop_graph(
     config: AppConfig,
     center_node_id: str,
     *,
+    mode: str | None = None,
     max_depth: int | None = None,
     max_nodes: int | None = None,
     max_links: int | None = None,
@@ -175,6 +176,8 @@ def get_homegraph_multihop_graph(
     min_weight: float | None = None,
 ) -> dict[str, Any]:
     query_params: dict[str, str] = {"center_node_id": center_node_id}
+    if mode:
+        query_params["mode"] = str(mode)
     if max_depth is not None:
         query_params["max_depth"] = str(max_depth)
     if max_nodes is not None:

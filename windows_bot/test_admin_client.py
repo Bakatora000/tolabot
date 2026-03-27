@@ -178,6 +178,7 @@ class AdminClientTests(unittest.TestCase):
         get_homegraph_multihop_graph(
             make_config(),
             "game:valheim",
+            mode="entity_focus",
             max_depth=2,
             max_nodes=20,
             max_links=30,
@@ -188,6 +189,7 @@ class AdminClientTests(unittest.TestCase):
         args, _kwargs = mock_request.call_args
         self.assertIn("/admin/homegraph/graph?", args[1])
         self.assertIn("center_node_id=game%3Avalheim", args[1])
+        self.assertIn("mode=entity_focus", args[1])
         self.assertIn("max_depth=2", args[1])
         self.assertIn("max_nodes=20", args[1])
         self.assertIn("max_links=30", args[1])

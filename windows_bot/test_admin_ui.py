@@ -1,6 +1,7 @@
 import unittest
 
 from admin_ui import (
+    HTML_PAGE,
     build_conversation_graph_payload,
     build_facts_graph_payload,
     build_homegraph_payload,
@@ -8,6 +9,21 @@ from admin_ui import (
 
 
 class AdminUiGraphTests(unittest.TestCase):
+    def test_html_page_blocks_viewer_switch_while_analysis_is_pending(self):
+        self.assertIn("window.analysisInFlight = null;", HTML_PAGE)
+        self.assertIn("function canOpenViewer(targetUserId, targetViewerLabel = targetUserId)", HTML_PAGE)
+        self.assertIn('id="analysis-banner"', HTML_PAGE)
+        self.assertIn("La navigation vers un autre viewer est temporairement verrouillée", HTML_PAGE)
+
+    def test_html_page_places_viewer_actions_on_user_cards(self):
+        self.assertNotIn('id="export-button"', HTML_PAGE)
+        self.assertNotIn('id="export-review-button"', HTML_PAGE)
+        self.assertNotIn('id="purge-button"', HTML_PAGE)
+        self.assertIn('class="viewer-item-actions"', HTML_PAGE)
+        self.assertIn('class="viewer-icon-button export-viewer-button"', HTML_PAGE)
+        self.assertIn('class="viewer-icon-button export-review-viewer-button"', HTML_PAGE)
+        self.assertIn('class="viewer-icon-button viewer-icon-button-danger purge-viewer-button"', HTML_PAGE)
+
     def test_build_conversation_graph_payload_links_turns_and_viewers(self):
         graph = {
             "channels": {
