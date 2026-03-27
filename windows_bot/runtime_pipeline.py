@@ -13,6 +13,7 @@ from bot_logic import (
     strip_trigger,
 )
 from context_sources import build_auxiliary_context_sources, make_context_source_result, merge_context_text
+from homegraph_client import build_homegraph_context_source
 from memory_client import MemoryApiError, store_memory_turn
 from ollama_client import ask_ollama
 from runtime_types import RuntimeContextBundle
@@ -927,6 +928,14 @@ def prepare_runtime_context(
             riddle_thread_close=riddle_thread_close,
             use_remote_memory=use_remote_memory,
         )
+
+    homegraph_source = build_homegraph_context_source(config, channel_name, author)
+    if homegraph_source:
+        chat_context["global_context"] = merge_context_text(
+            chat_context.get("global_context", "aucun"),
+            homegraph_source.text_block,
+        )
+        context_sources.append(homegraph_source)
 
     chat_context["global_context"] = merge_context_text(
         alias_context,

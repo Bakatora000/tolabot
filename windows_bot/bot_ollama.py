@@ -298,8 +298,6 @@ class Bot(commands.Bot):
                 return merged_context, "local-priority+mem0" if favor_local_context else "local+mem0", source_results
             except MemoryApiError as exc:
                 print(f"⚠️ Mémoire distante indisponible, fallback local : {exc}", flush=True)
-                if not CONFIG.mem0_fallback_local:
-                    return {"viewer_context": "aucun", "global_context": "aucun", "items": []}, "mem0-error", []
 
         local_context = build_chat_context(
             self.chat_memory,

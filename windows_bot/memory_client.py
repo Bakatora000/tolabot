@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
-
-import requests
+from pathlib import Path
+import sys
 
 from bot_config import AppConfig
 from bot_logic import normalize_spaces, smart_truncate
@@ -17,6 +16,11 @@ MAX_MEMORY_BOT_REPLY_CHARS = 280
 MAX_MEMORY_TOTAL_CHARS = 560
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+
 class MemoryApiError(RuntimeError):
     pass
 
@@ -26,6 +30,9 @@ class MemorySearchItem:
     id: str
     score: float
     memory: str
+
+
+_LOCAL_MEMORY_BACKEND = None
 
 
 def is_useful_memory_item(item: MemorySearchItem) -> bool:
@@ -55,21 +62,23 @@ def is_useful_memory_item(item: MemorySearchItem) -> bool:
 
 
 def is_mem0_enabled(config: AppConfig) -> bool:
-    return bool(config.mem0_enabled and config.mem0_api_base_url and config.mem0_api_key)
+    return bool(config.mem0_local_backend_enabled)
+
+
+def _get_local_memory_backend():
+    global _LOCAL_MEMORY_BACKEND
+    if _LOCAL_MEMORY_BACKEND is None:
+        from memory_service.backend import build_backend
+        from memory_service.config import Settings
+
+        _LOCAL_MEMORY_BACKEND = build_backend(Settings.load())
+    return _LOCAL_MEMORY_BACKEND
 
 
 def build_mem0_user_id(channel: str, viewer: str) -> str:
     clean_channel = normalize_spaces(channel).lower()
     clean_viewer = normalize_spaces(viewer).lower()
     return f"twitch:{clean_channel}:viewer:{clean_viewer}"
-
-
-def build_mem0_headers(config: AppConfig) -> dict[str, str]:
-    return {
-        "X-API-Key": config.mem0_api_key,
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-    }
 
 
 def truncate_memory_text(text: str, limit: int) -> str:
@@ -185,47 +194,14 @@ def should_store_in_mem0(user_message: str, bot_reply: str = "", author_is_owner
     return len(user_text) >= 8 and bool(reply_text)
 
 
-def _request(
-    config: AppConfig,
-    method: str,
-    path: str,
-    payload: dict[str, Any] | None = None,
-) -> requests.Response:
-    if not is_mem0_enabled(config):
-        raise MemoryApiError("Mem0 n'est pas activé ou sa configuration est incomplète.")
-
-    url = f"{config.mem0_api_base_url}{path}"
-
-    try:
-        response = requests.request(
-            method,
-            url,
-            headers=build_mem0_headers(config),
-            json=payload,
-            timeout=config.mem0_timeout_seconds,
-            verify=config.mem0_verify_ssl,
-        )
-    except requests.RequestException as exc:
-        raise MemoryApiError(f"Erreur réseau mem0: {exc}") from exc
-
-    if response.status_code >= 400:
-        detail = None
-        try:
-            detail = response.json()
-        except ValueError:
-            detail = response.text.strip() or None
-        raise MemoryApiError(f"Erreur mem0 HTTP {response.status_code}: {detail}")
-
-    return response
-
-
 def healthcheck_memory_api(config: AppConfig) -> bool:
     if not is_mem0_enabled(config):
         return False
-
-    response = _request(config, "GET", "/health")
-    data = response.json()
-    return data.get("status") == "ok"
+    try:
+        _get_local_memory_backend().healthcheck()
+    except Exception as exc:
+        raise MemoryApiError(f"Erreur backend mémoire local: {exc}") from exc
+    return True
 
 
 def search_memory(
@@ -235,27 +211,22 @@ def search_memory(
     query: str,
     limit: int | None = None,
 ) -> list[MemorySearchItem]:
-    payload: dict[str, Any] = {
-        "user_id": build_mem0_user_id(channel, viewer),
-        "query": normalize_spaces(query),
-    }
-    if limit is not None:
-        payload["limit"] = max(1, limit)
-
-    response = _request(config, "POST", "/search", payload=payload)
-    data = response.json()
-    results = data.get("results", [])
-
-    items: list[MemorySearchItem] = []
-    for item in results:
-        items.append(
-            MemorySearchItem(
-                id=str(item.get("id", "")),
-                score=float(item.get("score", 0.0) or 0.0),
-                memory=normalize_spaces(str(item.get("memory", ""))),
-            )
+    try:
+        records = _get_local_memory_backend().search(
+            user_id=build_mem0_user_id(channel, viewer),
+            query=normalize_spaces(query),
+            limit=max(1, limit) if limit is not None else config.mem0_context_limit,
         )
-    return items
+    except Exception as exc:
+        raise MemoryApiError(f"Erreur backend mémoire local: {exc}") from exc
+    return [
+        MemorySearchItem(
+            id=str(item.id),
+            score=float(item.score),
+            memory=normalize_spaces(str(item.memory)),
+        )
+        for item in records
+    ]
 
 
 def get_memory_context(
@@ -318,7 +289,12 @@ def store_memory_turn(
         },
     }
 
-    response = _request(config, "POST", "/remember", payload=payload)
-    data = response.json()
-    memory_id = data.get("id")
+    try:
+        memory_id = _get_local_memory_backend().remember(
+            payload["user_id"],
+            payload["text"],
+            metadata=payload["metadata"],
+        )
+    except Exception as exc:
+        raise MemoryApiError(f"Erreur backend mémoire local: {exc}") from exc
     return str(memory_id) if memory_id else None

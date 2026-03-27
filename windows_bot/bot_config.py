@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -30,23 +31,13 @@ class AppConfig:
     debug_chat_memory: bool = False
     global_cooldown_seconds: int = 2
     user_cooldown_seconds: int = 8
-    mem0_enabled: bool = False
-    mem0_api_base_url: str = ""
-    mem0_api_key: str = ""
-    mem0_timeout_seconds: int = 10
-    mem0_verify_ssl: bool = True
     mem0_context_limit: int = 5
-    mem0_fallback_local: bool = True
+    mem0_local_backend_enabled: bool = True
     message_queue_max_size: int = 6
     message_queue_max_age_seconds: int = 25
     admin_ui_enabled: bool = False
-    admin_api_local_url: str = "http://127.0.0.1:9000"
-    admin_api_key: str = ""
-    admin_api_timeout_seconds: int = 10
-    admin_ssh_host: str = ""
-    admin_ssh_user: str = ""
-    admin_ssh_local_port: int = 9000
-    admin_ssh_remote_port: int = 8000
+    homegraph_local_enabled: bool = False
+    homegraph_db_path: str = str((Path(__file__).resolve().parent.parent / "homegraph" / "data" / "homegraph.sqlite3"))
     admin_ui_host: str = "127.0.0.1"
     admin_ui_port: int = 9100
     openai_review_enabled: bool = False
@@ -83,23 +74,13 @@ def load_config() -> AppConfig:
         debug_chat_memory=os.getenv("DEBUG_CHAT_MEMORY", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
         global_cooldown_seconds=max(0, int(os.getenv("GLOBAL_COOLDOWN_SECONDS", "2").strip() or "2")),
         user_cooldown_seconds=max(0, int(os.getenv("USER_COOLDOWN_SECONDS", "8").strip() or "8")),
-        mem0_enabled=os.getenv("MEM0_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
-        mem0_api_base_url=os.getenv("MEM0_API_BASE_URL", "").strip().rstrip("/"),
-        mem0_api_key=os.getenv("MEM0_API_KEY", "").strip(),
-        mem0_timeout_seconds=max(1, int(os.getenv("MEM0_TIMEOUT_SECONDS", "10").strip() or "10")),
-        mem0_verify_ssl=os.getenv("MEM0_VERIFY_SSL", "true").strip().lower() in {"1", "true", "yes", "oui", "on"},
         mem0_context_limit=max(1, int(os.getenv("MEM0_CONTEXT_LIMIT", "5").strip() or "5")),
-        mem0_fallback_local=os.getenv("MEM0_FALLBACK_LOCAL", "true").strip().lower() in {"1", "true", "yes", "oui", "on"},
+        mem0_local_backend_enabled=os.getenv("MEM0_LOCAL_BACKEND_ENABLED", "true").strip().lower() in {"1", "true", "yes", "oui", "on"},
         message_queue_max_size=max(1, int(os.getenv("MESSAGE_QUEUE_MAX_SIZE", "6").strip() or "6")),
         message_queue_max_age_seconds=max(5, int(os.getenv("MESSAGE_QUEUE_MAX_AGE_SECONDS", "25").strip() or "25")),
         admin_ui_enabled=os.getenv("ADMIN_UI_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
-        admin_api_local_url=os.getenv("ADMIN_API_LOCAL_URL", "http://127.0.0.1:9000").strip().rstrip("/"),
-        admin_api_key=os.getenv("MEM0_ADMIN_KEY", "").strip(),
-        admin_api_timeout_seconds=max(1, int(os.getenv("ADMIN_API_TIMEOUT_SECONDS", "10").strip() or "10")),
-        admin_ssh_host=os.getenv("ADMIN_SSH_HOST", "").strip(),
-        admin_ssh_user=os.getenv("ADMIN_SSH_USER", "").strip(),
-        admin_ssh_local_port=max(1, int(os.getenv("ADMIN_SSH_LOCAL_PORT", "9000").strip() or "9000")),
-        admin_ssh_remote_port=max(1, int(os.getenv("ADMIN_SSH_REMOTE_PORT", "8000").strip() or "8000")),
+        homegraph_local_enabled=os.getenv("HOMEGRAPH_LOCAL_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},
+        homegraph_db_path=str(Path(os.getenv("HOMEGRAPH_DB_PATH", str(Path(__file__).resolve().parent.parent / "homegraph" / "data" / "homegraph.sqlite3"))).resolve()),
         admin_ui_host=os.getenv("ADMIN_UI_HOST", "127.0.0.1").strip(),
         admin_ui_port=max(1, int(os.getenv("ADMIN_UI_PORT", "9100").strip() or "9100")),
         openai_review_enabled=os.getenv("OPENAI_REVIEW_ENABLED", "false").strip().lower() in {"1", "true", "yes", "oui", "on"},

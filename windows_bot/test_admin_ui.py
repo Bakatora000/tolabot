@@ -20,8 +20,8 @@ class AdminUiGraphTests(unittest.TestCase):
         self.assertNotIn('id="export-review-button"', HTML_PAGE)
         self.assertNotIn('id="purge-button"', HTML_PAGE)
         self.assertIn('class="viewer-item-actions"', HTML_PAGE)
-        self.assertIn('class="viewer-icon-button export-viewer-button"', HTML_PAGE)
-        self.assertIn('class="viewer-icon-button export-review-viewer-button"', HTML_PAGE)
+        self.assertIn('class="viewer-icon-button viewer-icon-button-export export-viewer-button"', HTML_PAGE)
+        self.assertIn('class="viewer-icon-button viewer-icon-button-review export-review-viewer-button"', HTML_PAGE)
         self.assertIn('class="viewer-icon-button viewer-icon-button-danger purge-viewer-button"', HTML_PAGE)
 
     def test_html_page_uses_dynamic_homegraph_legend_items(self):
@@ -53,6 +53,24 @@ class AdminUiGraphTests(unittest.TestCase):
         self.assertIn("function getConnectedComponentGraphData(data, rootNodeId)", HTML_PAGE)
         self.assertIn("if (graphKind === 'homegraph' && homegraphCenterNodeId) {", HTML_PAGE)
         self.assertIn("data = getConnectedComponentGraphData(data, homegraphCenterNodeId);", HTML_PAGE)
+
+    def test_html_page_exposes_homegraph_enrichment_review_flow(self):
+        self.assertIn("function renderHomegraphEnrichmentPanel()", HTML_PAGE)
+        self.assertIn("Fusionner dans Homegraph", HTML_PAGE)
+        self.assertIn("/homegraph-enrichment/merge", HTML_PAGE)
+        self.assertIn("Fusion bloquée : la validation locale a retourné mergeable=false.", HTML_PAGE)
+
+    def test_html_page_locks_homegraph_merge_after_success(self):
+        self.assertIn("window.currentHomegraphMerged = false;", HTML_PAGE)
+        self.assertIn("window.currentHomegraphMerged || !validation || validation.mergeable === false", HTML_PAGE)
+        self.assertIn("Fusion déjà appliquée pour cette proposition Homegraph.", HTML_PAGE)
+
+    def test_html_page_exposes_collapsible_recent_and_editor_panels(self):
+        self.assertIn('id="recent-toggle-button"', HTML_PAGE)
+        self.assertIn('id="editor-toggle-button"', HTML_PAGE)
+        self.assertIn("function updateCollapsiblePanels()", HTML_PAGE)
+        self.assertIn("function toggleRecentPanel()", HTML_PAGE)
+        self.assertIn("function toggleEditorPanel()", HTML_PAGE)
 
     def test_build_conversation_graph_payload_links_turns_and_viewers(self):
         graph = {

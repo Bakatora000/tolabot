@@ -291,6 +291,204 @@ class FileMemoryBackend:
         return imported
 
 
+SQLITE_SCHEMA_SQL = """
+PRAGMA journal_mode=WAL;
+PRAGMA foreign_keys=ON;
+
+CREATE TABLE IF NOT EXISTS memories (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    memory TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_memories_user_id
+    ON memories(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_memories_updated_at
+    ON memories(updated_at);
+"""
+
+
+class SQLiteMemoryBackend:
+    def __init__(self, store_path: Path):
+        self.store_path = store_path
+        self.lock = threading.Lock()
+        self.store_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.store_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _init_db(self) -> None:
+        with self._connect() as connection:
+            connection.executescript(SQLITE_SCHEMA_SQL)
+            connection.commit()
+
+    def healthcheck(self) -> None:
+        if not self.store_path.exists():
+            raise MemoryBackendError("SQLite store is missing.")
+        try:
+            with self._connect() as connection:
+                connection.execute("SELECT 1").fetchone()
+        except sqlite3.Error as exc:
+            raise MemoryBackendError(f"SQLite store is unavailable: {exc}") from exc
+
+    def _record_from_row(self, row: sqlite3.Row, score: float = 1.0) -> MemoryRecord:
+        try:
+            metadata = json.loads(str(row["metadata_json"] or "{}"))
+        except json.JSONDecodeError:
+            metadata = {}
+        return MemoryRecord(
+            id=str(row["id"]),
+            user_id=str(row["user_id"]),
+            memory=normalize_spaces(str(row["memory"])),
+            metadata=metadata if isinstance(metadata, dict) else {},
+            created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+            score=float(score),
+        )
+
+    def search(self, user_id: str, query: str, limit: int) -> list[MemoryRecord]:
+        with self.lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT id, user_id, memory, metadata_json, created_at, updated_at
+                    FROM memories
+                    WHERE user_id = ?
+                    ORDER BY updated_at DESC
+                    """,
+                    (user_id,),
+                ).fetchall()
+
+        matches: list[MemoryRecord] = []
+        for row in rows:
+            score = similarity_score(query, str(row["memory"]))
+            if score <= 0:
+                continue
+            matches.append(self._record_from_row(row, score=score))
+        matches.sort(key=lambda record: (record.score, record.updated_at), reverse=True)
+        return matches[:limit]
+
+    def remember(self, user_id: str, text: str, metadata: dict[str, Any] | None = None) -> str | None:
+        normalized_metadata = dict(metadata or {})
+        message_id = normalize_spaces(str(normalized_metadata.get("message_id", "")))
+        now = utc_now_iso()
+
+        with self.lock:
+            with self._connect() as connection:
+                if message_id:
+                    existing = connection.execute(
+                        """
+                        SELECT id
+                        FROM memories
+                        WHERE user_id = ?
+                          AND json_extract(metadata_json, '$.message_id') = ?
+                        LIMIT 1
+                        """,
+                        (user_id, message_id),
+                    ).fetchone()
+                    if existing:
+                        return str(existing["id"])
+
+                memory_id = f"mem_{uuid.uuid4().hex[:12]}"
+                connection.execute(
+                    """
+                    INSERT INTO memories (id, user_id, memory, metadata_json, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        memory_id,
+                        user_id,
+                        normalize_spaces(text),
+                        json.dumps(normalized_metadata, ensure_ascii=False, separators=(",", ":")),
+                        now,
+                        now,
+                    ),
+                )
+                connection.commit()
+                return memory_id
+
+    def forget(self, user_id: str, memory_id: str) -> bool:
+        with self.lock:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM memories WHERE user_id = ? AND id = ?",
+                    (user_id, memory_id),
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+
+    def recent(self, user_id: str, limit: int) -> list[MemoryRecord]:
+        with self.lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    """
+                    SELECT id, user_id, memory, metadata_json, created_at, updated_at
+                    FROM memories
+                    WHERE user_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT ?
+                    """,
+                    (user_id, limit),
+                ).fetchall()
+        return [self._record_from_row(row) for row in rows]
+
+    def list_user_ids(self) -> list[str]:
+        with self.lock:
+            with self._connect() as connection:
+                rows = connection.execute(
+                    "SELECT DISTINCT user_id FROM memories ORDER BY user_id"
+                ).fetchall()
+        return [normalize_spaces(str(row["user_id"])) for row in rows if normalize_spaces(str(row["user_id"]))]
+
+    def export_user(self, user_id: str, limit: int) -> list[MemoryRecord]:
+        return self.recent(user_id, limit)
+
+    def delete_memory(self, memory_id: str) -> bool:
+        with self.lock:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM memories WHERE id = ?",
+                    (memory_id,),
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+
+    def purge_user(self, user_id: str, limit: int) -> tuple[int, bool]:
+        with self.lock:
+            with self._connect() as connection:
+                count_row = connection.execute(
+                    "SELECT COUNT(*) AS count FROM memories WHERE user_id = ?",
+                    (user_id,),
+                ).fetchone()
+                deleted_count = int(count_row["count"] or 0) if count_row else 0
+                if deleted_count:
+                    connection.execute(
+                        "DELETE FROM memories WHERE user_id = ?",
+                        (user_id,),
+                    )
+                    connection.commit()
+                return deleted_count, False
+
+    def import_records(self, user_id: str, records: list[dict[str, Any]]) -> int:
+        imported = 0
+        for item in records:
+            text = normalize_spaces(str(item.get("memory", item.get("text", ""))))
+            if not text:
+                continue
+            metadata = dict(item.get("metadata", {}) or {})
+            memory_id = self.remember(user_id, text, metadata=metadata)
+            if memory_id:
+                imported += 1
+        return imported
+
+
 class Mem0MemoryBackend:
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -518,4 +716,6 @@ def build_backend(settings: Settings) -> MemoryBackend:
     settings.ensure_directories()
     if settings.backend == "mem0":
         return Mem0MemoryBackend(settings)
+    if settings.backend == "sqlite":
+        return SQLiteMemoryBackend(settings.sqlite_store_path)
     return FileMemoryBackend(settings.file_store_path, settings.user_registry_path)

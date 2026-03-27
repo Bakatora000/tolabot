@@ -19,13 +19,21 @@ from admin_client import (
     get_homegraph_user_graph,
     get_recent_memories,
     list_admin_users,
+    merge_homegraph_enrichment,
+    preview_homegraph_enrichment,
     remember_user_memory,
+    validate_homegraph_enrichment,
 )
-from admin_tunnel import AdminTunnelManager
 from bot_config import AppConfig, load_config
 from conversation_graph import load_conversation_graph
 from facts_memory import load_facts_memory
-from openai_review_client import OpenAIReviewError, analyze_review_export, build_review_export, is_openai_review_enabled
+from openai_review_client import (
+    OpenAIReviewError,
+    analyze_review_export,
+    build_homegraph_enrichment,
+    build_review_export,
+    is_openai_review_enabled,
+)
 
 
 def _graph_data_path(filename: str) -> str:
@@ -881,6 +889,21 @@ HTML_PAGE = """<!doctype html>
       margin-bottom: 6px;
     }
     .section-head { display:flex; align-items:center; justify-content: space-between; gap:12px; margin: 0 0 12px; }
+    .section-head-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+    .section-toggle-button {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--muted);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    .section-toggle-button:hover {
+      border-color: var(--line-strong);
+      color: var(--text);
+      background: #fff;
+    }
     .section-kicker {
       color: var(--accent-2);
       font-size: 0.82rem;
@@ -1024,13 +1047,19 @@ HTML_PAGE = """<!doctype html>
             <div class="section-kicker">Stewardship</div>
             <h2>Recent</h2>
           </div>
-          <span class="muted">Inspection, édition et revue des souvenirs.</span>
+          <div class="section-head-actions">
+            <span class="muted">Inspection, édition et revue des souvenirs.</span>
+            <button id="recent-toggle-button" class="section-toggle-button" type="button">Masquer</button>
+          </div>
         </div>
         <div id="recent">Sélectionne un viewer.</div>
         <div class="edit-panel">
           <div class="section-head" style="margin-top:24px;">
             <h2>Édition</h2>
-            <span id="editor-selection" class="muted">Aucun viewer ouvert en édition.</span>
+            <div class="section-head-actions">
+              <span id="editor-selection" class="muted">Aucun viewer ouvert en édition.</span>
+              <button id="editor-toggle-button" class="section-toggle-button" type="button">Masquer</button>
+            </div>
           </div>
           <div id="editor" class="muted">Clique sur “Éditer” pour afficher toute la mémoire d’un viewer.</div>
         </div>
@@ -1061,8 +1090,11 @@ HTML_PAGE = """<!doctype html>
     let homegraphMaxLinks = '12';
     let homegraphMaxDepth = '1';
     let homegraphMaxNodes = '20';
+    let recentPanelExpanded = true;
+    let editorPanelExpanded = true;
     let homegraphCenterNodeId = '';
     let homegraphRootNodeId = '';
+    let homegraphSelectedNodeId = '';
     let homegraphDepthReloadTimer = null;
     let graphInstance = null;
     let graphResizeObserver = null;
@@ -1074,6 +1106,12 @@ HTML_PAGE = """<!doctype html>
     window.currentAnalysis = null;
     window.proposalDecisions = {};
     window.analysisInFlight = null;
+    window.currentHomegraphEnrichment = null;
+    window.currentHomegraphValidation = null;
+    window.currentHomegraphPreview = null;
+    window.currentHomegraphEnrichmentError = '';
+    window.currentHomegraphMerged = false;
+    window.homegraphMergeInFlight = false;
 
     function setError(message) {
       document.getElementById('error').textContent = message || '';
@@ -1167,6 +1205,33 @@ HTML_PAGE = """<!doctype html>
       stewardButton.classList.toggle('active', adminMode === 'steward');
       globalPanel.hidden = adminMode !== 'global';
       stewardPanel.hidden = adminMode !== 'steward';
+    }
+
+    function updateCollapsiblePanels() {
+      const recentNode = document.getElementById('recent');
+      const editorNode = document.getElementById('editor');
+      const recentToggleNode = document.getElementById('recent-toggle-button');
+      const editorToggleNode = document.getElementById('editor-toggle-button');
+      if (recentNode && recentToggleNode) {
+        recentNode.hidden = !recentPanelExpanded;
+        recentToggleNode.textContent = recentPanelExpanded ? 'Masquer' : 'Étendre';
+        recentToggleNode.title = recentPanelExpanded ? 'Masquer les souvenirs récents' : 'Afficher les souvenirs récents';
+      }
+      if (editorNode && editorToggleNode) {
+        editorNode.hidden = !editorPanelExpanded;
+        editorToggleNode.textContent = editorPanelExpanded ? 'Masquer' : 'Étendre';
+        editorToggleNode.title = editorPanelExpanded ? 'Masquer la mémoire complète' : 'Afficher la mémoire complète';
+      }
+    }
+
+    function toggleRecentPanel() {
+      recentPanelExpanded = !recentPanelExpanded;
+      updateCollapsiblePanels();
+    }
+
+    function toggleEditorPanel() {
+      editorPanelExpanded = !editorPanelExpanded;
+      updateCollapsiblePanels();
     }
 
     function updateSelectionState() {
@@ -1338,6 +1403,12 @@ HTML_PAGE = """<!doctype html>
     function resetReviewPanel(message = 'Aucune analyse lancée.') {
       window.currentAnalysis = null;
       window.proposalDecisions = {};
+      window.currentHomegraphEnrichment = null;
+      window.currentHomegraphValidation = null;
+      window.currentHomegraphPreview = null;
+      window.currentHomegraphEnrichmentError = '';
+      window.currentHomegraphMerged = false;
+      window.homegraphMergeInFlight = false;
       document.getElementById('review').innerHTML = `<div class="muted">${escapeHtml(message)}</div>`;
     }
 
@@ -1375,6 +1446,76 @@ HTML_PAGE = """<!doctype html>
       `;
     }
 
+    function renderValidationSummary(validation) {
+      if (!validation) {
+        return '';
+      }
+      const counts = validation.counts || {};
+      const warnings = Array.isArray(validation.warnings) ? validation.warnings : [];
+      const errors = Array.isArray(validation.errors) ? validation.errors : [];
+      return `
+        <div class="memory-card">
+          <strong>Validation Homegraph</strong>
+          <pre>mergeable: ${validation.mergeable ? 'yes' : 'no'} | facts: ${counts.facts || 0} | relations: ${counts.relations || 0} | links: ${counts.links || 0}</pre>
+          ${warnings.length ? `<div class="memory-meta">warnings</div><pre>${escapeHtml(JSON.stringify(warnings, null, 2))}</pre>` : ''}
+          ${errors.length ? `<div class="memory-meta">errors</div><pre>${escapeHtml(JSON.stringify(errors, null, 2))}</pre>` : ''}
+        </div>
+      `;
+    }
+
+    function renderPreviewSummary(preview) {
+      if (!preview) {
+        return '';
+      }
+      return `
+        <div class="memory-card">
+          <strong>Preview Homegraph</strong>
+          <pre>${escapeHtml(preview.text_block || '')}</pre>
+          <div class="memory-meta">graph_stats</div>
+          <pre>${escapeHtml(JSON.stringify(preview.graph_stats || {}, null, 2))}</pre>
+        </div>
+      `;
+    }
+
+    function renderHomegraphEnrichmentPanel() {
+      const panelNode = document.getElementById('homegraph-enrichment-panel');
+      if (!panelNode) {
+        return;
+      }
+      if (!window.currentHomegraphEnrichment) {
+        panelNode.innerHTML = `
+          ${window.currentHomegraphEnrichmentError ? `<div class="memory-card"><strong>Homegraph</strong><pre>${escapeHtml(window.currentHomegraphEnrichmentError)}</pre></div>` : ''}
+          <div class="memory-card"><strong>Homegraph</strong><div class="muted">Aucune proposition Homegraph générée.</div></div>
+        `;
+        return;
+      }
+      const validation = window.currentHomegraphValidation;
+      const preview = window.currentHomegraphPreview;
+      const mergeDisabled = window.homegraphMergeInFlight || window.currentHomegraphMerged || !validation || validation.mergeable === false;
+      const mergeDisabledReason = window.homegraphMergeInFlight
+        ? 'Fusion Homegraph en cours.'
+        : (window.currentHomegraphMerged
+          ? 'Fusion déjà appliquée pour cette proposition Homegraph.'
+        : (!validation
+          ? 'Fusion indisponible : validation locale absente.'
+          : (validation.mergeable === false
+            ? 'Fusion bloquée : la validation locale a retourné mergeable=false.'
+            : '')));
+      panelNode.innerHTML = `
+        ${window.currentHomegraphEnrichmentError ? `<div class="memory-card"><strong>Erreur Homegraph</strong><pre>${escapeHtml(window.currentHomegraphEnrichmentError)}</pre></div>` : ''}
+        <div class="memory-card">
+          <strong>Enrichissement Homegraph proposé</strong>
+            <div class="actions">
+              <button class="commit-button" type="button" onclick="mergeHomegraphEnrichment(event)" title="${escapeHtml(mergeDisabledReason)}" ${mergeDisabled ? 'disabled' : ''}>${window.homegraphMergeInFlight ? 'Fusion en cours...' : 'Fusionner dans Homegraph'}</button>
+            </div>
+          ${mergeDisabledReason ? `<div class="memory-meta">${escapeHtml(mergeDisabledReason)}</div>` : ''}
+          <pre>${escapeHtml(JSON.stringify(window.currentHomegraphEnrichment, null, 2))}</pre>
+        </div>
+        ${renderValidationSummary(validation)}
+        ${renderPreviewSummary(preview)}
+      `;
+    }
+
     async function toggleVerbose() {
       const response = await fetch('/api/review-verbose', { method: 'POST' });
       const data = await response.json();
@@ -1387,7 +1528,7 @@ HTML_PAGE = """<!doctype html>
       const data = await response.json();
       verboseEnabled = !!data.review_verbose;
       document.getElementById('status').textContent =
-        `Tunnel: ${data.tunnel.running ? 'OK' : 'OFF'} | Port local: ${data.tunnel.local_port_open ? 'OK' : 'OFF'} | Admin API: ${data.admin_api_ok ? 'OK' : 'KO'}`;
+        `Admin local: ${data.admin_api_ok ? 'OK' : 'KO'} | Review verbose: ${verboseEnabled ? 'ON' : 'OFF'}`;
       updateSelectionState();
     }
 
@@ -1848,6 +1989,7 @@ HTML_PAGE = """<!doctype html>
         })
         .onNodeClick(async (node) => {
           if (graphKind === 'homegraph') {
+            homegraphSelectedNodeId = node.id || '';
             const targetUser = resolveHomegraphViewerUser(node);
             if (targetUser && !hasAmbiguousHomegraphLabel(node) && normalizeToken(targetUser.user_id) !== normalizeToken(selectedUserId)) {
               homegraphCenterNodeId = '';
@@ -1977,6 +2119,13 @@ HTML_PAGE = """<!doctype html>
         lastGraphSignature = computeGraphSignature(fullGraphData);
         if (graphKind === 'homegraph') {
           homegraphRootNodeId = (data.meta && data.meta.root_node_id) ? data.meta.root_node_id : '';
+          if (homegraphCenterNodeId && !findNodeById(fullGraphData, homegraphCenterNodeId)) {
+            const previousCenterNodeId = homegraphCenterNodeId;
+            homegraphCenterNodeId = '';
+            const fallbackRoot = findNodeById(fullGraphData, homegraphRootNodeId);
+            setError(`Le centre Homegraph demandé (${previousCenterNodeId}) est absent de la réponse locale. Retour à la vue viewer.`);
+            renderGraphDetails(fallbackRoot);
+          }
         }
         updateSelectionState();
         let graphStatus =
@@ -1991,9 +2140,23 @@ HTML_PAGE = """<!doctype html>
         setGraphStatus(graphStatus);
         applyGraphFocus();
         resetGraphInteractionState();
-        if (graphKind === 'homegraph' && homegraphCenterNodeId) {
-          const centerNode = findNodeById(fullGraphData, homegraphCenterNodeId);
-          renderGraphDetails(centerNode);
+        if (graphKind === 'homegraph') {
+          const selectedNode = findNodeById(fullGraphData, homegraphSelectedNodeId);
+          if (selectedNode) {
+            renderGraphDetails(selectedNode);
+            return;
+          }
+          if (homegraphCenterNodeId) {
+            const centerNode = findNodeById(fullGraphData, homegraphCenterNodeId);
+            renderGraphDetails(centerNode);
+            return;
+          }
+          if (homegraphRootNodeId) {
+            const rootNode = findNodeById(fullGraphData, homegraphRootNodeId);
+            renderGraphDetails(rootNode);
+            return;
+          }
+          renderGraphDetails(null);
         } else {
           renderGraphDetails(null);
         }
@@ -2012,6 +2175,7 @@ HTML_PAGE = """<!doctype html>
       selectedViewerLabel = viewerLabel;
       homegraphCenterNodeId = '';
       homegraphRootNodeId = '';
+      homegraphSelectedNodeId = '';
       if (viewerChanged) {
         resetReviewPanel(`Aucune analyse lancée pour ${viewerLabel}.`);
       }
@@ -2052,6 +2216,9 @@ HTML_PAGE = """<!doctype html>
       editingViewerLabel = viewerLabel;
       selectedUserId = userId;
       selectedViewerLabel = viewerLabel;
+      homegraphCenterNodeId = '';
+      homegraphRootNodeId = '';
+      homegraphSelectedNodeId = '';
       updateSelectionState();
       await loadUsers();
       const editorNode = document.getElementById('editor');
@@ -2327,6 +2494,12 @@ HTML_PAGE = """<!doctype html>
           document.getElementById('review').innerHTML = '<div class="muted">Analyse indisponible.</div>';
           return;
         }
+        window.currentHomegraphEnrichment = data.homegraph_enrichment || null;
+        window.currentHomegraphValidation = data.homegraph_validation || null;
+        window.currentHomegraphPreview = data.homegraph_preview || null;
+        window.currentHomegraphEnrichmentError = data.homegraph_enrichment_error || '';
+        window.currentHomegraphMerged = false;
+        window.homegraphMergeInFlight = false;
 
         const proposals = data.analysis.proposals || [];
         const summary = data.analysis.summary || '';
@@ -2337,7 +2510,11 @@ HTML_PAGE = """<!doctype html>
           }
         }
         if (proposals.length === 0) {
-          document.getElementById('review').innerHTML = `<div class="muted">${escapeHtml(summary || 'Aucune proposition.')}</div>`;
+          document.getElementById('review').innerHTML = `
+            <div class="memory-card"><strong>Résumé</strong><pre>${escapeHtml(summary || 'Aucune proposition.')}</pre></div>
+            <div id="homegraph-enrichment-panel"></div>
+          `;
+          renderHomegraphEnrichmentPanel();
           return;
         }
 
@@ -2358,8 +2535,10 @@ HTML_PAGE = """<!doctype html>
               </div>
             </div>
           `).join('') +
-          renderCommitToolbar();
+          renderCommitToolbar() +
+          `<div id="homegraph-enrichment-panel"></div>`;
         window.currentAnalysis = data.analysis;
+        renderHomegraphEnrichmentPanel();
       } finally {
         clearAnalysisInFlight(analysisUserId);
         updateSelectionState();
@@ -2414,6 +2593,45 @@ HTML_PAGE = """<!doctype html>
       await loadRecent(selectedUserId, selectedViewerLabel || selectedUserId);
     }
 
+    async function mergeHomegraphEnrichment(event) {
+      if (!selectedUserId || !window.currentHomegraphEnrichment || window.homegraphMergeInFlight || window.currentHomegraphMerged) {
+        return;
+      }
+      if (event && event.currentTarget) {
+        event.currentTarget.disabled = true;
+      }
+      window.homegraphMergeInFlight = true;
+      renderHomegraphEnrichmentPanel();
+      setError('');
+      try {
+        const response = await fetch(`/api/users/${encodeURIComponent(selectedUserId)}/homegraph-enrichment/merge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enrichment: window.currentHomegraphEnrichment }),
+        });
+        const data = await response.json();
+        if (!data.ok) {
+          setError(data.error || 'Échec de la fusion Homegraph.');
+          return;
+        }
+        window.currentHomegraphPreview = {
+          text_block: data.result.text_block || '',
+          graph_stats: data.result.graph_stats || {},
+        };
+        window.currentHomegraphValidation = {
+          mergeable: true,
+          counts: data.result.merged || {},
+          errors: [],
+          warnings: [],
+        };
+        window.currentHomegraphMerged = true;
+        renderHomegraphEnrichmentPanel();
+      } finally {
+        window.homegraphMergeInFlight = false;
+        renderHomegraphEnrichmentPanel();
+      }
+    }
+
     async function refreshAll() {
       await loadStatus();
       await loadUsers();
@@ -2433,6 +2651,8 @@ HTML_PAGE = """<!doctype html>
         adminMode = 'steward';
         updateModeState();
       };
+      document.getElementById('recent-toggle-button').onclick = toggleRecentPanel;
+      document.getElementById('editor-toggle-button').onclick = toggleEditorPanel;
       document.getElementById('refresh-button').onclick = refreshAll;
       document.getElementById('analyze-button').onclick = analyzeSelectedUser;
       document.getElementById('verbose-button').onclick = toggleVerbose;
@@ -2478,6 +2698,7 @@ HTML_PAGE = """<!doctype html>
       };
       syncHomegraphDepthControls();
       resetReviewPanel();
+      updateCollapsiblePanels();
       updateSelectionState();
       await refreshAll();
     }
@@ -2492,7 +2713,6 @@ class AdminUiServer(ThreadingHTTPServer):
     def __init__(self, server_address: tuple[str, int], request_handler_class, config: AppConfig):
         super().__init__(server_address, request_handler_class)
         self.config = config
-        self.tunnel = AdminTunnelManager(config)
         self.review_verbose = False
 
 
@@ -2513,7 +2733,6 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             return
 
         if route == "/api/status":
-            tunnel_status = self.server.tunnel.status()
             try:
                 admin_ok = admin_healthcheck(self.server.config)
             except Exception:
@@ -2521,11 +2740,6 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             self._send_json(
                 {
                     "ok": True,
-                    "tunnel": {
-                        "running": tunnel_status.running,
-                        "local_port_open": tunnel_status.local_port_open,
-                        "pid": tunnel_status.pid,
-                    },
                     "admin_api_ok": admin_ok,
                     "review_verbose": self.server.review_verbose,
                 }
@@ -2709,12 +2923,62 @@ class AdminUiHandler(BaseHTTPRequestHandler):
                     severity=severity,
                     verbose=self.server.review_verbose,
                 )
+                homegraph_enrichment = None
+                homegraph_validation = None
+                homegraph_preview = None
+                homegraph_enrichment_error = ""
+                try:
+                    homegraph_enrichment = build_homegraph_enrichment(
+                        self.server.config,
+                        review_export,
+                        analysis,
+                        display_name=review_export.get("viewer", ""),
+                        verbose=self.server.review_verbose,
+                    )
+                    homegraph_validation = validate_homegraph_enrichment(
+                        self.server.config,
+                        user_id,
+                        homegraph_enrichment,
+                    )
+                    if homegraph_validation.get("mergeable", False):
+                        homegraph_preview = preview_homegraph_enrichment(
+                            self.server.config,
+                            user_id,
+                            homegraph_enrichment,
+                        )
+                except (AdminApiError, OpenAIReviewError) as exc:
+                    homegraph_enrichment_error = str(exc)
                 if self.server.review_verbose:
                     print(f"[admin-ui] analyze done user_id={user_id}", flush=True)
-                self._send_json({"ok": True, "review_export": review_export, "analysis": analysis})
+                self._send_json(
+                    {
+                        "ok": True,
+                        "review_export": review_export,
+                        "analysis": analysis,
+                        "homegraph_enrichment": homegraph_enrichment,
+                        "homegraph_validation": homegraph_validation,
+                        "homegraph_preview": homegraph_preview,
+                        "homegraph_enrichment_error": homegraph_enrichment_error,
+                    }
+                )
             except (AdminApiError, OpenAIReviewError) as exc:
                 if self.server.review_verbose:
                     print(f"[admin-ui] analyze failed user_id={user_id}: {exc}", flush=True)
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
+
+        if route.startswith("/api/users/") and route.endswith("/homegraph-enrichment/merge"):
+            user_id = unquote(route[len("/api/users/") : -len("/homegraph-enrichment/merge")].strip("/"))
+            try:
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                raw_body = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(raw_body.decode("utf-8"))
+                enrichment = payload.get("enrichment", {})
+                result = merge_homegraph_enrichment(self.server.config, user_id, enrichment)
+                self._send_json({"ok": True, "result": result})
+            except (ValueError, json.JSONDecodeError) as exc:
+                self._send_json({"ok": False, "error": f"invalid enrichment payload: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            except AdminApiError as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
             return
 
@@ -2846,7 +3110,6 @@ class AdminUiHandler(BaseHTTPRequestHandler):
 def run_admin_ui(config: AppConfig | None = None, open_browser: bool = True) -> int:
     config = config or load_config()
     server = AdminUiServer((config.admin_ui_host, config.admin_ui_port), AdminUiHandler, config)
-    server.tunnel.start()
     url = f"http://{config.admin_ui_host}:{config.admin_ui_port}"
     print(f"Admin UI locale : {url}")
 
@@ -2859,6 +3122,5 @@ def run_admin_ui(config: AppConfig | None = None, open_browser: bool = True) -> 
         pass
     finally:
         server.server_close()
-        server.tunnel.stop()
 
     return 0

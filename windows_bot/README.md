@@ -5,7 +5,7 @@ Bot Twitch francophone qui :
 - envoie la demande a Ollama ou OpenAI
 - renvoie la reponse dans le chat
 - garde une memoire locale courte des echanges recents
-- peut preparer une integration memoire distante via mem0
+- utilise une memoire durable SQLite locale pour les viewers
 
 Doc interne utile pour la structure runtime :
 - [runtime_architecture.md](C:/Users/xuanp/BotTwitch/tolabot/windows_bot/runtime_architecture.md)
@@ -50,13 +50,10 @@ WEB_SEARCH_MODE=auto
 SEARXNG_BASE_URL=http://127.0.0.1:8888
 WEB_SEARCH_TIMEOUT_SECONDS=8
 WEB_SEARCH_MAX_RESULTS=5
-MEM0_ENABLED=false
-MEM0_API_BASE_URL=https://your-mem0-api.example.com/api/memory
-MEM0_API_KEY=
-MEM0_TIMEOUT_SECONDS=10
-MEM0_VERIFY_SSL=true
 MEM0_CONTEXT_LIMIT=5
-MEM0_FALLBACK_LOCAL=true
+MEM0_LOCAL_BACKEND_ENABLED=true
+MEMORY_BACKEND=sqlite
+SQLITE_STORE_PATH=../data/memory_store.sqlite3
 GLOBAL_COOLDOWN_SECONDS=2
 USER_COOLDOWN_SECONDS=8
 MESSAGE_QUEUE_MAX_SIZE=6
@@ -82,15 +79,12 @@ Notes :
 - `SEARXNG_BASE_URL` pointe vers ton instance locale, par exemple `http://127.0.0.1:8888`
 - `CHAT_MEMORY_TTL_HOURS` controle la duree de conservation de la memoire de chat
 - `DEBUG_CHAT_MEMORY=true` affiche le contexte reinjecte dans les logs
-- `MEM0_ENABLED=true` active le client HTTP vers l'API memoire distante
-- `MEM0_FALLBACK_LOCAL=true` conserve la memoire locale comme secours si l'API distante echoue
+- `MEM0_LOCAL_BACKEND_ENABLED=true` active le backend memoire local Windows
+- `MEMORY_BACKEND=sqlite` fixe le backend local partage sur SQLite
+- `SQLITE_STORE_PATH` choisit le fichier SQLite de la memoire durable locale
 - `MESSAGE_QUEUE_MAX_SIZE` limite le nombre de messages en attente quand le chat accelere
 - `MESSAGE_QUEUE_MAX_AGE_SECONDS` ignore un message devenu trop ancien dans la file
 - `ADMIN_UI_ENABLED=true` active l'UI admin locale Windows
-- `ADMIN_API_LOCAL_URL` est l'URL locale atteinte via tunnel SSH
-- `MEM0_ADMIN_KEY` est la cle d'auth admin distincte de `MEM0_API_KEY`
-- `ADMIN_SSH_HOST` et `ADMIN_SSH_USER` servent a ouvrir le tunnel SSH
-- le tunnel V1 attendu est `localhost:9000 -> SSH -> 127.0.0.1:8000`
 - `OPENAI_REVIEW_ENABLED=true` active l'analyse de souvenirs via OpenAI
 - `OPENAI_API_KEY` est la cle API OpenAI
 - `OPENAI_CHAT_MODEL=gpt-5-mini` est un bon choix pour remplacer Ollama a cout modere
@@ -164,18 +158,6 @@ Verifier le token Twitch :
 py .\manage_bot.py validate-token
 ```
 
-Verifier l'API memoire distante :
-
-```powershell
-py .\manage_bot.py memory-health
-```
-
-Verifier l'API admin locale :
-
-```powershell
-py .\manage_bot.py admin-health
-```
-
 Lancer l'UI admin locale :
 
 ```powershell
@@ -212,22 +194,25 @@ Lister les modeles Ollama detectes :
 py .\manage_bot.py ollama-models
 ```
 
-## Memoire distante mem0
+## Memoire durable locale Windows
 
-Le bot peut maintenant etre configure pour parler a une API memoire distante compatible avec le contrat du service Linux sur `memory.example.net`.
+Le bot fonctionne maintenant avec une memoire durable locale Windows sans dependre d'un service Linux.
 
-Dans l'etat actuel :
-- mem0 sert de memoire generale durable, reutilisable d'un live a l'autre
-- le bot lit mem0 avant Ollama pour les cas generaux
-- le bot ecrit dans mem0 apres reponse pour les echanges generaux utiles
+Configuration recommandee :
 
-Architecture retenue :
-- mem0 : memoire longue, semantique, cross-live
-- memoire locale : fils courts et cas specialises
+```env
+MEM0_LOCAL_BACKEND_ENABLED=true
+MEMORY_BACKEND=sqlite
+SQLITE_STORE_PATH=../data/memory_store.sqlite3
 
-Important :
-- les charades/devinettes et autres fils multi-messages immediats restent geres prioritairement par la memoire locale
-- mem0 ne remplace pas la logique locale de fil actif pour ces cas
+HOMEGRAPH_LOCAL_ENABLED=true
+HOMEGRAPH_DB_PATH=../homegraph/data/homegraph.sqlite3
+```
+
+Dans ce mode :
+- la memoire durable viewer est stockee en SQLite local
+- `homegraph` reste aussi sur SQLite local
+- le runtime et l'admin Windows n'ont plus besoin du backend Linux
 
 ## Recherche web locale avec SearXNG
 
@@ -249,8 +234,6 @@ Comportement :
 - pas de recherche web sur les questions purement conversationnelles du chat
 - recherche web seulement sur certaines requetes externes ou recentes en mode `auto`
 - si SearXNG ne repond pas, le bot continue normalement sans contexte web
-
-Si `MEM0_ENABLED=false`, le bot continue d'utiliser uniquement la memoire locale actuelle.
 
 ## Memoire ciblee du streamer
 
@@ -330,19 +313,6 @@ Lancer les tests :
 ```powershell
 python -m unittest test_bot_logic.py test_ollama_client.py test_bot_runtime.py
 ```
-
-Tests d'integration Windows/Linux en reel :
-
-```powershell
-$env:RUN_WINDOWS_LINUX_INTEGRATION="1"
-python -m unittest test_windows_linux_integration.py
-```
-
-Notes :
-- cette suite ouvre le tunnel SSH admin configure dans `.env`
-- elle teste l'API admin Linux via `127.0.0.1:9000`
-- les checks mem0 publics ne tournent que si `MEM0_ENABLED`, `MEM0_API_BASE_URL` et `MEM0_API_KEY` sont configures
-- elle nettoie les souvenirs de test crees pendant l'execution
 
 ## Fichiers principaux
 

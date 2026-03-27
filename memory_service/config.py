@@ -29,6 +29,7 @@ class Settings:
     data_dir: Path = Path("./data")
     homegraph_db_path: Path = Path("./homegraph/data/homegraph.sqlite3")
     file_store_path: Path = Path("./data/memory_store.json")
+    sqlite_store_path: Path = Path("./data/memory_store.sqlite3")
     user_registry_path: Path = Path("./data/user_registry.json")
     mem0_qdrant_host: str = "127.0.0.1"
     mem0_qdrant_port: int = 6333
@@ -50,6 +51,7 @@ class Settings:
         load_dotenv()
         data_dir = Path(os.getenv("DATA_DIR", "./data")).resolve()
         file_store_path = Path(os.getenv("FILE_STORE_PATH", str(data_dir / "memory_store.json"))).resolve()
+        sqlite_store_path = Path(os.getenv("SQLITE_STORE_PATH", str(data_dir / "memory_store.sqlite3"))).resolve()
         homegraph_db_path = Path(
             os.getenv("HOMEGRAPH_DB_PATH", "./homegraph/data/homegraph.sqlite3")
         ).resolve()
@@ -72,6 +74,7 @@ class Settings:
             data_dir=data_dir,
             homegraph_db_path=homegraph_db_path,
             file_store_path=file_store_path,
+            sqlite_store_path=sqlite_store_path,
             user_registry_path=user_registry_path,
             mem0_qdrant_host=os.getenv("MEM0_QDRANT_HOST", "127.0.0.1").strip(),
             mem0_qdrant_port=max(1, int(os.getenv("MEM0_QDRANT_PORT", "6333").strip() or "6333")),
@@ -93,6 +96,7 @@ class Settings:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.homegraph_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.file_store_path.parent.mkdir(parents=True, exist_ok=True)
+        self.sqlite_store_path.parent.mkdir(parents=True, exist_ok=True)
         self.user_registry_path.parent.mkdir(parents=True, exist_ok=True)
         self.mem0_history_db_path.parent.mkdir(parents=True, exist_ok=True)
         self.mem0_qdrant_path.parent.mkdir(parents=True, exist_ok=True)

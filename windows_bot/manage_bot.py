@@ -23,12 +23,10 @@ ENV_PATH = BASE_DIR / ".env"
 
 COMMAND_HELP = {
     "status": "Affiche l'etat de la configuration chargee depuis le .env.",
-    "diagnose": "Verifie Twitch, Ollama, mem0 et l'API admin.",
+    "diagnose": "Verifie Twitch, Ollama, SQLite local et l'UI admin.",
     "validate-token": "Valide le token Twitch courant et tente un refresh si besoin.",
     "ollama-models": "Liste les modeles Ollama installes localement.",
     "get-token": "Lance le flux OAuth Twitch pour ecrire/mettre a jour le token.",
-    "memory-health": "Teste l'API mem0 publique.",
-    "admin-health": "Teste l'API admin mem0 via l'URL locale/tunnelisee.",
     "run-admin-ui": "Lance l'interface web admin Windows.",
     "run-ollama": "Lance le bot au premier plan avec Ollama.",
     "run-bg-ollama": "Lance le bot en arriere-plan avec logs dans logs/bot.log.",
@@ -59,8 +57,6 @@ HELP_GROUPS = [
             ("diagnose", COMMAND_HELP["diagnose"]),
             ("validate-token", COMMAND_HELP["validate-token"]),
             ("ollama-models", COMMAND_HELP["ollama-models"]),
-            ("memory-health", COMMAND_HELP["memory-health"]),
-            ("admin-health", COMMAND_HELP["admin-health"]),
         ],
     ),
     (
@@ -129,23 +125,15 @@ def print_config_status(config: AppConfig) -> None:
     print(f"USER_COOLDOWN        : {config.user_cooldown_seconds}s")
     print(f"CHAT_MEMORY_TTL_HOURS: {config.chat_memory_ttl_hours}")
     print(f"DEBUG_CHAT_MEMORY    : {bool_label(config.debug_chat_memory)}")
-    print(f"MEM0_ENABLED         : {bool_label(config.mem0_enabled)}")
-    print(f"MEM0_API_BASE_URL    : {config.mem0_api_base_url or '(vide)'}")
-    print(f"MEM0_API_KEY         : {bool_label(bool(config.mem0_api_key))}")
-    print(f"MEM0_TIMEOUT_SECONDS : {config.mem0_timeout_seconds}s")
-    print(f"MEM0_VERIFY_SSL      : {bool_label(config.mem0_verify_ssl)}")
     print(f"MEM0_CONTEXT_LIMIT   : {config.mem0_context_limit}")
-    print(f"MEM0_FALLBACK_LOCAL  : {bool_label(config.mem0_fallback_local)}")
+    print(f"MEM0_LOCAL_BACKEND   : {bool_label(config.mem0_local_backend_enabled)}")
+    print(f"MEMORY_BACKEND       : {os.getenv('MEMORY_BACKEND', 'file')}")
+    print(f"SQLITE_STORE_PATH    : {os.getenv('SQLITE_STORE_PATH', '(defaut ./data/memory_store.sqlite3)')}")
     print(f"MESSAGE_QUEUE_SIZE   : {config.message_queue_max_size}")
     print(f"MESSAGE_QUEUE_MAX_AGE: {config.message_queue_max_age_seconds}s")
     print(f"ADMIN_UI_ENABLED     : {bool_label(config.admin_ui_enabled)}")
-    print(f"ADMIN_API_LOCAL_URL  : {config.admin_api_local_url}")
-    print(f"MEM0_ADMIN_KEY       : {bool_label(bool(config.admin_api_key))}")
-    print(f"ADMIN_API_TIMEOUT    : {config.admin_api_timeout_seconds}s")
-    print(f"ADMIN_SSH_HOST       : {config.admin_ssh_host or '(vide)'}")
-    print(f"ADMIN_SSH_USER       : {config.admin_ssh_user or '(vide)'}")
-    print(f"ADMIN_SSH_LOCAL_PORT : {config.admin_ssh_local_port}")
-    print(f"ADMIN_SSH_REMOTE_PORT: {config.admin_ssh_remote_port}")
+    print(f"HOMEGRAPH_LOCAL      : {bool_label(config.homegraph_local_enabled)}")
+    print(f"HOMEGRAPH_DB_PATH    : {config.homegraph_db_path}")
     print(f"ADMIN_UI_BIND        : {config.admin_ui_host}:{config.admin_ui_port}")
     print(f"OPENAI_REVIEW_ENABLED: {bool_label(config.openai_review_enabled)}")
     print(f"OPENAI_API_KEY       : {bool_label(bool(config.openai_api_key))}")
@@ -247,48 +235,34 @@ def print_local_models() -> int:
 
 
 def check_mem0_api(config: AppConfig) -> int:
-    print("=== API mémoire mem0 ===")
-
-    if not config.mem0_enabled:
-        print("ℹ️ Mem0 désactivé dans le .env")
-        return 0
-
+    print("=== Mémoire locale ===")
     if not is_mem0_enabled(config):
-        print("❌ Configuration mem0 incomplète")
+        print("❌ Backend mémoire local désactivé")
         return 1
 
     try:
         if healthcheck_memory_api(config):
-            print(f"✅ API mémoire joignable via {config.mem0_api_base_url}/health")
+            print("✅ Backend mémoire SQLite local opérationnel")
             return 0
     except Exception as exc:
-        print(f"❌ API mémoire inaccessible : {exc}")
+        print(f"❌ Backend mémoire local inaccessible : {exc}")
         return 1
 
-    print("❌ Healthcheck mem0 inattendu")
+    print("❌ Healthcheck mémoire local inattendu")
     return 1
 
 
 def check_admin_api(config: AppConfig) -> int:
-    print("=== API admin mem0 ===")
+    print("=== Admin local ===")
 
     if not config.admin_ui_enabled:
         print("ℹ️ Admin UI désactivée dans le .env")
         return 0
 
-    if not is_admin_ui_enabled(config):
-        print("❌ Configuration admin incomplète")
-        return 1
-
-    try:
-        if admin_healthcheck(config):
-            print(f"✅ API admin joignable via {config.admin_api_local_url}/admin/health")
-            return 0
-    except Exception as exc:
-        print(f"❌ API admin inaccessible : {exc}")
-        return 1
-
-    print("❌ Healthcheck admin inattendu")
+    if config.mem0_local_backend_enabled or config.homegraph_local_enabled:
+        print("✅ Admin local Windows actif (SQLite local)")
+        return 0
+    print("❌ Admin local incomplet")
     return 1
 
 
@@ -590,8 +564,6 @@ def build_parser() -> argparse.ArgumentParser:
         "validate-token",
         "ollama-models",
         "get-token",
-        "memory-health",
-        "admin-health",
         "run-admin-ui",
         "run-ollama",
         "run-bg-ollama",
@@ -636,10 +608,6 @@ def main() -> int:
             return print_local_models()
         if args.command == "get-token":
             return run_oauth_flow(config.client_id, config.client_secret, env_path=str(ENV_PATH))
-        if args.command == "memory-health":
-            return check_mem0_api(config)
-        if args.command == "admin-health":
-            return check_admin_api(config)
         if args.command == "run-admin-ui":
             return run_admin_ui_command(config)
         if args.command == "run-ollama":

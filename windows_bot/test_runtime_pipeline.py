@@ -2,10 +2,11 @@ import asyncio
 import unittest
 from collections import deque
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from runtime_types import DecisionResult
 from runtime_pipeline import (
+    build_runtime_context_bundle,
     dispatch_incoming_message,
     handle_non_model_decision,
     message_queue_worker,
@@ -13,6 +14,68 @@ from runtime_pipeline import (
 
 
 class RuntimePipelineTests(unittest.IsolatedAsyncioTestCase):
+    @patch("runtime_pipeline.build_homegraph_context_source")
+    def test_build_runtime_context_bundle_appends_local_homegraph_context(self, mock_homegraph_source):
+        decision = DecisionResult(
+            decision="reply",
+            rule_id="reply_when_addressed",
+            reason="addressed",
+            needs_long_memory=False,
+        )
+        mock_homegraph_source.return_value = SimpleNamespace(
+            source_id="homegraph_local",
+            available=True,
+            priority=87,
+            confidence=0.84,
+            stale=False,
+            text_block="Contexte viewer:\n- joue souvent a Valheim",
+            meta={},
+        )
+        config = SimpleNamespace(
+            web_search_enabled=False,
+            web_search_provider="searxng",
+            web_search_mode="auto",
+            homegraph_local_enabled=True,
+            homegraph_db_path="C:/tmp/homegraph.sqlite3",
+        )
+
+        bundle = build_runtime_context_bundle(
+            resolved_text="tu joues a quoi",
+            payload=SimpleNamespace(broadcaster=SimpleNamespace(name="streamer")),
+            channel_name="streamer",
+            author="alice",
+            prefer_active_thread=True,
+            riddle_thread_reset=False,
+            riddle_thread_close=False,
+            specialized_local_thread=False,
+            decision=decision,
+            alias_context="aucun",
+            focus_context="aucun",
+            facts_context="aucun",
+            conversation_mode="",
+            config=config,
+            should_use_remote_memory=False,
+            get_specialized_local_context_fn=lambda *args, **kwargs: ({"viewer_context": "aucun", "global_context": "aucun", "items": []}, []),
+            get_context_with_fallback_fn=lambda **kwargs: (
+                {"viewer_context": "alice: salut", "global_context": "discussion recente", "items": []},
+                "local",
+                [],
+            ),
+            build_web_search_decision_fn=lambda *_args, **_kwargs: DecisionResult(
+                decision="skip_reply",
+                rule_id="no_web",
+                reason="no_web",
+                needs_web=False,
+            ),
+            build_web_search_context_fn=lambda *_args, **_kwargs: "aucun",
+            search_searxng_fn=lambda **_kwargs: [],
+        )
+
+        self.assertEqual(bundle.viewer_context, "alice: salut")
+        self.assertIn("discussion recente", bundle.global_context)
+        self.assertIn("Contexte viewer:", bundle.global_context)
+        self.assertTrue(any(source.source_id == "homegraph_local" for source in bundle.sources))
+
     async def test_dispatch_incoming_message_processes_immediately_without_queue_worker(self):
         payload = SimpleNamespace(
             text="@AnneAuNimouss salut",

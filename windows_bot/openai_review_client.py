@@ -129,12 +129,207 @@ def analyze_review_export(
         "viewer_export": review_export,
     }
 
+    parsed = _run_structured_openai_request(
+        config,
+        schema=schema,
+        system_prompt=system_prompt,
+        user_payload=user_prompt,
+        verbose=verbose,
+        request_label=(
+            f"viewer={review_export.get('viewer', '')} "
+            f"records={len(review_export.get('records', []))} severity={severity}"
+        ),
+    )
     if verbose:
         print(
-            f"[openai-review] request model={config.openai_review_model} "
-            f"viewer={review_export.get('viewer', '')} records={len(review_export.get('records', []))} severity={severity}",
+            f"[openai-review] parsed proposals={len(parsed.get('proposals', []))}",
             flush=True,
         )
+    return parsed
+
+
+def build_homegraph_enrichment(
+    config: AppConfig,
+    review_export: dict[str, Any],
+    analysis: dict[str, Any],
+    *,
+    display_name: str | None = None,
+    verbose: bool = False,
+) -> dict[str, Any]:
+    if not is_openai_review_enabled(config):
+        raise OpenAIReviewError("OpenAI review is not enabled or configuration is incomplete.")
+
+    schema = {
+        "name": "homegraph_enrichment_v1",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "summary_short": {"type": "string"},
+                "summary_long": {"type": "string"},
+                "facts": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "kind": {"type": "string"},
+                            "value": {"type": "string"},
+                            "confidence": {"type": "number"},
+                            "status": {"type": "string"},
+                            "source_memory_ids": {"type": "array", "items": {"type": "string"}},
+                            "source_excerpt": {"type": "string"},
+                        },
+                        "required": ["kind", "value", "confidence", "status", "source_memory_ids", "source_excerpt"],
+                    },
+                },
+                "relations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "target_type": {"type": "string"},
+                            "target_id_or_value": {"type": "string"},
+                            "relation_type": {"type": "string"},
+                            "confidence": {"type": "number"},
+                            "source_memory_ids": {"type": "array", "items": {"type": "string"}},
+                        },
+                        "required": ["target_type", "target_id_or_value", "relation_type", "confidence", "source_memory_ids"],
+                    },
+                },
+                "links": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "target_type": {"type": "string"},
+                            "target_value": {"type": "string"},
+                            "relation_type": {"type": "string"},
+                            "strength": {"type": "number"},
+                            "confidence": {"type": "number"},
+                            "status": {"type": "string"},
+                            "polarity": {"type": "string"},
+                            "source_memory_ids": {"type": "array", "items": {"type": "string"}},
+                            "source_excerpt": {"type": "string"},
+                            "aliases": {"type": "array", "items": {"type": "string"}},
+                            "entity_status": {"type": "string"},
+                        },
+                        "required": [
+                            "target_type",
+                            "target_value",
+                            "relation_type",
+                            "strength",
+                            "confidence",
+                            "status",
+                            "polarity",
+                            "source_memory_ids",
+                            "source_excerpt",
+                            "aliases",
+                            "entity_status",
+                        ],
+                    },
+                },
+                "conflicts": {"type": "array", "items": {"type": "string"}},
+                "needs_human_review": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": [
+                "summary_short",
+                "summary_long",
+                "facts",
+                "relations",
+                "links",
+                "conflicts",
+                "needs_human_review",
+            ],
+        },
+    }
+
+    user_id = str(review_export.get("user_id", "")).strip()
+    channel, viewer_login = _parse_viewer_identity(user_id)
+    viewer_name = display_name or review_export.get("viewer") or viewer_login or user_id
+
+    system_prompt = (
+        "Tu produis un enrichissement Homegraph structure a partir d'un export memoire viewer. "
+        "Objectif : extraire peu d'items, mais utiles et directement mergeables dans Homegraph. "
+        "N'invente aucun fait. Si une information n'est pas soutenue par les souvenirs fournis, ne la produis pas. "
+        "Utilise des valeurs courtes, concretes et reutilisables. "
+        "Quand tu hesites, utilise un confidence plus bas et status=uncertain. "
+        "Evite de dupliquer la meme information dans facts, relations et links sans raison. "
+        "Pour source_memory_ids, utilise seulement des ids presents dans les records. "
+        "Pour source_excerpt, cite un extrait court et factuel des records fournis. "
+        "Relations privilegiees : plays, likes, dislikes, talks_about, returns_to, knows, compliments, jokes_about, interacts_with, plays_in_mode. "
+        "Target_type doit rester simple : viewer, game, topic, running_gag, stream_mode, trait, object. "
+        "Retourne les champs textuels en francais quand c'est naturel."
+    )
+
+    user_prompt = {
+        "task": "Propose un enrichissement Homegraph V1 structure pour ce viewer.",
+        "viewer": {
+            "viewer_id": user_id,
+            "channel": channel,
+            "viewer_login": viewer_login,
+            "display_name": viewer_name,
+        },
+        "review_export": review_export,
+        "review_analysis": analysis,
+    }
+
+    parsed = _run_structured_openai_request(
+        config,
+        schema=schema,
+        system_prompt=system_prompt,
+        user_payload=user_prompt,
+        verbose=verbose,
+        request_label=(
+            f"homegraph viewer={viewer_name} "
+            f"records={len(review_export.get('records', []))}"
+        ),
+    )
+    return {
+        "viewer_id": user_id,
+        "channel": channel,
+        "viewer_login": viewer_login,
+        "display_name": viewer_name,
+        "summary_short": str(parsed.get("summary_short", "")).strip(),
+        "summary_long": str(parsed.get("summary_long", "")).strip(),
+        "facts": list(parsed.get("facts", [])),
+        "relations": list(parsed.get("relations", [])),
+        "links": list(parsed.get("links", [])),
+        "conflicts": list(parsed.get("conflicts", [])),
+        "needs_human_review": list(parsed.get("needs_human_review", [])),
+        "model_name": config.openai_review_model,
+        "source_ref": f"openai-review:{viewer_login or viewer_name}:{review_export.get('count', 0)}",
+    }
+
+
+def _extract_viewer_name(user_id: str) -> str:
+    marker = ":viewer:"
+    if marker in user_id:
+        return user_id.split(marker, 1)[1]
+    return user_id
+
+
+def _parse_viewer_identity(user_id: str) -> tuple[str | None, str | None]:
+    parts = user_id.split(":")
+    if len(parts) >= 4 and parts[0] == "twitch" and parts[2] == "viewer":
+        return parts[1] or None, parts[3] or None
+    return None, None
+
+
+def _run_structured_openai_request(
+    config: AppConfig,
+    *,
+    schema: dict[str, Any],
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    verbose: bool = False,
+    request_label: str = "",
+) -> dict[str, Any]:
+    if verbose:
+        print(f"[openai-review] request model={config.openai_review_model} {request_label}".strip(), flush=True)
     try:
         response = requests.post(
             "https://api.openai.com/v1/responses",
@@ -146,7 +341,7 @@ def analyze_review_export(
                 "model": config.openai_review_model,
                 "input": [
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": json.dumps(user_prompt, ensure_ascii=False)},
+                    {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
                 ],
                 "text": {
                     "format": {
@@ -181,22 +376,9 @@ def analyze_review_export(
         raise OpenAIReviewError("OpenAI response did not contain structured output text.")
 
     try:
-        parsed = json.loads(text_output)
-        if verbose:
-            print(
-                f"[openai-review] parsed proposals={len(parsed.get('proposals', []))}",
-                flush=True,
-            )
-        return parsed
+        return json.loads(text_output)
     except json.JSONDecodeError as exc:
         raise OpenAIReviewError(f"OpenAI returned invalid JSON: {exc}") from exc
-
-
-def _extract_viewer_name(user_id: str) -> str:
-    marker = ":viewer:"
-    if marker in user_id:
-        return user_id.split(marker, 1)[1]
-    return user_id
 
 
 def _extract_response_output_text(payload: dict[str, Any]) -> str:
