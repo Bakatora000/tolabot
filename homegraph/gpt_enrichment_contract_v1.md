@@ -24,6 +24,9 @@ Auth :
 X-Admin-Key: <value>
 ```
 
+Query param optionnel :
+- `dry_run=true|false`
+
 ## Requete attendue
 
 Champs top-level :
@@ -115,6 +118,7 @@ Exemple :
   "viewer_id": "twitch:expevay:viewer:dame_gaby",
   "generated_at": "2026-03-27T14:00:00Z",
   "source": "homegraph_enrichment_v1",
+  "dry_run": false,
   "merged": {
     "facts": 1,
     "relations": 1,
@@ -154,6 +158,17 @@ Exemple :
   - JSON d'enrichissement propose
 - bouton secondaire :
   - `Fusionner dans Homegraph`
+
+### Preview conseillee
+
+- Windows peut d'abord appeler :
+  - `POST /admin/homegraph/users/{user_id}/enrichment?dry_run=true`
+- Linux renvoie alors le meme apercu de contexte et de graphe
+- mais sans ecrire dans la vraie base
+
+Ensuite seulement :
+- `POST /admin/homegraph/users/{user_id}/enrichment`
+- pour appliquer le merge reel
 
 ### Pourquoi cette separation
 

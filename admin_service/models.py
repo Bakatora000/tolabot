@@ -296,6 +296,7 @@ class AdminHomegraphEnrichmentResponse(BaseModel):
     viewer_id: str
     generated_at: str
     source: str
+    dry_run: bool = False
     merged: HomegraphMergeCounts
     context: HomegraphContextContent
     text_block: str

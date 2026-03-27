@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import tempfile
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -368,6 +371,7 @@ async def admin_homegraph_merge_enrichment(
     user_id: str,
     payload: AdminHomegraphEnrichmentRequest,
     request: Request,
+    dry_run: bool = False,
 ):
     if payload.viewer_id != user_id:
         raise HTTPException(
@@ -381,24 +385,40 @@ async def admin_homegraph_merge_enrichment(
 
     settings_obj = getattr(request.app.state, "settings", settings)
     payload_dict = payload.model_dump(exclude_none=True, exclude={"model_name", "source_ref"})
-    merged = merge_homegraph_payload(
-        payload_dict,
-        db_path=settings_obj.homegraph_db_path,
-        source_ref=payload.source_ref,
-        model_name=payload.model_name,
-    )
-    context_payload = build_viewer_context_payload(
-        viewer_id=user_id,
-        db_path=settings_obj.homegraph_db_path,
-    )
-    graph_payload = build_viewer_graph_payload(
-        viewer_id=user_id,
-        db_path=settings_obj.homegraph_db_path,
-    )
+    db_path = Path(settings_obj.homegraph_db_path)
+    temp_db_path: Path | None = None
+
+    try:
+        effective_db_path = db_path
+        if dry_run:
+            with tempfile.NamedTemporaryFile(prefix="homegraph_dry_run_", suffix=".sqlite3", delete=False) as handle:
+                temp_db_path = Path(handle.name)
+            shutil.copyfile(db_path, temp_db_path)
+            effective_db_path = temp_db_path
+
+        merged = merge_homegraph_payload(
+            payload_dict,
+            db_path=effective_db_path,
+            source_ref=payload.source_ref,
+            model_name=payload.model_name,
+        )
+        context_payload = build_viewer_context_payload(
+            viewer_id=user_id,
+            db_path=effective_db_path,
+        )
+        graph_payload = build_viewer_graph_payload(
+            viewer_id=user_id,
+            db_path=effective_db_path,
+        )
+    finally:
+        if temp_db_path is not None:
+            temp_db_path.unlink(missing_ok=True)
+
     return AdminHomegraphEnrichmentResponse(
         viewer_id=user_id,
         generated_at=context_payload["generated_at"],
-        source="homegraph_enrichment_v1",
+        source="homegraph_enrichment_dry_run_v1" if dry_run else "homegraph_enrichment_v1",
+        dry_run=dry_run,
         merged=merged,
         context=context_payload["context"],
         text_block=context_payload["text_block"],

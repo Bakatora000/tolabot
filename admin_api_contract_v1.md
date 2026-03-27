@@ -269,6 +269,9 @@ Route de fusion d'un enrichissement GPT vers `homegraph`.
 Headers :
 - `X-Admin-Key`
 
+Query params optionnels :
+- `dry_run=true|false`
+
 Body minimal :
 
 ```json
@@ -318,6 +321,7 @@ Reponse `200` :
   "viewer_id": "twitch:streamer:viewer:alice",
   "generated_at": "2026-03-27T14:00:00Z",
   "source": "homegraph_enrichment_v1",
+  "dry_run": false,
   "merged": {
     "facts": 1,
     "relations": 1,
@@ -353,6 +357,7 @@ Notes :
 - la route applique directement le merge dans SQLite via `homegraph`
 - `model_name` et `source_ref` sont optionnels mais recommandes pour tracer une analyse GPT
 - la reponse renvoie un apercu direct du contexte et des stats de graphe pour l'UI Windows
+- si `dry_run=true`, Linux merge sur une copie temporaire de la base et ne persiste rien
 /admin/homegraph/graph?center_node_id=game:valheim&max_depth=2&max_nodes=20&max_links=30&include_uncertain=false&min_weight=0.7
 ```
 
