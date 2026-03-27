@@ -34,6 +34,19 @@ class PromptComposerTests(unittest.TestCase):
         self.assertIn("<web_context>[1] Meteo Lyon - Temps nuageux.</web_context>", messages[1]["content"])
         self.assertIn("n'ajoute jamais de commentaire saisonnier", messages[0]["content"].lower())
 
+    def test_build_prompt_plan_appends_thread_context_to_conversation_block(self):
+        sources = build_context_source_results(
+            viewer_context="alice: salut",
+            conversation_context="bob: on parle de valheim",
+            thread_context="participants: alice, bob",
+        )
+
+        plan = build_prompt_plan(sources, conversation_mode="")
+
+        self.assertEqual(plan.source_trace, ["local_viewer_thread", "conversation_graph", "thread_context"])
+        self.assertIn("bob: on parle de valheim", plan.conversation_block)
+        self.assertIn("participants: alice, bob", plan.conversation_block)
+
 
 if __name__ == "__main__":
     unittest.main()

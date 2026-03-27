@@ -1,6 +1,6 @@
 import unittest
 
-from context_sources import build_auxiliary_context_sources, merge_context_text
+from context_sources import build_auxiliary_context_sources, build_context_source_results, merge_context_text
 
 
 class ContextSourcesTests(unittest.TestCase):
@@ -17,6 +17,18 @@ class ContextSourcesTests(unittest.TestCase):
         )
 
         self.assertEqual([source.source_id for source in sources], ["alias_resolution", "facts_memory"])
+
+    def test_build_context_source_results_includes_thread_context(self):
+        sources = build_context_source_results(
+            viewer_context="alice: salut",
+            conversation_context="bob: valheim",
+            thread_context="participants: alice, bob",
+        )
+
+        self.assertEqual(
+            [source.source_id for source in sources],
+            ["local_viewer_thread", "conversation_graph", "thread_context"],
+        )
 
 
 if __name__ == "__main__":

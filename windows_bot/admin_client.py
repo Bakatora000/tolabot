@@ -124,6 +124,17 @@ def delete_memory(config: AppConfig, memory_id: str) -> bool:
     return bool(data.get("deleted", True))
 
 
+def forget_user_memory(config: AppConfig, user_id: str, memory_id: str) -> bool:
+    try:
+        response = _request(config, "DELETE", f"/admin/users/{user_id}/memories/{memory_id}")
+    except AdminApiError as exc:
+        if "HTTP 404" not in str(exc):
+            raise
+        return delete_memory(config, memory_id)
+    data = response.json()
+    return bool(data.get("deleted", True))
+
+
 def export_user_memories(config: AppConfig, user_id: str) -> dict[str, Any]:
     response = _request(config, "POST", f"/admin/users/{user_id}/export")
     return response.json()

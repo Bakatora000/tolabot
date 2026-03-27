@@ -363,10 +363,13 @@ class Mem0MemoryBackend:
         results = payload.get("results", payload) if isinstance(payload, dict) else payload
         normalized: list[MemoryRecord] = []
         for item in results or []:
+            item_user_id = normalize_spaces(str(item.get("user_id", user_id)))
+            if item_user_id and item_user_id != normalize_spaces(user_id):
+                continue
             normalized.append(
                 MemoryRecord(
                     id=str(item.get("id", "")),
-                    user_id=str(item.get("user_id", user_id)),
+                    user_id=item_user_id or user_id,
                     memory=normalize_spaces(str(item.get("memory", ""))),
                     metadata=dict(item.get("metadata", {}) or {}),
                     created_at=str(item.get("created_at", "")),
@@ -416,10 +419,13 @@ class Mem0MemoryBackend:
         records = payload.get("results", payload) if isinstance(payload, dict) else payload
         normalized: list[MemoryRecord] = []
         for item in records:
+            item_user_id = normalize_spaces(str(item.get("user_id", user_id)))
+            if item_user_id and item_user_id != normalize_spaces(user_id):
+                continue
             normalized.append(
                 MemoryRecord(
                     id=str(item.get("id", "")),
-                    user_id=str(item.get("user_id", user_id)),
+                    user_id=item_user_id or user_id,
                     memory=normalize_spaces(str(item.get("memory", ""))),
                     metadata=dict(item.get("metadata", {}) or {}),
                     created_at=str(item.get("created_at", "")),

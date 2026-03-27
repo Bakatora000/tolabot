@@ -34,6 +34,7 @@ def make_context_source_result(
 def build_context_source_results(
     viewer_context: str = "",
     conversation_context: str = "",
+    thread_context: str = "",
     web_context: str = "",
     context_label: str = "",
 ) -> list[ContextSourceResult]:
@@ -59,6 +60,16 @@ def build_context_source_results(
     )
     if conversation_source:
         sources.append(conversation_source)
+
+    thread_source = make_context_source_result(
+        "thread_context",
+        thread_context,
+        priority=95,
+        confidence=0.9,
+        meta={"context_label": context_label},
+    )
+    if thread_source:
+        sources.append(thread_source)
 
     web_source = make_context_source_result(
         "web",

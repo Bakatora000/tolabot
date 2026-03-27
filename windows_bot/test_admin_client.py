@@ -5,6 +5,7 @@ from admin_client import (
     AdminApiError,
     admin_healthcheck,
     delete_user_memories,
+    forget_user_memory,
     get_homegraph_multihop_graph,
     get_homegraph_user_graph,
     list_admin_users,
@@ -96,6 +97,37 @@ class AdminClientTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual(result.deleted_count, 2)
         self.assertFalse(result.truncated)
+
+    @patch("admin_client.requests.request")
+    def test_forget_user_memory_uses_user_scoped_endpoint(self, mock_request):
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"ok": True, "deleted": True}
+        mock_request.return_value = response
+
+        deleted = forget_user_memory(make_config(), "twitch:streamer:viewer:alice", "mem_123")
+
+        self.assertTrue(deleted)
+        args, _kwargs = mock_request.call_args
+        self.assertIn("/admin/users/twitch:streamer:viewer:alice/memories/mem_123", args[1])
+
+    @patch("admin_client.requests.request")
+    def test_forget_user_memory_falls_back_to_global_delete_on_404(self, mock_request):
+        missing_response = Mock()
+        missing_response.status_code = 404
+        missing_response.json.return_value = {"detail": "Not Found"}
+        fallback_response = Mock()
+        fallback_response.status_code = 200
+        fallback_response.json.return_value = {"ok": True, "deleted": True}
+        mock_request.side_effect = [missing_response, fallback_response]
+
+        deleted = forget_user_memory(make_config(), "twitch:streamer:viewer:alice", "mem_123")
+
+        self.assertTrue(deleted)
+        first_args, _ = mock_request.call_args_list[0]
+        second_args, _ = mock_request.call_args_list[1]
+        self.assertIn("/admin/users/twitch:streamer:viewer:alice/memories/mem_123", first_args[1])
+        self.assertIn("/admin/memories/mem_123", second_args[1])
 
     @patch("admin_client.requests.request")
     def test_get_homegraph_user_graph_returns_payload(self, mock_request):

@@ -904,12 +904,14 @@ def prepare_runtime_context(
             payload.broadcaster.name,
             author,
             use_active_thread=not riddle_thread_close,
+            current_text=resolved_text,
         )
         if chat_context["viewer_context"] == "aucun" and not riddle_thread_close:
             chat_context, context_sources = get_specialized_local_context_fn(
                 payload.broadcaster.name,
                 author,
                 use_active_thread=False,
+                current_text=resolved_text,
             )
         context_source = "local-specialized"
     else:

@@ -133,6 +133,26 @@ Ce script :
 - upsert aussi les `links` V2 et leurs evidences si presents
 - trace l'operation dans `graph_jobs` et `graph_job_items`
 
+## Bootstrap Heuristique Rapide
+
+Pour generer une extraction Homegraph V2 a partir d'un export mem0 deja existant :
+
+```bash
+python3 homegraph/bootstrap_mem0_heuristic.py homegraph/payloads/alice_export.json
+```
+
+Pour traiter un dossier entier d'exports :
+
+```bash
+python3 homegraph/batch_bootstrap_mem0_heuristic.py homegraph/payloads
+```
+
+Avec merge direct dans SQLite :
+
+```bash
+python3 homegraph/batch_bootstrap_mem0_heuristic.py homegraph/payloads --merge
+```
+
 ## Construction Du Contexte Viewer Compact
 
 ```bash

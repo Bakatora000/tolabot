@@ -276,6 +276,16 @@ async def admin_delete_memory(memory_id: str, backend=Depends(backend_dependency
     return AdminDeleteMemoryResponse(deleted=deleted)
 
 
+@app.delete(
+    "/admin/users/{user_id}/memories/{memory_id}",
+    response_model=AdminDeleteMemoryResponse,
+    dependencies=admin_auth_dependencies(settings.admin_key),
+)
+async def admin_forget_user_memory(user_id: str, memory_id: str, backend=Depends(backend_dependency)):
+    deleted = backend.forget(user_id, memory_id)
+    return AdminDeleteMemoryResponse(deleted=deleted)
+
+
 @app.delete("/admin/users/{user_id}", response_model=AdminPurgeUserResponse, dependencies=admin_auth_dependencies(settings.admin_key))
 async def admin_purge_user_memories(user_id: str, request: Request, backend=Depends(backend_dependency)):
     deleted_count, truncated = backend.purge_user(user_id, request.app.state.settings.admin_export_limit)

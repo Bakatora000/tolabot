@@ -79,6 +79,7 @@ from runtime_pipeline import (
     remember_remote_turn,
 )
 from runtime_types import MessagePreparation, QueuedMessageContext, RuntimePipelineDeps
+from thread_context import build_thread_context
 from twitch_auth import run_oauth_flow
 from web_search_client import build_web_search_context, search_searxng
 
@@ -137,6 +138,7 @@ class Bot(commands.Bot):
         channel_name: str,
         author: str,
         use_active_thread: bool,
+        current_text: str = "",
     ) -> tuple[dict, list]:
         normalized_channel = normalize_spaces(channel_name).lower()
         normalized_author = normalize_spaces(author).lower()
@@ -146,18 +148,39 @@ class Bot(commands.Bot):
             active_turns = extract_active_viewer_thread(viewer_turns)
             viewer_turns = active_turns or viewer_turns
 
+        graph_context = build_conversation_graph_context(
+            self.conversation_graph,
+            normalized_channel,
+            normalized_author,
+            current_message=current_text,
+        )
         context = {
             "viewer_context": format_chat_turns(viewer_turns),
-            "global_context": build_conversation_graph_context(
-                self.conversation_graph,
-                normalized_channel,
-                normalized_author,
-            ),
+            "global_context": graph_context,
             "items": [],
         }
+        thread_source = None
+        if current_text:
+            thread_source = build_thread_context(
+                self.chat_memory,
+                self.conversation_graph,
+                normalized_channel,
+                build_normalized_event(
+                    event_id="",
+                    channel=normalized_channel,
+                    author=normalized_author,
+                    timestamp="",
+                    text=current_text,
+                ),
+            )
+            context["global_context"] = merge_context_text(
+                thread_source.text_block if thread_source else "aucun",
+                context["global_context"],
+            )
         sources = build_context_source_results(
             viewer_context=context["viewer_context"],
-            conversation_context=context["global_context"],
+            conversation_context=graph_context,
+            thread_context=thread_source.text_block if thread_source else "",
             context_label="local-specialized",
         )
         return context, sources
@@ -185,7 +208,23 @@ class Bot(commands.Bot):
                 author,
                 current_message=text,
             )
-            local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
+            thread_source = build_thread_context(
+                self.chat_memory,
+                self.conversation_graph,
+                channel_name,
+                build_normalized_event(
+                    event_id="",
+                    channel=channel_name,
+                    author=author,
+                    timestamp="",
+                    text=text,
+                ),
+            )
+            local_context["global_context"] = merge_context_text(
+                thread_source.text_block if thread_source else "aucun",
+                local_context.get("global_context", "aucun"),
+                graph_context,
+            )
             source_results = []
             local_viewer_source = make_context_source_result(
                 "local_viewer_thread",
@@ -205,6 +244,8 @@ class Bot(commands.Bot):
             )
             if graph_source:
                 source_results.append(graph_source)
+            if thread_source:
+                source_results.append(thread_source)
             if (
                 local_context["viewer_context"] == "aucun"
                 and prefer_active_thread
@@ -216,7 +257,11 @@ class Bot(commands.Bot):
                     author,
                     prefer_active_thread=False,
                 )
-                local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
+                local_context["global_context"] = merge_context_text(
+                    thread_source.text_block if thread_source else "aucun",
+                    local_context.get("global_context", "aucun"),
+                    graph_context,
+                )
             try:
                 remote_context = get_memory_context(
                     CONFIG,
@@ -268,7 +313,23 @@ class Bot(commands.Bot):
             author,
             current_message=text,
         )
-        local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
+        thread_source = build_thread_context(
+            self.chat_memory,
+            self.conversation_graph,
+            channel_name,
+            build_normalized_event(
+                event_id="",
+                channel=channel_name,
+                author=author,
+                timestamp="",
+                text=text,
+            ),
+        )
+        local_context["global_context"] = merge_context_text(
+            thread_source.text_block if thread_source else "aucun",
+            local_context.get("global_context", "aucun"),
+            graph_context,
+        )
         if (
             local_context["viewer_context"] == "aucun"
             and prefer_active_thread
@@ -280,10 +341,15 @@ class Bot(commands.Bot):
                 author,
                 prefer_active_thread=False,
             )
-            local_context["global_context"] = merge_context_text(local_context.get("global_context", "aucun"), graph_context)
+            local_context["global_context"] = merge_context_text(
+                thread_source.text_block if thread_source else "aucun",
+                local_context.get("global_context", "aucun"),
+                graph_context,
+            )
         return local_context, "local", build_context_source_results(
             viewer_context=local_context["viewer_context"],
             conversation_context=graph_context,
+            thread_context=thread_source.text_block if thread_source else "",
             context_label="local",
         )
 

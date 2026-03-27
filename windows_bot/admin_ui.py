@@ -12,13 +12,14 @@ from urllib.parse import parse_qs, unquote, urlparse
 from admin_client import (
     AdminApiError,
     admin_healthcheck,
-    delete_memory,
     delete_user_memories,
     export_user_memories,
+    forget_user_memory,
     get_homegraph_multihop_graph,
     get_homegraph_user_graph,
     get_recent_memories,
     list_admin_users,
+    remember_user_memory,
 )
 from admin_tunnel import AdminTunnelManager
 from bot_config import AppConfig, load_config
@@ -397,7 +398,6 @@ HTML_PAGE = """<!doctype html>
 <head>
   <meta charset="utf-8" />
   <title>Mem0 Admin</title>
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
   <script src="https://unpkg.com/3d-force-graph@1.76.2/dist/3d-force-graph.min.js"></script>
   <style>
     body { font-family: sans-serif; margin: 24px; max-width: 1280px; }
@@ -433,6 +433,16 @@ HTML_PAGE = """<!doctype html>
     .graph-sidebar { width: 320px; border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; }
     .graph-sidebar pre { min-height: 180px; }
     .graph-caption { color:#666; font-size:0.95rem; }
+    .memory-form { border: 1px solid #ddd; border-radius: 6px; padding: 12px; margin-bottom: 14px; background: #fff; }
+    .memory-form textarea { width: 100%; min-height: 92px; resize: vertical; }
+    .memory-form-row { display:flex; gap:10px; flex-wrap: wrap; margin: 10px 0; }
+    .memory-form-row label { display:flex; flex-direction:column; gap:4px; font-size: 0.95rem; }
+    .memory-form-row select { min-width: 140px; }
+    .modebar { display:flex; gap:10px; margin: 0 0 18px; }
+    .mode-button { padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 999px; background: #fff; }
+    .mode-button.active { background: #10223a; color: #fff; border-color: #10223a; }
+    .mode-panel[hidden] { display:none; }
+    .section-head { display:flex; align-items:center; gap:12px; margin: 0 0 12px; }
   </style>
 </head>
 <body>
@@ -452,62 +462,74 @@ HTML_PAGE = """<!doctype html>
     </select>
     <span id="selection" class="muted">Aucun viewer sélectionné.</span>
   </div>
+  <div class="modebar">
+    <button id="mode-global-button" class="mode-button active" type="button">Global</button>
+    <button id="mode-steward-button" class="mode-button" type="button">Data Steward</button>
+  </div>
   <div class="row">
     <div class="panel panel-left">
       <h2>Viewers</h2>
       <ul id="users"></ul>
     </div>
     <div class="panel">
-      <h2>Recent</h2>
-      <div id="recent">Sélectionne un viewer.</div>
-      <div class="edit-panel">
-        <div style="display:flex; align-items:center; gap:12px;">
-          <h2 style="margin:0;">Édition</h2>
-          <span id="editor-selection" class="muted">Aucun viewer ouvert en édition.</span>
+      <div id="global-panel" class="mode-panel">
+        <div class="section-head">
+          <h2 style="margin:0;">Graph 3D</h2>
+          <span class="muted">Exploration globale et navigation Homegraph.</span>
         </div>
-        <div id="editor" class="muted">Clique sur “Éditer” pour afficher toute la mémoire d’un viewer.</div>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px; margin-top: 24px;">
-        <h2 style="margin:0;">Review</h2>
-        <button id="verbose-button" type="button">Verbose: OFF</button>
-      </div>
-      <div id="review" class="muted">Aucune analyse lancée.</div>
-      <div style="display:flex; align-items:center; gap:12px; margin-top: 24px;">
-        <h2 style="margin:0;">Graph 3D</h2>
-      </div>
-      <div class="graph-toolbar">
-        <label for="graph-kind-select">Graphe</label>
-        <select id="graph-kind-select">
-          <option value="conversation">Conversation</option>
-          <option value="facts">Faits</option>
-          <option value="homegraph">Homegraph</option>
-        </select>
-        <span id="homegraph-filter-group" style="display:none;">
-          <label for="homegraph-uncertain-select">Incertain</label>
-          <select id="homegraph-uncertain-select">
-            <option value="true" selected>Oui</option>
-            <option value="false">Non</option>
+        <div class="graph-toolbar">
+          <label for="graph-kind-select">Graphe</label>
+          <select id="graph-kind-select">
+            <option value="conversation">Conversation</option>
+            <option value="facts">Faits</option>
+            <option value="homegraph">Homegraph</option>
           </select>
-          <label for="homegraph-min-weight-input">Poids min</label>
-          <input id="homegraph-min-weight-input" type="number" min="0" max="1" step="0.1" placeholder="0.7" style="width:72px;" />
-          <label for="homegraph-max-links-input">Liens max</label>
-          <input id="homegraph-max-links-input" type="number" min="1" step="1" value="12" style="width:72px;" />
-          <label for="homegraph-max-depth-input">Profondeur</label>
-          <input id="homegraph-max-depth-input" type="number" min="1" step="1" value="2" style="width:72px;" />
-          <label for="homegraph-max-nodes-input">Nœuds max</label>
-          <input id="homegraph-max-nodes-input" type="number" min="1" step="1" value="20" style="width:72px;" />
-        </span>
-        <button id="graph-refresh-button" type="button">Charger</button>
-        <button id="graph-reset-button" type="button">Réinitialiser le focus</button>
-        <span id="graph-selection" class="muted">Vue globale.</span>
-      </div>
-      <div class="graph-layout">
-        <div class="graph-stage" id="graph-stage"></div>
-        <div class="graph-sidebar">
-          <div class="graph-caption" id="graph-stats">Aucune donnée chargée.</div>
-          <h3>Détails</h3>
-          <pre id="graph-details">Clique sur un nœud pour isoler ses liens.</pre>
+          <span id="homegraph-filter-group" style="display:none;">
+            <label for="homegraph-uncertain-select">Incertain</label>
+            <select id="homegraph-uncertain-select">
+              <option value="true" selected>Oui</option>
+              <option value="false">Non</option>
+            </select>
+            <label for="homegraph-min-weight-input">Poids min</label>
+            <input id="homegraph-min-weight-input" type="number" min="0" max="1" step="0.1" placeholder="0.7" style="width:72px;" />
+            <label for="homegraph-max-links-input">Liens max</label>
+            <input id="homegraph-max-links-input" type="number" min="1" step="1" value="12" style="width:72px;" />
+            <label for="homegraph-max-depth-input">Profondeur</label>
+            <input id="homegraph-max-depth-input" type="number" min="1" step="1" value="2" style="width:72px;" />
+            <label for="homegraph-max-nodes-input">Nœuds max</label>
+            <input id="homegraph-max-nodes-input" type="number" min="1" step="1" value="20" style="width:72px;" />
+          </span>
+          <button id="graph-refresh-button" type="button">Charger</button>
+          <button id="graph-reset-button" type="button">Réinitialiser le focus</button>
+          <span id="graph-selection" class="muted">Vue globale.</span>
         </div>
+        <div class="graph-layout">
+          <div class="graph-stage" id="graph-stage"></div>
+          <div class="graph-sidebar">
+            <div class="graph-caption" id="graph-stats">Aucune donnée chargée.</div>
+            <h3>Détails</h3>
+            <pre id="graph-details">Clique sur un nœud pour isoler ses liens.</pre>
+          </div>
+        </div>
+      </div>
+      <div id="steward-panel" class="mode-panel" hidden>
+        <div class="section-head">
+          <h2 style="margin:0;">Recent</h2>
+          <span class="muted">Inspection, édition et revue des souvenirs.</span>
+        </div>
+        <div id="recent">Sélectionne un viewer.</div>
+        <div class="edit-panel">
+          <div class="section-head" style="margin-top:24px;">
+            <h2 style="margin:0;">Édition</h2>
+            <span id="editor-selection" class="muted">Aucun viewer ouvert en édition.</span>
+          </div>
+          <div id="editor" class="muted">Clique sur “Éditer” pour afficher toute la mémoire d’un viewer.</div>
+        </div>
+        <div class="section-head" style="margin-top:24px;">
+          <h2 style="margin:0;">Review</h2>
+          <button id="verbose-button" type="button">Verbose: OFF</button>
+        </div>
+        <div id="review" class="muted">Aucune analyse lancée.</div>
       </div>
       <div id="error" class="error"></div>
     </div>
@@ -532,6 +554,7 @@ HTML_PAGE = """<!doctype html>
     let fullGraphData = { nodes: [], links: [] };
     let lastGraphSignature = '';
     let focusedNodeId = null;
+    let adminMode = 'global';
     window.currentAnalysis = null;
     window.proposalDecisions = {};
 
@@ -550,6 +573,17 @@ HTML_PAGE = """<!doctype html>
 
     function normalizeToken(value) {
       return String(value || '').trim().toLowerCase();
+    }
+
+    function updateModeState() {
+      const globalButton = document.getElementById('mode-global-button');
+      const stewardButton = document.getElementById('mode-steward-button');
+      const globalPanel = document.getElementById('global-panel');
+      const stewardPanel = document.getElementById('steward-panel');
+      globalButton.classList.toggle('active', adminMode === 'global');
+      stewardButton.classList.toggle('active', adminMode === 'steward');
+      globalPanel.hidden = adminMode !== 'global';
+      stewardPanel.hidden = adminMode !== 'steward';
     }
 
     function updateSelectionState() {
@@ -571,6 +605,7 @@ HTML_PAGE = """<!doctype html>
         document.getElementById('graph-selection').textContent += ` | centre: ${homegraphCenterNodeId}`;
       }
       document.getElementById('homegraph-filter-group').style.display = graphKind === 'homegraph' ? 'contents' : 'none';
+      updateModeState();
     }
 
     function resetReviewPanel(message = 'Aucune analyse lancée.') {
@@ -795,6 +830,21 @@ HTML_PAGE = """<!doctype html>
       );
     }
 
+    function applyGraphMouseConfig() {
+      if (!graphInstance || !graphInstance.controls) {
+        return;
+      }
+      const controls = graphInstance.controls();
+      if (!controls) {
+        return;
+      }
+      controls.mouseButtons = {
+        LEFT: 0,
+        MIDDLE: 1,
+        RIGHT: 2,
+      };
+    }
+
     function ensureGraphInstance() {
       if (graphInstance) {
         return graphInstance;
@@ -804,7 +854,7 @@ HTML_PAGE = """<!doctype html>
         .backgroundColor('#07111d')
         .nodeLabel((node) => `${node.label} (${node.kind})`)
         .nodeAutoColorBy(null)
-        .enableNodeDrag(false)
+        .enableNodeDrag(true)
         .nodeColor((node) => node.color || '#8ecae6')
         .nodeVal((node) => {
           if (graphKind === 'homegraph' && homegraphCenterNodeId && node.id === homegraphCenterNodeId) {
@@ -825,6 +875,13 @@ HTML_PAGE = """<!doctype html>
               setGraphStatus(`Chargement du Homegraph de ${targetUser.viewer || targetUser.user_id}...`);
               renderGraphDetails(node);
               await loadRecent(targetUser.user_id, targetUser.viewer || targetUser.user_id);
+              return;
+            }
+            if (node.id === homegraphRootNodeId) {
+              homegraphCenterNodeId = '';
+              setError('');
+              renderGraphDetails(node);
+              await loadGraph();
               return;
             }
             homegraphCenterNodeId = node.id || '';
@@ -849,13 +906,7 @@ HTML_PAGE = """<!doctype html>
           renderGraphDetails(null);
           applyGraphFocus();
         });
-      if (graphInstance.controls && window.THREE && window.THREE.MOUSE) {
-        graphInstance.controls().mouseButtons = {
-          LEFT: window.THREE.MOUSE.ROTATE,
-          MIDDLE: window.THREE.MOUSE.DOLLY,
-          RIGHT: window.THREE.MOUSE.PAN,
-        };
-      }
+      applyGraphMouseConfig();
       return graphInstance;
     }
 
@@ -863,6 +914,7 @@ HTML_PAGE = """<!doctype html>
       const graph = ensureGraphInstance();
       const data = getFocusedGraphData(fullGraphData, focusedNodeId);
       graph.graphData(data);
+      applyGraphMouseConfig();
     }
 
     async function loadGraph() {
@@ -923,7 +975,6 @@ HTML_PAGE = """<!doctype html>
         if (graphKind === 'homegraph' && homegraphCenterNodeId) {
           const centerNode = findNodeById(fullGraphData, homegraphCenterNodeId);
           renderGraphDetails(centerNode);
-          focusCameraOnNode(centerNode);
         } else {
           renderGraphDetails(null);
         }
@@ -971,11 +1022,37 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function openEditor(userId, viewerLabel = userId) {
+      adminMode = 'steward';
       editingUserId = userId;
       editingViewerLabel = viewerLabel;
+      selectedUserId = userId;
+      selectedViewerLabel = viewerLabel;
       updateSelectionState();
+      await loadUsers();
       const editorNode = document.getElementById('editor');
       editorNode.innerHTML = '<div class="muted">Chargement de toute la mémoire…</div>';
+      const recentNode = document.getElementById('recent');
+      recentNode.innerHTML = '<div class="muted">Chargement des souvenirs récents…</div>';
+      await loadGraph();
+      const recentResponse = await fetch(`/api/users/${encodeURIComponent(userId)}/recent`);
+      const recentData = await recentResponse.json();
+      if (!recentData.ok) {
+        setError(recentData.error || 'Erreur lors du chargement des souvenirs récents.');
+        recentNode.innerHTML = '<div class="muted">Impossible de charger les souvenirs.</div>';
+      } else if (!recentData.results || recentData.results.length === 0) {
+        recentNode.innerHTML = '<div class="muted">Aucun souvenir récent pour ce viewer.</div>';
+      } else {
+        recentNode.innerHTML = recentData.results.map((item) => `
+          <div class="memory-card">
+            <pre>${escapeHtml(item.memory || '')}</pre>
+            <div class="memory-meta">
+              id: ${escapeHtml(item.id || '')}<br />
+              created_at: ${escapeHtml(item.created_at || '')}<br />
+              score: ${escapeHtml(item.score ?? '')}
+            </div>
+          </div>
+        `).join('');
+      }
       const response = await fetch(`/api/users/${encodeURIComponent(userId)}/all-memories`);
       const data = await response.json();
       if (!data.ok) {
@@ -987,23 +1064,76 @@ HTML_PAGE = """<!doctype html>
       renderEditorMemories(data.results || []);
     }
 
+    function renderMemoryAddForm() {
+      if (!editingUserId) {
+        return '';
+      }
+      return `
+        <div class="memory-form" id="memory-add-form" data-user-id="${escapeHtml(editingUserId)}" data-viewer-label="${escapeHtml(editingViewerLabel || editingUserId)}">
+          <strong>Ajouter un souvenir</strong>
+          <div class="muted" style="margin-top:6px;">Ajout manuel pour ${escapeHtml(editingViewerLabel || editingUserId)}.</div>
+          <div class="muted" style="margin-top:4px;">Cible: ${escapeHtml(editingUserId)}</div>
+          <div style="margin-top:10px;">
+            <textarea id="memory-add-text" placeholder="Ex: joue souvent à Satisfactory et aime optimiser ses usines."></textarea>
+          </div>
+          <div class="memory-form-row">
+            <label>
+              Catégorie
+              <select id="memory-add-category">
+                <option value="general">Général</option>
+                <option value="game">Jeu</option>
+                <option value="topic">Sujet</option>
+                <option value="social">Social</option>
+                <option value="preference">Préférence</option>
+                <option value="running_gag">Running gag</option>
+                <option value="stream_mode">Mode de jeu</option>
+              </select>
+            </label>
+            <label>
+              Confiance
+              <select id="memory-add-confidence">
+                <option value="medium" selected>Moyenne</option>
+                <option value="high">Haute</option>
+                <option value="low">Basse</option>
+              </select>
+            </label>
+            <label>
+              Portée
+              <select id="memory-add-scope">
+                <option value="durable" selected>Durable</option>
+                <option value="session">Session</option>
+                <option value="ephemeral">Éphémère</option>
+              </select>
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" onclick="addManualMemory()">Ajouter</button>
+          </div>
+        </div>
+      `;
+    }
+
     function renderEditorMemories(results) {
       const editorNode = document.getElementById('editor');
+      const formHtml = renderMemoryAddForm();
       if (!results || results.length === 0) {
-        editorNode.innerHTML = '<div class="muted">Aucun souvenir pour ce viewer.</div>';
+        editorNode.innerHTML = `${formHtml}<div class="muted">Aucun souvenir pour ce viewer.</div>`;
         return;
       }
       editorNode.innerHTML = `
+        ${formHtml}
         <div class="scroll-box">
           ${results.map((item) => `
             <div class="memory-card">
               <pre>${escapeHtml(item.memory || '')}</pre>
               <div class="memory-meta">
+                user_id: ${escapeHtml(item.user_id || editingUserId || '')}<br />
                 id: ${escapeHtml(item.id || '')}<br />
                 created_at: ${escapeHtml(item.created_at || '')}
+                ${item.metadata && Object.keys(item.metadata).length ? `<br />metadata: ${escapeHtml(JSON.stringify(item.metadata))}` : ''}
               </div>
               <div class="actions">
-                <button type="button" onclick="deleteSingleMemory('${escapeHtml(item.id || '')}')">Supprimer</button>
+                <button type="button" onclick='deleteSingleMemory(${JSON.stringify(String(item.id || ""))}, ${JSON.stringify(String(item.user_id || editingUserId || ""))}, ${JSON.stringify(String(editingViewerLabel || editingUserId || ""))})'>Supprimer</button>
               </div>
             </div>
           `).join('')}
@@ -1011,27 +1141,65 @@ HTML_PAGE = """<!doctype html>
       `;
     }
 
-    async function deleteSingleMemory(memoryId) {
-      if (!memoryId) {
+    async function addManualMemory() {
+      const formNode = document.getElementById('memory-add-form');
+      const targetUserId = formNode ? String(formNode.dataset.userId || '').trim() : '';
+      const targetViewerLabel = formNode ? String(formNode.dataset.viewerLabel || '').trim() : '';
+      if (!targetUserId) {
         return;
       }
-      const confirmed = window.confirm(`Supprimer le souvenir ${memoryId} ?`);
+      const textNode = document.getElementById('memory-add-text');
+      const categoryNode = document.getElementById('memory-add-category');
+      const confidenceNode = document.getElementById('memory-add-confidence');
+      const scopeNode = document.getElementById('memory-add-scope');
+      const text = (textNode && textNode.value ? textNode.value : '').trim();
+      if (!text) {
+        setError('Le texte du souvenir est vide.');
+        return;
+      }
+      setError('');
+      const response = await fetch(`/api/users/${encodeURIComponent(targetUserId)}/remember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          metadata: {
+            source: 'admin_ui_manual',
+            manual_target_user_id: targetUserId,
+            manual_target_viewer: targetViewerLabel || targetUserId,
+            category: categoryNode ? categoryNode.value : 'general',
+            confidence: confidenceNode ? confidenceNode.value : 'medium',
+            scope: scopeNode ? scopeNode.value : 'durable',
+          },
+        }),
+      });
+      const data = await response.json();
+      if (!data.ok) {
+        setError(data.error || 'Échec de l’ajout du souvenir.');
+        return;
+      }
+      if (textNode) {
+        textNode.value = '';
+      }
+      await openEditor(targetUserId, targetViewerLabel || targetUserId);
+    }
+
+    async function deleteSingleMemory(memoryId, userId, viewerLabel = userId) {
+      if (!memoryId || !userId) {
+        return;
+      }
+      const confirmed = window.confirm(`Supprimer le souvenir ${memoryId} pour ${viewerLabel || userId} ?`);
       if (!confirmed) {
         return;
       }
       setError('');
-      const response = await fetch(`/api/memories/${encodeURIComponent(memoryId)}/delete`, { method: 'POST' });
+      const response = await fetch(`/api/users/${encodeURIComponent(userId)}/memories/${encodeURIComponent(memoryId)}/delete`, { method: 'POST' });
       const data = await response.json();
       if (!data.ok) {
         setError(data.error || 'Échec de la suppression du souvenir.');
         return;
       }
-      if (selectedUserId) {
-        await loadRecent(selectedUserId, selectedViewerLabel || selectedUserId);
-      }
-      if (editingUserId) {
-        await openEditor(editingUserId, editingViewerLabel || editingUserId);
-      }
+      await openEditor(userId, viewerLabel || userId);
     }
 
     async function purgeSelectedUser() {
@@ -1219,6 +1387,14 @@ HTML_PAGE = """<!doctype html>
     }
 
     async function init() {
+      document.getElementById('mode-global-button').onclick = () => {
+        adminMode = 'global';
+        updateModeState();
+      };
+      document.getElementById('mode-steward-button').onclick = () => {
+        adminMode = 'steward';
+        updateModeState();
+      };
       document.getElementById('refresh-button').onclick = refreshAll;
       document.getElementById('export-button').onclick = exportSelectedUser;
       document.getElementById('export-review-button').onclick = exportSelectedUserForReview;
@@ -1227,8 +1403,8 @@ HTML_PAGE = """<!doctype html>
       document.getElementById('verbose-button').onclick = toggleVerbose;
       document.getElementById('graph-refresh-button').onclick = loadGraph;
       document.getElementById('graph-reset-button').onclick = () => {
-        if (graphKind === 'homegraph' && homegraphCenterNodeId && homegraphCenterNodeId !== homegraphRootNodeId) {
-          homegraphCenterNodeId = homegraphRootNodeId || '';
+        if (graphKind === 'homegraph') {
+          homegraphCenterNodeId = '';
           loadGraph();
           return;
         }
@@ -1284,6 +1460,10 @@ class AdminUiHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         route = parsed.path
         query = parse_qs(parsed.query)
+
+        if route == "/favicon.ico":
+            self._send_no_content()
+            return
 
         if route == "/":
             self._send_html(HTML_PAGE)
@@ -1422,11 +1602,14 @@ class AdminUiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         route, _, query_string = self.path.partition("?")
 
-        if route.startswith("/api/memories/") and route.endswith("/delete"):
-            memory_id = unquote(route[len("/api/memories/") : -len("/delete")].strip("/"))
+        if route.startswith("/api/users/") and "/memories/" in route and route.endswith("/delete"):
+            remainder = route[len("/api/users/") : -len("/delete")].strip("/")
+            user_part, _, memory_part = remainder.partition("/memories/")
+            user_id = unquote(user_part.strip("/"))
+            memory_id = unquote(memory_part.strip("/"))
             try:
-                deleted = delete_memory(self.server.config, memory_id)
-                self._send_json({"ok": True, "memory_id": memory_id, "deleted": deleted})
+                deleted = forget_user_memory(self.server.config, user_id, memory_id)
+                self._send_json({"ok": True, "user_id": user_id, "memory_id": memory_id, "deleted": deleted})
             except AdminApiError as exc:
                 self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
             return
@@ -1526,10 +1709,26 @@ class AdminUiHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
             return
 
+        if route.startswith("/api/users/") and route.endswith("/remember"):
+            user_id = unquote(route[len("/api/users/") : -len("/remember")].strip("/"))
+            try:
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                raw_body = self.rfile.read(length) if length > 0 else b"{}"
+                payload = json.loads(raw_body.decode("utf-8"))
+                text = str(payload.get("text", "")).strip()
+                metadata = payload.get("metadata", {})
+                created = remember_user_memory(self.server.config, user_id, text, metadata=metadata)
+                self._send_json({"ok": True, "result": created})
+            except (ValueError, json.JSONDecodeError) as exc:
+                self._send_json({"ok": False, "error": f"invalid remember payload: {exc}"}, status=HTTPStatus.BAD_REQUEST)
+            except AdminApiError as exc:
+                self._send_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_GATEWAY)
+            return
+
         self._send_json({"ok": False, "error": "not_found"}, status=HTTPStatus.NOT_FOUND)
 
     def _apply_review_proposal(self, user_id: str, proposal: dict) -> dict:
-        from admin_client import delete_memory, remember_user_memory
+        from admin_client import forget_user_memory, remember_user_memory
 
         memory_id = str(proposal.get("memory_id", "")).strip()
         action = str(proposal.get("action", "")).strip().lower()
@@ -1542,7 +1741,7 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             return {"action": action, "applied": False, "reason": "no backend mutation for this action"}
 
         if action == "delete":
-            deleted = delete_memory(self.server.config, memory_id)
+            deleted = forget_user_memory(self.server.config, user_id, memory_id)
             return {"action": action, "deleted": bool(deleted)}
 
         export_payload = export_user_memories(self.server.config, user_id)
@@ -1555,7 +1754,7 @@ class AdminUiHandler(BaseHTTPRequestHandler):
 
         metadata = dict(record.get("metadata", {})) if isinstance(record, dict) else {}
         created = remember_user_memory(self.server.config, user_id, proposed_text, metadata=metadata)
-        deleted = delete_memory(self.server.config, memory_id)
+        deleted = forget_user_memory(self.server.config, user_id, memory_id)
         return {"action": action, "created": created, "deleted": bool(deleted)}
 
     def _commit_review_proposals(self, user_id: str, proposals: list[dict]) -> dict:
@@ -1592,6 +1791,11 @@ class AdminUiHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError, socket.error):
             return
+
+    def _send_no_content(self):
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
 
 def run_admin_ui(config: AppConfig | None = None, open_browser: bool = True) -> int:

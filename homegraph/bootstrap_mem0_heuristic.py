@@ -25,6 +25,21 @@ KNOWN_GAMES = [
     "Clair Obscur",
 ]
 
+KNOWN_TOPICS = [
+    "automation",
+    "optimisation",
+    "build",
+    "usines",
+    "construction",
+    "K7VHS",
+]
+
+KNOWN_STREAM_MODES = [
+    "no death",
+    "hardcore",
+    "cauchemar",
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -60,6 +75,36 @@ def find_games(text: str) -> list[str]:
     return found
 
 
+def find_topics(text: str) -> list[str]:
+    found: list[str] = []
+    lowered = text.lower()
+    for topic in KNOWN_TOPICS:
+        if topic.lower() in lowered and topic not in found:
+            found.append(topic)
+    if any(token in lowered for token in ("optimis", "usine", "factory", "factories")) and "automation" not in found:
+        found.append("automation")
+    return found
+
+
+def find_stream_modes(text: str) -> list[str]:
+    found: list[str] = []
+    lowered = text.lower()
+    for mode in KNOWN_STREAM_MODES:
+        if mode.lower() in lowered and mode not in found:
+            found.append(mode)
+    return found
+
+
+def find_viewers(text: str) -> list[str]:
+    found: list[str] = []
+    for match in re.findall(r"@?([A-Z][A-Za-z0-9_]{2,})", text or ""):
+        if match.lower() in {"reponse", "bot", "viewer"}:
+            continue
+        if match not in found:
+            found.append(match)
+    return found
+
+
 def build_fact(
     kind: str,
     value: str,
@@ -73,7 +118,7 @@ def build_fact(
         "value": value,
         "confidence": confidence,
         "status": status,
-        "source_memory_ids": [memory_id],
+        "source_memory_ids": [memory_id] if memory_id else [],
         "source_excerpt": source_excerpt or value,
     }
 
@@ -90,7 +135,32 @@ def build_relation(
         "target_id_or_value": target_value,
         "relation_type": relation_type,
         "confidence": confidence,
-        "source_memory_ids": [memory_id],
+        "source_memory_ids": [memory_id] if memory_id else [],
+    }
+
+
+def build_link(
+    target_type: str,
+    target_value: str,
+    relation_type: str,
+    memory_id: str,
+    strength: float,
+    confidence: float,
+    *,
+    status: str = "active",
+    polarity: str = "neutral",
+    source_excerpt: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "target_type": target_type,
+        "target_value": target_value,
+        "relation_type": relation_type,
+        "strength": strength,
+        "confidence": confidence,
+        "status": status,
+        "polarity": polarity,
+        "source_memory_ids": [memory_id] if memory_id else [],
+        "source_excerpt": source_excerpt or target_value,
     }
 
 
@@ -111,6 +181,30 @@ def merge_items(items: list[dict[str, Any]], key_fields: list[str]) -> list[dict
     return list(merged.values())
 
 
+def merge_links(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for item in items:
+        key = (
+            str(item.get("target_type") or "").strip(),
+            str(item.get("target_value") or "").strip(),
+            str(item.get("relation_type") or "").strip(),
+        )
+        if key not in merged:
+            merged[key] = dict(item)
+            continue
+        existing = merged[key]
+        existing["confidence"] = max(float(existing.get("confidence") or 0), float(item.get("confidence") or 0))
+        existing["strength"] = max(float(existing.get("strength") or 0), float(item.get("strength") or 0))
+        source_ids = list(existing.get("source_memory_ids") or [])
+        for source_id in item.get("source_memory_ids") or []:
+            if source_id not in source_ids:
+                source_ids.append(source_id)
+        existing["source_memory_ids"] = source_ids
+        if not existing.get("source_excerpt") and item.get("source_excerpt"):
+            existing["source_excerpt"] = item["source_excerpt"]
+    return list(merged.values())
+
+
 def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
     viewer_id = str(payload.get("user_id") or "").strip()
     channel = str(payload.get("channel") or "").strip() or None
@@ -118,6 +212,7 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
     display_name = viewer_login
     facts: list[dict[str, Any]] = []
     relations: list[dict[str, Any]] = []
+    links: list[dict[str, Any]] = []
     topic_counter: Counter[str] = Counter()
     question_like_count = 0
 
@@ -131,23 +226,49 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
             question_like_count += 1
 
         games = find_games(text)
+        topics = find_topics(text)
+        stream_modes = find_stream_modes(text)
+        viewers = [viewer for viewer in find_viewers(text) if viewer.lower() != (viewer_login or "").lower()]
+
         for game in games:
             topic_counter[game] += 1
+        for topic in topics:
+            topic_counter[topic] += 1
+        for mode in stream_modes:
+            topic_counter[mode] += 1
 
-        if "je joue" in lowered:
+        if "je joue" in lowered or "joue surtout" in lowered:
             for game in games:
                 facts.append(build_fact("plays_game", game, memory_id, 0.86, source_excerpt=text))
                 relations.append(build_relation("game", game, "plays", memory_id, 0.86))
+                links.append(build_link("game", game, "plays", memory_id, 0.84, 0.86, polarity="positive", source_excerpt=text))
+
+        if "j'adore" in lowered or "j adore" in lowered or "j'aime" in lowered:
+            for game in games:
+                links.append(build_link("game", game, "likes", memory_id, 0.8, 0.82, polarity="positive", source_excerpt=text))
 
         if "builder compétent" in lowered and "satisfactory" in lowered:
             facts.append(build_fact("plays_game", "Satisfactory", memory_id, 0.9, source_excerpt=text))
             relations.append(build_relation("game", "Satisfactory", "plays", memory_id, 0.9))
+            links.append(build_link("game", "Satisfactory", "plays", memory_id, 0.9, 0.9, polarity="positive", source_excerpt=text))
             facts.append(
                 build_fact(
                     "build_style",
                     "builder compétent sur Satisfactory",
                     memory_id,
                     0.88,
+                    source_excerpt=text,
+                )
+            )
+            links.append(
+                build_link(
+                    "topic",
+                    "build efficace",
+                    "uses_build_style",
+                    memory_id,
+                    0.82,
+                    0.86,
+                    polarity="positive",
                     source_excerpt=text,
                 )
             )
@@ -159,6 +280,17 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
                     "lit son chat pendant ses constructions",
                     memory_id,
                     0.72,
+                    source_excerpt=text,
+                )
+            )
+            links.append(
+                build_link(
+                    "topic",
+                    "construction",
+                    "talks_about",
+                    memory_id,
+                    0.62,
+                    0.7,
                     source_excerpt=text,
                 )
             )
@@ -174,17 +306,33 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
                     source_excerpt=text,
                 )
             )
+            links.append(
+                build_link(
+                    "viewer",
+                    "Sarahp79",
+                    "compliments",
+                    memory_id,
+                    0.66,
+                    0.68,
+                    status="uncertain",
+                    polarity="positive",
+                    source_excerpt=text,
+                )
+            )
 
         if "n'a pas plus emball" in lowered or "n a pas plus emball" in lowered:
             for game in games:
                 facts.append(build_fact("dislikes_game", game, memory_id, 0.82, source_excerpt=text))
                 relations.append(build_relation("game", game, "dislikes", memory_id, 0.82))
+                links.append(build_link("game", game, "dislikes", memory_id, 0.78, 0.82, polarity="negative", source_excerpt=text))
 
         if "j'aime" in lowered and "douves" in lowered:
             facts.append(build_fact("personality_trait", "aime les douves bien profondes", memory_id, 0.76, source_excerpt=text))
+            links.append(build_link("topic", "douves", "likes", memory_id, 0.7, 0.76, polarity="positive", source_excerpt=text))
 
         if "k7vhs" in lowered:
             topic_counter["K7VHS"] += 1
+            links.append(build_link("running_gag", "K7VHS", "returns_to", memory_id, 0.7, 0.76, source_excerpt=text))
 
         if "valheim" in lowered and ("no death" in lowered or "cauchemar" in lowered):
             facts.append(
@@ -197,9 +345,26 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
                 )
             )
             relations.append(build_relation("topic", "no death", "likes", memory_id, 0.76))
+            links.append(build_link("game", "Valheim", "plays", memory_id, 0.8, 0.83, polarity="positive", source_excerpt=text))
+            links.append(build_link("stream_mode", "no death", "plays_in_mode", memory_id, 0.76, 0.8, polarity="positive", source_excerpt=text))
 
-        if "grand maître" in text or "dieu" in lowered:
-            topic_counter["running_gag_k7vhs"] += 1
+        for topic in topics:
+            relation_type = "returns_to" if topic_counter[topic] >= 2 else "talks_about"
+            links.append(build_link("topic", topic, relation_type, memory_id, 0.66, 0.72, source_excerpt=text))
+
+        for mode in stream_modes:
+            if mode != "no death":
+                links.append(build_link("stream_mode", mode, "likes", memory_id, 0.7, 0.74, polarity="positive", source_excerpt=text))
+
+        for viewer in viewers:
+            if "compliment" in lowered:
+                links.append(build_link("viewer", viewer, "compliments", memory_id, 0.68, 0.72, polarity="positive", source_excerpt=text))
+            elif "blague" in lowered or "vanne" in lowered:
+                links.append(build_link("viewer", viewer, "jokes_about", memory_id, 0.62, 0.66, source_excerpt=text))
+            elif "avec" in lowered or "parle avec" in lowered or "joue avec" in lowered:
+                links.append(build_link("viewer", viewer, "interacts_with", memory_id, 0.64, 0.7, source_excerpt=text))
+            else:
+                links.append(build_link("viewer", viewer, "knows", memory_id, 0.55, 0.62, status="uncertain", source_excerpt=text))
 
     if topic_counter["K7VHS"] >= 2:
         facts.append(
@@ -208,6 +373,19 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
                 "value": "K7VHS",
                 "confidence": 0.74,
                 "status": "active",
+                "source_memory_ids": [],
+                "source_excerpt": "Plusieurs souvenirs mentionnent K7VHS.",
+            }
+        )
+        links.append(
+            {
+                "target_type": "running_gag",
+                "target_value": "K7VHS",
+                "relation_type": "returns_to",
+                "strength": 0.72,
+                "confidence": 0.74,
+                "status": "active",
+                "polarity": "neutral",
                 "source_memory_ids": [],
                 "source_excerpt": "Plusieurs souvenirs mentionnent K7VHS.",
             }
@@ -237,6 +415,7 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
 
     facts = merge_items(facts, ["kind", "value"])
     relations = merge_items(relations, ["target_type", "target_id_or_value", "relation_type"])
+    links = merge_links(links)
 
     summary_bits: list[str] = []
     plays = [fact["value"] for fact in facts if fact["kind"] == "plays_game" and fact["status"] == "active"]
@@ -268,6 +447,7 @@ def heuristic_extract(payload: dict[str, Any]) -> dict[str, Any]:
         "summary_long": "",
         "facts": facts,
         "relations": relations,
+        "links": links,
         "conflicts": [],
         "needs_human_review": [],
     }
@@ -286,14 +466,16 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(extraction, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
-        f"homegraph_heuristic_ok viewer_id={extraction['viewer_id']} facts={len(extraction['facts'])} relations={len(extraction['relations'])} output={output_path}"
+        f"homegraph_heuristic_ok viewer_id={extraction['viewer_id']} "
+        f"facts={len(extraction['facts'])} relations={len(extraction['relations'])} "
+        f"links={len(extraction['links'])} output={output_path}"
     )
 
     if args.merge:
         merge_file(
             output_path,
             db_path=args.db or DEFAULT_DB_PATH,
-            model_name="heuristic-bootstrap-v1",
+            model_name="heuristic-bootstrap-v2",
             source_ref=f"heuristic:{extraction['viewer_id']}",
         )
 
