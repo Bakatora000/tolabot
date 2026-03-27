@@ -139,6 +139,7 @@ Reponse `200` :
 - `POST /admin/users/{user_id}/import`
 - `POST /admin/users/{user_id}/remember`
 - `GET /admin/homegraph/users/{user_id}/context`
+- `POST /admin/homegraph/users/{user_id}/enrichment`
 
 ## Endpoint Homegraph V1
 
@@ -258,6 +259,100 @@ Query params :
 Exemple :
 
 ```text
+/admin/homegraph/graph?center_node_id=game:valheim&max_depth=2&max_nodes=20&max_links=30&include_uncertain=false&min_weight=0.7
+```
+
+### `POST /admin/homegraph/users/{user_id}/enrichment`
+
+Route de fusion d'un enrichissement GPT vers `homegraph`.
+
+Headers :
+- `X-Admin-Key`
+
+Body minimal :
+
+```json
+{
+  "viewer_id": "twitch:streamer:viewer:alice",
+  "summary_short": "Viewer regulier, joue surtout a Valheim.",
+  "facts": [
+    {
+      "kind": "stream_context",
+      "value": "revient souvent sur Valheim",
+      "confidence": 0.86,
+      "status": "active",
+      "source_memory_ids": ["mem_1"]
+    }
+  ],
+  "relations": [
+    {
+      "target_type": "game",
+      "target_id_or_value": "Valheim",
+      "relation_type": "plays",
+      "confidence": 0.92,
+      "source_memory_ids": ["mem_1"]
+    }
+  ],
+  "links": [
+    {
+      "target_type": "stream_mode",
+      "target_value": "no death",
+      "relation_type": "likes",
+      "strength": 0.84,
+      "confidence": 0.81,
+      "status": "active",
+      "polarity": "positive",
+      "source_memory_ids": ["mem_2"]
+    }
+  ],
+  "model_name": "gpt-5",
+  "source_ref": "openai-review:alice:2026-03-27"
+}
+```
+
+Reponse `200` :
+
+```json
+{
+  "ok": true,
+  "viewer_id": "twitch:streamer:viewer:alice",
+  "generated_at": "2026-03-27T14:00:00Z",
+  "source": "homegraph_enrichment_v1",
+  "merged": {
+    "facts": 1,
+    "relations": 1,
+    "links": 1
+  },
+  "context": {
+    "summary_short": "Viewer regulier, joue surtout a Valheim.",
+    "facts_high_confidence": [
+      "joue souvent a Valheim"
+    ],
+    "recent_relevant": [],
+    "uncertain_points": []
+  },
+  "text_block": "Contexte viewer:\n- Viewer regulier, joue surtout a Valheim.\n- joue souvent a Valheim",
+  "graph_stats": {
+    "node_count": 3,
+    "link_count": 2,
+    "node_kinds": {
+      "viewer": 1,
+      "game": 1,
+      "stream_mode": 1
+    },
+    "link_kinds": {
+      "plays": 1,
+      "likes": 1
+    }
+  }
+}
+```
+
+Notes :
+- `viewer_id` dans le body doit matcher exactement le `user_id` de la route
+- la route applique directement le merge dans SQLite via `homegraph`
+- `model_name` et `source_ref` sont optionnels mais recommandes pour tracer une analyse GPT
+- la reponse renvoie un apercu direct du contexte et des stats de graphe pour l'UI Windows
 /admin/homegraph/graph?center_node_id=game:valheim&max_depth=2&max_nodes=20&max_links=30&include_uncertain=false&min_weight=0.7
 ```
 

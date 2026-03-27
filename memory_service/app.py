@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from admin_service.models import (
     AdminDeleteMemoryResponse,
     AdminExportResponse,
+    AdminHomegraphEnrichmentRequest,
+    AdminHomegraphEnrichmentResponse,
     AdminHomegraphGraphResponse,
     AdminHealthResponse,
     AdminHomegraphContextResponse,
@@ -28,6 +30,7 @@ from admin_service.models import (
 )
 from homegraph.context import build_viewer_context_payload
 from homegraph.graph import build_viewer_graph_payload
+from homegraph.merge_extraction import merge_payload as merge_homegraph_payload
 from homegraph.multihop_graph import build_multihop_graph_payload
 from memory_service.auth import admin_key_dependency, api_key_dependency
 from memory_service.backend import MemoryBackendError, build_backend
@@ -354,6 +357,53 @@ async def admin_homegraph_viewer_graph(
         max_links=max_links,
     )
     return AdminHomegraphGraphResponse(**payload)
+
+
+@app.post(
+    "/admin/homegraph/users/{user_id}/enrichment",
+    response_model=AdminHomegraphEnrichmentResponse,
+    dependencies=admin_auth_dependencies(settings.admin_key),
+)
+async def admin_homegraph_merge_enrichment(
+    user_id: str,
+    payload: AdminHomegraphEnrichmentRequest,
+    request: Request,
+):
+    if payload.viewer_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "ok": False,
+                "error": "viewer_id_mismatch",
+                "detail": "Payload viewer_id must match the route user_id.",
+            },
+        )
+
+    settings_obj = getattr(request.app.state, "settings", settings)
+    payload_dict = payload.model_dump(exclude_none=True, exclude={"model_name", "source_ref"})
+    merged = merge_homegraph_payload(
+        payload_dict,
+        db_path=settings_obj.homegraph_db_path,
+        source_ref=payload.source_ref,
+        model_name=payload.model_name,
+    )
+    context_payload = build_viewer_context_payload(
+        viewer_id=user_id,
+        db_path=settings_obj.homegraph_db_path,
+    )
+    graph_payload = build_viewer_graph_payload(
+        viewer_id=user_id,
+        db_path=settings_obj.homegraph_db_path,
+    )
+    return AdminHomegraphEnrichmentResponse(
+        viewer_id=user_id,
+        generated_at=context_payload["generated_at"],
+        source="homegraph_enrichment_v1",
+        merged=merged,
+        context=context_payload["context"],
+        text_block=context_payload["text_block"],
+        graph_stats=graph_payload["stats"],
+    )
 
 
 @app.get(

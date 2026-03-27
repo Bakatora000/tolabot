@@ -206,3 +206,97 @@ class AdminHomegraphGraphResponse(BaseModel):
     stats: HomegraphGraphStats
     nodes: list[HomegraphGraphNode]
     links: list[HomegraphGraphLink]
+
+
+class AdminHomegraphEnrichmentFact(BaseModel):
+    fact_id: str | None = None
+    kind: str
+    value: str
+    confidence: float | None = None
+    status: str | None = None
+    valid_from: str | None = None
+    valid_to: str | None = None
+    source_memory_ids: list[str] = Field(default_factory=list)
+    source_excerpt: str | None = None
+    last_reviewed_at: str | None = None
+    review_state: str | None = None
+
+    @field_validator("kind", "value")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        return _normalize_non_empty(str(value)[:MAX_TEXT_CHARS], "value")
+
+
+class AdminHomegraphEnrichmentRelation(BaseModel):
+    relation_id: str | None = None
+    target_type: str
+    target_id_or_value: str
+    relation_type: str
+    confidence: float | None = None
+    valid_from: str | None = None
+    valid_to: str | None = None
+    source_memory_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("target_type", "target_id_or_value", "relation_type")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        return _normalize_non_empty(str(value)[:MAX_TEXT_CHARS], "value")
+
+
+class AdminHomegraphEnrichmentLink(BaseModel):
+    link_id: str | None = None
+    target_type: str
+    target_value: str
+    relation_type: str
+    target_entity_id: str | None = None
+    strength: float | None = None
+    confidence: float | None = None
+    status: str | None = None
+    polarity: str | None = None
+    source_memory_ids: list[str] = Field(default_factory=list)
+    source_excerpt: str | None = None
+    aliases: list[str] = Field(default_factory=list)
+    entity_status: str | None = None
+
+    @field_validator("target_type", "target_value", "relation_type")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        return _normalize_non_empty(str(value)[:MAX_TEXT_CHARS], "value")
+
+
+class AdminHomegraphEnrichmentRequest(BaseModel):
+    viewer_id: str
+    channel: str | None = None
+    viewer_login: str | None = None
+    display_name: str | None = None
+    summary_short: str | None = None
+    summary_long: str | None = None
+    facts: list[AdminHomegraphEnrichmentFact] = Field(default_factory=list)
+    relations: list[AdminHomegraphEnrichmentRelation] = Field(default_factory=list)
+    links: list[AdminHomegraphEnrichmentLink] = Field(default_factory=list)
+    conflicts: list[Any] = Field(default_factory=list)
+    needs_human_review: list[Any] = Field(default_factory=list)
+    model_name: str | None = None
+    source_ref: str | None = None
+
+    @field_validator("viewer_id")
+    @classmethod
+    def validate_viewer_id(cls, value: str) -> str:
+        return _normalize_non_empty(str(value)[:MAX_TEXT_CHARS], "viewer_id")
+
+
+class HomegraphMergeCounts(BaseModel):
+    facts: int
+    relations: int
+    links: int
+
+
+class AdminHomegraphEnrichmentResponse(BaseModel):
+    ok: bool = True
+    viewer_id: str
+    generated_at: str
+    source: str
+    merged: HomegraphMergeCounts
+    context: HomegraphContextContent
+    text_block: str
+    graph_stats: HomegraphGraphStats
